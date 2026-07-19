@@ -1,0 +1,190 @@
+--- src/pages/SmartJournalDrawer.jsx
++++ src/pages/SmartJournalDrawer.jsx
+@@ -70,9 +70,11 @@
+   );
+ }
+ 
+-export default function SmartJournalDrawer({ user, onClose, onSaveSuccess, onEditJournal }) {
++export default function SmartJournalDrawer({ user, onClose, onSaveSuccess, onEditJournal, editRow }) {
+   const [models, setModels] = useState([]);
+   const [selectedModelId, setSelectedModelId] = useState('');
++  const isEditMode = !!editRow;
++  const [editLocked, setEditLocked] = useState(false);
+   
+   const [savedJournal, setSavedJournal] = useState(null);
+   const [loadingModels, setLoadingModels] = useState(true);
+@@ -87,6 +89,8 @@
+   
+   const [saving, setSaving] = useState(false);
+   const [error, setError] = useState('');
+   const [success, setSuccess] = useState('');
++  
++  const savedEditLinesRef = useRef(null);
+ 
+   // 1. Fetch available models on load
+@@ -104,11 +108,44 @@
+     fetchModels();
+   }, [user]);
+ 
++  // 1.5 Fetch edit data if in edit mode
++  useEffect(() => {
++    if (!isEditMode) return;
++    async function fetchEditData() {
++      try {
++        const res = await apiCall('Open Journal', {
++          JournalNo: editRow.JournalNumber,
++          EventNo: editRow.EventNumber
++        }, { User: user?.Username }, 'journal');
++        
++        if (res.State === 0) {
++          const header = (res.List0 || [])[0];
++          const lines = res.List1 || [];
++          if (header) {
++            setJournalDate(header.JournalDate ? header.JournalDate.split('T')[0] : '');
++            setJournalRemarks(header.JournalDescription || '');
++            setJournalCurrency(header.JournalCurrency || 'USD');
++            setJournalExchangeRate(header.JournalExchangeRate || 1);
++            
++            savedEditLinesRef.current = lines;
++            if (header.JournalModelID) setSelectedModelId(header.JournalModelID);
++            setEditLocked(true);
++          }
++        } else {
++          setError(res.Message);
++        }
++      } catch (e) {
++        setError(e.message);
++      }
++    }
++    fetchEditData();
++  }, [isEditMode, editRow, user]);
++
+   // 2. Fetch specific model definition when selected
+   useEffect(() => {
+     if (!selectedModelId) {
+       setModelDef(null);
+       setLinesData([]);
+       return;
+     }
+ 
+@@ -125,18 +162,39 @@
+           setModelDef({ header, lines, details });
+ 
+           // Initialize line data structure
+-          const initialLinesData = lines.map(l => ({
+-            Line: l.Line,
+-            LineType: l.LineType,
+-            Segments: {},
+-            LineCurrency: 'USD',
+-            LineExchangeRate: 1,
+-            DebitTransaction: '',
+-            CreditTransaction: '',
+-            DebitBook: '',
+-            CreditBook: '',
+-            Remarks: ''
+-          }));
++          const initialLinesData = lines.map(l => {
++            let pre = {
++              Line: l.Line,
++              LineType: l.LineType,
++              Segments: {},
++              LineCurrency: 'USD',
++              LineExchangeRate: 1,
++              DebitTransaction: '',
++              CreditTransaction: '',
++              DebitBook: '',
++              CreditBook: '',
++              Remarks: ''
++            };
++            
++            // If in edit mode, map existing data
++            if (savedEditLinesRef.current) {
++              const match = savedEditLinesRef.current.find(el => el.Line === l.Line);
++              if (match) {
++                pre.LineCurrency = match.LineCurrency;
++                pre.LineExchangeRate = match.LineExchangeRate;
++                pre.DebitTransaction = match.DebitTransaction || '';
++                pre.CreditTransaction = match.CreditTransaction || '';
++                pre.DebitBook = match.DebitBook || '';
++                pre.CreditBook = match.CreditBook || '';
++                pre.Remarks = match.LineDescription || '';
++                pre.Segments[1] = match.Account || '';
++                pre.Segments[2] = match.DebitorCreditor || '';
++                pre.Segments[3] = match.Customer || '';
++                pre.Segments[4] = match.Vendor || '';
++                pre.Segments[5] = match.Bank || '';
++                pre.Segments[6] = match.Tax || '';
++                for(let i=7; i<=16; i++) {
++                   pre.Segments[i] = match[`Segment${i}`] || '';
++                }
++              }
++            }
++            return pre;
++          });
+           setLinesData(initialLinesData);
+           setSavedJournal(null);
+         } else {
+@@ -248,7 +306,12 @@
+         return rowObj;
+       });
+ 
+-      const res = await apiCall('New Journal Header', headerPayload, { User: user?.Username, LineMember: JSON.stringify(rowsPayload) }, 'journal');
++      let res;
++      if (isEditMode) {
++        headerPayload.EventNo = editRow.EventNumber;
++        headerPayload.JournalNo = editRow.JournalNumber;
++        res = await apiCall('Edit Journal Header', headerPayload, { User: user?.Username, LineData: JSON.stringify([headerPayload]), LineMember: JSON.stringify(rowsPayload) }, 'journal');
++      } else {
++        res = await apiCall('New Journal Header', headerPayload, { User: user?.Username, LineMember: JSON.stringify(rowsPayload) }, 'journal');
++      }
++      
+       if (res.State === 0) {
+-        setSuccess('Journal Entry created successfully!');
++        setSuccess(isEditMode ? 'Journal updated successfully!' : 'Journal Entry created successfully!');
+         setSavedJournal((res.List0 || [])[0]);
+         if (onSaveSuccess) onSaveSuccess();
+       } else {
+@@ -263,6 +326,19 @@
+     setSaving(false);
+   };
+ 
++  const handleClose = async () => {
++    if (isEditMode && editLocked && !savedJournal) {
++      try {
++        await apiCall('Close Journal', {
++          JournalNo: editRow.JournalNumber,
++          EventNo: editRow.EventNumber
++        }, { User: user?.Username }, 'journal');
++      } catch(e) {
++        console.error(e);
++      }
++    }
++    onClose();
++  };
++
+   return (
+     <>
+       <div 
+@@ -321,7 +397,7 @@
+               <button 
+                 onClick={handleSave}
+                 disabled={saving || !modelDef || linesData.length === 0}
+                 style={{ 
+                   background: '#1D4FB8', color: '#FFF', border: 'none', borderRadius: 6, 
+                   padding: '8px 20px', fontWeight: 600, cursor: (saving || !modelDef) ? 'not-allowed' : 'pointer',
+                   opacity: (saving || !modelDef) ? 0.6 : 1, transition: 'background 0.2s', fontSize: 14
+                 }}
+               >
+-                {saving ? 'Saving...' : 'Post Journal'}
++                {saving ? 'Saving...' : (isEditMode ? 'Update Journal' : 'Post Journal')}
+               </button>
+             ) : (
+               <button 
+@@ -336,7 +412,7 @@
+             )}
+             <button 
+-              onClick={onClose}
++              onClick={handleClose}
+               style={{ width: 32, height: 32, borderRadius: 16, border: 'none', background: '#F1F3F7', color: '#4A5A72', fontSize: 18, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold' }}
+             >
+               ×

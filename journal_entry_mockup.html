@@ -1,0 +1,688 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Journal Entry</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Roboto+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#0F2038;
+    --ink-soft:#4A5A72;
+    --bg:#EEF1F6;
+    --surface:#FFFFFF;
+    --border:#DCE1EA;
+    --border-soft:#E9ECF2;
+    --accent:#2F5FE0;
+    --accent-soft:#EAF0FF;
+    --debit-bg:#EFF5FF;
+    --debit-ink:#1D4FB8;
+    --credit-bg:#FFF6EC;
+    --credit-ink:#B5651D;
+    --seg-bg:#F6F3FF;
+    --seg-ink:#6C4FCB;
+    --ok:#1B8F5A;
+    --ok-bg:#E7F7EF;
+    --bad:#D0402C;
+    --bad-bg:#FDECEA;
+    --radius:8px;
+    --mono:'Roboto Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+    --sans:'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    font-family:var(--sans);
+    background:var(--bg);
+    color:var(--ink);
+    padding:28px 28px 120px;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:1500px;margin:0 auto;}
+
+  /* Top bar */
+  .topbar{
+    display:flex;align-items:center;justify-content:space-between;
+    margin-bottom:20px;
+  }
+  .brand{display:flex;align-items:center;gap:10px;}
+  .brand .mark{
+    width:30px;height:30px;border-radius:7px;background:var(--ink);
+    display:flex;align-items:center;justify-content:center;
+    color:#fff;font-family:var(--mono);font-weight:600;font-size:13px;
+  }
+  .brand h1{font-size:15px;font-weight:700;margin:0;letter-spacing:.2px;}
+  .brand .sub{font-size:11.5px;color:var(--ink-soft);margin-top:1px;}
+  .topbar-actions{display:flex;gap:8px;}
+
+  /* Buttons */
+  .btn{
+    font-family:var(--sans);
+    border:1px solid var(--border);
+    background:var(--surface);
+    color:var(--ink);
+    padding:8px 14px;
+    border-radius:7px;
+    font-size:12.5px;
+    font-weight:600;
+    cursor:pointer;
+    display:inline-flex;align-items:center;gap:6px;
+    transition:background .12s, border-color .12s, transform .05s;
+  }
+  .btn:hover{background:#F5F7FA;}
+  .btn:active{transform:translateY(1px);}
+  .btn-primary{background:var(--ink);border-color:var(--ink);color:#fff;}
+  .btn-primary:hover{background:#18305A;}
+  .btn-accent{background:var(--accent);border-color:var(--accent);color:#fff;}
+  .btn-accent:hover{background:#2650BE;}
+  .btn-ghost{background:transparent;border-color:transparent;color:var(--ink-soft);}
+  .btn-ghost:hover{background:var(--border-soft);}
+  .btn-sm{padding:5px 9px;font-size:11.5px;border-radius:6px;}
+  .btn-danger-ghost{background:transparent;border-color:transparent;color:#B5462F;}
+  .btn-danger-ghost:hover{background:var(--bad-bg);}
+
+  /* Card */
+  .card{
+    background:var(--surface);
+    border:1px solid var(--border);
+    border-radius:var(--radius);
+    margin-bottom:18px;
+  }
+  .card-header{
+    padding:14px 18px;
+    border-bottom:1px solid var(--border-soft);
+    display:flex;align-items:center;justify-content:space-between;
+  }
+  .card-header .title{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--ink-soft);}
+  .card-body{padding:18px;}
+
+  /* Header form */
+  .header-grid{
+    display:grid;
+    grid-template-columns:120px 200px 1fr;
+    gap:16px;
+  }
+  .field label{
+    display:block;font-size:11px;font-weight:600;color:var(--ink-soft);
+    margin-bottom:6px;text-transform:uppercase;letter-spacing:.4px;
+  }
+  .field input, .field textarea, .field select{
+    width:100%;
+    border:1px solid var(--border);
+    border-radius:6px;
+    padding:9px 10px;
+    font-size:13px;
+    font-family:var(--sans);
+    color:var(--ink);
+    background:#FCFDFE;
+    transition:border-color .12s, box-shadow .12s;
+  }
+  .field input:focus, .field textarea:focus, .field select:focus{
+    outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft);
+    background:#fff;
+  }
+  #prefix{font-family:var(--mono);text-transform:uppercase;letter-spacing:1px;font-weight:600;}
+  .field textarea{resize:vertical;min-height:38px;font-family:var(--sans);}
+
+  /* Grid toolbar */
+  .grid-toolbar{display:flex;gap:8px;align-items:center;}
+
+  /* Table */
+  .grid-scroll{overflow-x:auto;border-top:1px solid var(--border-soft);}
+  table{border-collapse:collapse;width:100%;min-width:1400px;font-size:12.5px;}
+  thead tr.group-row th{
+    background:#F7F8FB;color:var(--ink-soft);font-size:10px;font-weight:700;
+    text-transform:uppercase;letter-spacing:.6px;
+    padding:7px 8px;border-bottom:1px solid var(--border-soft);
+    text-align:center;white-space:nowrap;
+  }
+  thead tr.col-row th{
+    background:#FBFBFD;color:var(--ink);font-size:11px;font-weight:600;
+    padding:8px 8px;border-bottom:1px solid var(--border);white-space:nowrap;
+    text-align:left;
+  }
+  thead tr.group-row th.grp-line{background:#F7F8FB;}
+  thead tr.group-row th.grp-book{background:var(--debit-bg);color:var(--debit-ink);}
+  thead tr.group-row th.grp-trans{background:#FFFCF7;color:#8A6A2E;}
+  tbody td{
+    padding:0;border-bottom:1px solid var(--border-soft);
+    background:#fff;
+  }
+  tbody tr:hover td{background:#FAFBFD;}
+  tbody td input, tbody td select{
+    width:100%;border:none;background:transparent;
+    padding:8px 8px;font-size:12.5px;font-family:var(--sans);color:var(--ink);
+  }
+  tbody td input:focus, tbody td select:focus{
+    outline:none;background:var(--accent-soft);box-shadow:inset 0 0 0 1.5px var(--accent);
+  }
+  td.num input{font-family:var(--mono);text-align:right;font-weight:500;}
+  td.line-no{
+    font-family:var(--mono);color:var(--ink-soft);text-align:center;
+    font-size:12px;font-weight:600;background:#FAFBFC;width:36px;
+  }
+  td.debit-cell{background:var(--debit-bg);}
+  td.debit-cell input{color:var(--debit-ink);font-weight:600;}
+  td.credit-cell{background:var(--credit-bg);}
+  td.credit-cell input{color:var(--credit-ink);font-weight:600;}
+  td.seg-toggle-cell{text-align:center;background:#FAFBFC;}
+  .seg-btn{
+    border:1px solid #E2D9FA;background:var(--seg-bg);color:var(--seg-ink);
+    font-family:var(--sans);font-size:11px;font-weight:600;
+    padding:6px 10px;border-radius:6px;cursor:pointer;
+    display:inline-flex;align-items:center;gap:6px;white-space:nowrap;
+  }
+  .seg-btn:hover{background:#EDE6FC;}
+  .seg-btn .badge{
+    background:var(--seg-ink);color:#fff;border-radius:9px;
+    font-size:9.5px;font-weight:700;padding:1px 6px;line-height:1.4;
+  }
+  .seg-btn.empty .badge{background:#C9C0E8;}
+  .seg-btn.open{background:var(--seg-ink);color:#fff;border-color:var(--seg-ink);}
+  .seg-btn.open .badge{background:rgba(255,255,255,.25);}
+
+  tr.seg-row td{
+    padding:0;border-bottom:1px solid var(--border-soft);background:var(--seg-bg);
+  }
+  .seg-panel{
+    display:flex;gap:22px;align-items:flex-end;flex-wrap:wrap;
+    padding:12px 18px;
+  }
+  .seg-field{display:flex;flex-direction:column;gap:4px;min-width:170px;}
+  .seg-field label{
+    font-size:9.5px;font-weight:700;color:var(--seg-ink);
+    text-transform:uppercase;letter-spacing:.5px;
+  }
+  .seg-field input{
+    border:1px solid #E2D9FA;background:#fff;border-radius:6px;
+    padding:7px 9px;font-size:12.5px;font-family:var(--sans);color:var(--ink);
+  }
+  .seg-field input:focus{outline:none;border-color:var(--seg-ink);box-shadow:0 0 0 3px #EDE6FC;}
+  .seg-panel .seg-clear{
+    border:none;background:none;color:var(--seg-ink);font-size:11px;font-weight:600;
+    cursor:pointer;text-decoration:underline;padding:7px 0;
+  }
+  td.del-cell{text-align:center;width:34px;background:#FAFBFC;}
+  .row-del{
+    border:none;background:transparent;color:#C9CFD9;cursor:pointer;
+    font-size:15px;line-height:1;padding:4px;border-radius:4px;
+  }
+  .row-del:hover{color:var(--bad);background:var(--bad-bg);}
+
+  tfoot td{
+    padding:9px 8px;font-family:var(--mono);font-weight:700;font-size:12.5px;
+    border-top:2px solid var(--border);background:#FAFBFC;
+  }
+  tfoot td.label{font-family:var(--sans);color:var(--ink-soft);font-weight:600;font-size:11px;text-transform:uppercase;text-align:right;}
+
+  .empty-state{padding:36px;text-align:center;color:var(--ink-soft);font-size:12.5px;}
+
+  /* Sticky balance bar */
+  .balance-bar{
+    position:fixed;left:0;right:0;bottom:0;
+    background:var(--surface);border-top:1px solid var(--border);
+    box-shadow:0 -6px 24px rgba(15,32,56,.06);
+    padding:14px 28px;z-index:50;
+  }
+  .balance-inner{
+    max-width:1500px;margin:0 auto;
+    display:flex;align-items:center;gap:26px;
+  }
+  .balance-track{flex:1;height:8px;border-radius:5px;background:var(--border-soft);overflow:hidden;position:relative;display:flex;}
+  .balance-track .fill-debit{background:var(--debit-ink);height:100%;transition:width .2s;}
+  .balance-track .fill-credit{background:var(--credit-ink);height:100%;transition:width .2s;}
+  .bal-figures{display:flex;gap:22px;align-items:center;}
+  .bal-figure{text-align:right;}
+  .bal-figure .k{font-size:10px;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.5px;font-weight:700;}
+  .bal-figure .v{font-family:var(--mono);font-size:14px;font-weight:700;}
+  .v.debit-v{color:var(--debit-ink);}
+  .v.credit-v{color:var(--credit-ink);}
+  .status-pill{
+    display:flex;align-items:center;gap:7px;
+    padding:7px 14px;border-radius:20px;font-size:11.5px;font-weight:700;
+    background:var(--bad-bg);color:var(--bad);white-space:nowrap;
+  }
+  .status-pill.balanced{background:var(--ok-bg);color:var(--ok);}
+  .status-pill .dot{width:7px;height:7px;border-radius:50%;background:currentColor;}
+  .status-pill.unbalanced .dot{animation:pulse 1.4s infinite;}
+  @keyframes pulse{0%,100%{opacity:1;}50%{opacity:.25;}}
+
+  ::placeholder{color:#B7BFCC;}
+
+  /* Payload preview */
+  .payload-overlay{
+    position:fixed;inset:0;background:rgba(15,32,56,.45);
+    display:none;align-items:center;justify-content:center;z-index:100;padding:24px;
+  }
+  .payload-overlay.show{display:flex;}
+  .payload-modal{
+    background:#0F2038;color:#D6E0F5;border-radius:10px;
+    max-width:640px;width:100%;max-height:76vh;overflow:auto;
+    padding:0;box-shadow:0 20px 60px rgba(0,0,0,.35);
+  }
+  .payload-modal .ph{
+    display:flex;justify-content:space-between;align-items:center;
+    padding:14px 18px;border-bottom:1px solid rgba(255,255,255,.1);
+  }
+  .payload-modal .ph span{font-size:12px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;color:#9FB0D0;}
+  .payload-modal pre{margin:0;padding:18px;font-family:var(--mono);font-size:11.5px;line-height:1.6;white-space:pre-wrap;word-break:break-word;}
+  .payload-modal .close-x{background:none;border:none;color:#9FB0D0;font-size:16px;cursor:pointer;}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="topbar">
+    <div class="brand">
+      <div class="mark">JE</div>
+      <div>
+        <h1>Journal Entry</h1>
+        <div class="sub">General Ledger &middot; Manual Entry</div>
+      </div>
+    </div>
+    <div class="topbar-actions">
+      <button class="btn btn-ghost" id="btnClear">Clear</button>
+      <button class="btn" id="btnPreview">Preview payload</button>
+      <button class="btn btn-primary" id="btnSave">Save entry</button>
+    </div>
+  </div>
+
+  <!-- Header fields -->
+  <div class="card">
+    <div class="card-header"><span class="title">Entry details</span></div>
+    <div class="card-body">
+      <div class="header-grid">
+        <div class="field">
+          <label for="prefix">Prefix</label>
+          <input id="prefix" maxlength="2" placeholder="GJ" value="GJ">
+        </div>
+        <div class="field">
+          <label for="jdate">Journal date</label>
+          <input id="jdate" type="date">
+        </div>
+        <div class="field">
+          <label for="jdesc">Description</label>
+          <textarea id="jdesc" rows="1" placeholder="e.g. Year-end accrual adjustment for December utilities"></textarea>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Lines grid -->
+  <div class="card">
+    <div class="card-header">
+      <span class="title">Journal lines</span>
+      <div class="grid-toolbar">
+        <button class="btn btn-sm seg-toggle-all" id="btnExpandAllSeg">Expand all segments</button>
+        <button class="btn btn-sm" id="btnAddLine">+ Add line</button>
+      </div>
+    </div>
+    <div class="grid-scroll">
+      <table id="grid">
+        <thead>
+          <tr class="group-row">
+            <th class="grp-line" colspan="7">Line</th>
+            <th class="grp-line" colspan="2">Currency</th>
+            <th class="grp-trans" colspan="2">Transaction amount</th>
+            <th class="grp-book" colspan="2">Book amount</th>
+            <th></th>
+            <th></th>
+          </tr>
+          <tr class="col-row">
+            <th>#</th>
+            <th style="min-width:150px;">Account</th>
+            <th style="min-width:170px;">Description</th>
+            <th style="min-width:120px;">Debtor/Creditor</th>
+            <th style="min-width:120px;">Customer</th>
+            <th style="min-width:120px;">Vendor</th>
+            <th style="min-width:120px;">Bank</th>
+            <th style="min-width:70px;">Curr.</th>
+            <th style="min-width:80px;">Rate</th>
+            <th style="min-width:110px;">Debit</th>
+            <th style="min-width:110px;">Credit</th>
+            <th style="min-width:110px;">Debit</th>
+            <th style="min-width:110px;">Credit</th>
+            <th style="min-width:100px;">Segments</th>
+            <th style="width:34px;"></th>
+          </tr>
+        </thead>
+        <tbody id="gridBody"></tbody>
+        <tfoot>
+          <tr>
+            <td colspan="9" class="label">Totals</td>
+            <td class="num" id="totDebitTrans">0.00</td>
+            <td class="num" id="totCreditTrans">0.00</td>
+            <td class="num" id="totDebitBook">0.00</td>
+            <td class="num" id="totCreditBook">0.00</td>
+            <td></td>
+            <td></td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+  </div>
+
+</div>
+
+<!-- Sticky balance bar -->
+<div class="balance-bar">
+  <div class="balance-inner">
+    <div class="bal-figures">
+      <div class="bal-figure">
+        <div class="k">Debit</div>
+        <div class="v debit-v" id="barDebit">0.00</div>
+      </div>
+      <div class="bal-figure">
+        <div class="k">Credit</div>
+        <div class="v credit-v" id="barCredit">0.00</div>
+      </div>
+      <div class="bal-figure">
+        <div class="k">Difference</div>
+        <div class="v" id="barDiff">0.00</div>
+      </div>
+    </div>
+    <div class="balance-track">
+      <div class="fill-debit" id="fillDebit" style="width:0%"></div>
+      <div class="fill-credit" id="fillCredit" style="width:0%"></div>
+    </div>
+    <div class="status-pill unbalanced" id="statusPill">
+      <span class="dot"></span><span id="statusText">Out of balance</span>
+    </div>
+  </div>
+</div>
+
+<!-- Payload preview modal -->
+<div class="payload-overlay" id="payloadOverlay">
+  <div class="payload-modal">
+    <div class="ph"><span>LineData payload</span><button class="close-x" id="closePayload">&#10005;</button></div>
+    <pre id="payloadText"></pre>
+  </div>
+</div>
+
+<script>
+const CURRENCIES = ['SYP','USD','EUR','EGP','SAR','AED'];
+
+const ACCOUNTS = [
+  '1101 - Cash on Hand',
+  '1102 - Bank Current Account',
+  '1201 - Accounts Receivable',
+  '1401 - Inventory',
+  '2001 - Accounts Payable',
+  '2031 - USD Clearing',
+  '2052 - Bank Transfer Clearing',
+  '1221 - EGP Operating Account',
+  '4001 - Sales Revenue',
+  '5001 - Cost of Goods Sold',
+  '6101 - General Expenses',
+  '9120 - Suspense Account'
+];
+const DC_TYPES = ['Debtor','Creditor'];
+const CUSTOMERS = [
+  'C-1001 - GLC Paints Damascus',
+  'C-1002 - Pro Plast Retail Aleppo',
+  'C-1003 - Al Rasheed Trading',
+  'C-1004 - Homs Building Supplies'
+];
+const VENDORS = [
+  'V-2001 - Resin Suppliers LLC',
+  'V-2002 - Packaging Partners',
+  'V-2003 - Freight & Logistics Co.',
+  'V-2004 - Raw Materials Est.'
+];
+const BANKS = [
+  'BSY - Bank of Syria (Main)',
+  'CBS - Commercial Bank of Syria',
+  'BLOM - BLOM Bank',
+  'BYBLOS - Byblos Bank Syria'
+];
+
+let lineSeq = 0;
+
+function fmt(n){
+  n = Number(n)||0;
+  return n.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+}
+
+function makeSelect(id, options, cls, placeholder){
+  let html = `<select data-field="${id}" class="${cls||''}">`;
+  html += `<option value="">${placeholder || '— Select —'}</option>`;
+  options.forEach(o=> html += `<option value="${o}">${o}</option>`);
+  html += `</select>`;
+  return html;
+}
+
+function segBadgeUpdate(segRow){
+  const inputs = segRow.querySelectorAll('input');
+  let count = 0;
+  inputs.forEach(i=>{ if(i.value.trim()) count++; });
+  const btn = segRow.previousElementSibling.querySelector('.seg-btn');
+  const badge = btn.querySelector('.badge');
+  badge.textContent = count;
+  btn.classList.toggle('empty', count===0);
+}
+
+function toggleSegRow(segRow, btn){
+  const willOpen = segRow.style.display === 'none';
+  segRow.style.display = willOpen ? '' : 'none';
+  btn.classList.toggle('open', willOpen);
+}
+
+function addLine(focus){
+  lineSeq++;
+  const tbody = document.getElementById('gridBody');
+  const tr = document.createElement('tr');
+  tr.className = 'line-row';
+  tr.dataset.line = lineSeq;
+  tr.innerHTML = `
+    <td class="line-no">${lineSeq}</td>
+    <td>${makeSelect('account', ACCOUNTS, '', 'Select account')}</td>
+    <td><input data-field="lineDesc" placeholder="Line description"></td>
+    <td>${makeSelect('doc', DC_TYPES, '', '—')}</td>
+    <td>${makeSelect('customer', CUSTOMERS, '', '—')}</td>
+    <td>${makeSelect('vendor', VENDORS, '', '—')}</td>
+    <td>${makeSelect('bank', BANKS, '', '—')}</td>
+    <td>${makeSelect('currency', CURRENCIES)}</td>
+    <td class="rate-cell num"><input data-field="rate" type="number" step="0.0001" value="1"></td>
+    <td class="num debit-cell"><input data-field="debitTrans" type="number" step="0.01" placeholder="0.00"></td>
+    <td class="num credit-cell"><input data-field="creditTrans" type="number" step="0.01" placeholder="0.00"></td>
+    <td class="num debit-cell"><input data-field="debitBook" type="number" step="0.01" placeholder="0.00"></td>
+    <td class="num credit-cell"><input data-field="creditBook" type="number" step="0.01" placeholder="0.00"></td>
+    <td class="seg-toggle-cell">
+      <button type="button" class="seg-btn empty" title="Edit segments">Segments <span class="badge">0</span></button>
+    </td>
+    <td class="del-cell"><button class="row-del" title="Delete line">&#10005;</button></td>
+  `;
+  tbody.appendChild(tr);
+
+  const segRow = document.createElement('tr');
+  segRow.className = 'seg-row';
+  segRow.style.display = 'none';
+  segRow.innerHTML = `
+    <td colspan="15">
+      <div class="seg-panel">
+        <div class="seg-field"><label>Segment 7</label><input data-field="seg7" placeholder="—"></div>
+        <div class="seg-field"><label>Segment 8</label><input data-field="seg8" placeholder="—"></div>
+        <div class="seg-field"><label>Segment 9</label><input data-field="seg9" placeholder="—"></div>
+        <div class="seg-field"><label>Segment 10</label><input data-field="seg10" placeholder="—"></div>
+        <button type="button" class="seg-clear">Clear segments</button>
+      </div>
+    </td>
+  `;
+  tbody.appendChild(segRow);
+
+  const segBtn = tr.querySelector('.seg-btn');
+  segBtn.addEventListener('click', ()=> toggleSegRow(segRow, segBtn));
+  segRow.querySelectorAll('input').forEach(i=> i.addEventListener('input', ()=> segBadgeUpdate(segRow)));
+  segRow.querySelector('.seg-clear').addEventListener('click', ()=>{
+    segRow.querySelectorAll('input').forEach(i=> i.value='');
+    segBadgeUpdate(segRow);
+  });
+
+  // exchange rate autolinks book <-> transaction
+  const rate = tr.querySelector('[data-field="rate"]');
+  const dBook = tr.querySelector('[data-field="debitBook"]');
+  const cBook = tr.querySelector('[data-field="creditBook"]');
+  const dTrans = tr.querySelector('[data-field="debitTrans"]');
+  const cTrans = tr.querySelector('[data-field="creditTrans"]');
+
+  dBook.addEventListener('input', ()=>{ dTrans.value = round2(dBook.value * (rate.value||1)); recalc(); });
+  cBook.addEventListener('input', ()=>{ cTrans.value = round2(cBook.value * (rate.value||1)); recalc(); });
+  rate.addEventListener('input', ()=>{
+    if(dBook.value) dTrans.value = round2(dBook.value * (rate.value||1));
+    if(cBook.value) cTrans.value = round2(cBook.value * (rate.value||1));
+    recalc();
+  });
+  [dTrans,cTrans].forEach(el=> el.addEventListener('input', recalc));
+
+  tr.querySelector('.row-del').addEventListener('click', ()=>{
+    tr.remove();
+    segRow.remove();
+    renumber();
+    recalc();
+  });
+
+  // Enter on last cell of main row -> add new row
+  const inputs = tr.querySelectorAll('input,select');
+  inputs[inputs.length-1].addEventListener('keydown', (e)=>{
+    if(e.key === 'Enter' && tr === tbody.querySelectorAll('.line-row')[tbody.querySelectorAll('.line-row').length-1]){
+      e.preventDefault();
+      addLine(true);
+    }
+  });
+
+  recalc();
+  if(focus){
+    tr.querySelector('input,select').focus();
+  }
+}
+
+function round2(v){
+  return (Math.round((Number(v)||0) * 100) / 100).toFixed(2);
+}
+
+function renumber(){
+  document.querySelectorAll('#gridBody tr.line-row').forEach((tr,i)=>{
+    tr.querySelector('.line-no').textContent = i+1;
+  });
+}
+
+function recalc(){
+  let tDB=0,tCB=0,tDT=0,tCT=0;
+  document.querySelectorAll('#gridBody tr.line-row').forEach(tr=>{
+    tDB += Number(tr.querySelector('[data-field="debitBook"]').value)||0;
+    tCB += Number(tr.querySelector('[data-field="creditBook"]').value)||0;
+    tDT += Number(tr.querySelector('[data-field="debitTrans"]').value)||0;
+    tCT += Number(tr.querySelector('[data-field="creditTrans"]').value)||0;
+  });
+  document.getElementById('totDebitBook').textContent = fmt(tDB);
+  document.getElementById('totCreditBook').textContent = fmt(tCB);
+  document.getElementById('totDebitTrans').textContent = fmt(tDT);
+  document.getElementById('totCreditTrans').textContent = fmt(tCT);
+
+  document.getElementById('barDebit').textContent = fmt(tDB);
+  document.getElementById('barCredit').textContent = fmt(tCB);
+  const diff = tDB - tCB;
+  document.getElementById('barDiff').textContent = fmt(Math.abs(diff));
+
+  const max = Math.max(tDB,tCB,1);
+  document.getElementById('fillDebit').style.width = (tDB/max*50)+'%';
+  document.getElementById('fillCredit').style.width = (tCB/max*50)+'%';
+
+  const pill = document.getElementById('statusPill');
+  const text = document.getElementById('statusText');
+  const diffEl = document.getElementById('barDiff');
+  if(Math.abs(diff) < 0.005 && tDB > 0){
+    pill.classList.remove('unbalanced'); pill.classList.add('balanced');
+    text.textContent = 'Balanced';
+    diffEl.style.color = 'var(--ok)';
+  } else {
+    pill.classList.add('unbalanced'); pill.classList.remove('balanced');
+    text.textContent = 'Out of balance';
+    diffEl.style.color = 'var(--bad)';
+  }
+}
+
+let allSegOpen = false;
+document.getElementById('btnExpandAllSeg').addEventListener('click', (e)=>{
+  allSegOpen = !allSegOpen;
+  document.querySelectorAll('#gridBody tr.seg-row').forEach(segRow=>{
+    const btn = segRow.previousElementSibling.querySelector('.seg-btn');
+    segRow.style.display = allSegOpen ? '' : 'none';
+    btn.classList.toggle('open', allSegOpen);
+  });
+  e.target.textContent = allSegOpen ? 'Collapse all segments' : 'Expand all segments';
+});
+
+document.getElementById('btnAddLine').addEventListener('click', ()=> addLine(true));
+
+document.getElementById('btnClear').addEventListener('click', ()=>{
+  if(!confirm('Clear all lines and header fields?')) return;
+  document.getElementById('gridBody').innerHTML = '';
+  document.getElementById('jdesc').value = '';
+  lineSeq = 0;
+  addLine(false);
+  recalc();
+});
+
+function buildPayload(){
+  const lines = [];
+  document.querySelectorAll('#gridBody tr.line-row').forEach((tr,i)=>{
+    const get = f => tr.querySelector(`[data-field="${f}"]`).value;
+    const segRow = tr.nextElementSibling;
+    const getSeg = f => segRow.querySelector(`[data-field="${f}"]`).value;
+    lines.push({
+      Line: i+1,
+      Account: get('account'),
+      LineDescription: get('lineDesc'),
+      DebitorCreditor: get('doc'),
+      Customer: get('customer'),
+      Vendor: get('vendor'),
+      Bank: get('bank'),
+      JournalCurrency: get('currency'),
+      JournalExchangeRate: Number(get('rate'))||1,
+      DebitBook: Number(get('debitBook'))||0,
+      CreditBook: Number(get('creditBook'))||0,
+      DebitTransaction: Number(get('debitTrans'))||0,
+      CreditTransaction: Number(get('creditTrans'))||0,
+      Segment7: getSeg('seg7'),
+      Segment8: getSeg('seg8'),
+      Segment9: getSeg('seg9'),
+      Segment10: getSeg('seg10')
+    });
+  });
+  return {
+    JournalPrefix: document.getElementById('prefix').value.toUpperCase(),
+    JournalDate: document.getElementById('jdate').value,
+    JournalDescription: document.getElementById('jdesc').value,
+    Lines: lines
+  };
+}
+
+document.getElementById('btnPreview').addEventListener('click', ()=>{
+  document.getElementById('payloadText').textContent = JSON.stringify(buildPayload(), null, 2);
+  document.getElementById('payloadOverlay').classList.add('show');
+});
+document.getElementById('closePayload').addEventListener('click', ()=>{
+  document.getElementById('payloadOverlay').classList.remove('show');
+});
+document.getElementById('payloadOverlay').addEventListener('click', (e)=>{
+  if(e.target.id === 'payloadOverlay') e.currentTarget.classList.remove('show');
+});
+
+document.getElementById('btnSave').addEventListener('click', ()=>{
+  const p = buildPayload();
+  if(!p.JournalDescription.trim()){ alert('Description is required.'); return; }
+  const diff = p.Lines.reduce((s,l)=>s+l.DebitBook,0) - p.Lines.reduce((s,l)=>s+l.CreditBook,0);
+  if(Math.abs(diff) > 0.005){ alert('Entry is out of balance. Debit and credit totals must match.'); return; }
+  document.getElementById('payloadText').textContent = JSON.stringify(p, null, 2);
+  document.getElementById('payloadOverlay').classList.add('show');
+});
+
+// init
+document.getElementById('jdate').valueAsDate = new Date();
+addLine(false);
+addLine(false);
+</script>
+</body>
+</html>
