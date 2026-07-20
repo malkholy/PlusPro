@@ -15,6 +15,11 @@
   2. Register it in the Query Master.
   3. Link it with the corresponding Page.
 
+- **Lookup Query Creation**: Every time a new lookup query is added, you must:
+  1. Add it to the `APIPlusLookupOperation` stored procedure.
+  2. Register it in the Query Master with `QueryType = 'Lookup'`.
+  3. Link it to the corresponding page using the `PageQueries` table.
+
 
 
 

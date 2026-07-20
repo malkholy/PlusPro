@@ -224,28 +224,7 @@ BEGIN
 		left outer join inv.ItemMaster b on a.ItemID = b.ItemID
 	end
 
-	if @operation='Accounts Master All'
-	begin
-		select 
-			AccountNumber,
-			AccountDescription,
-			isnull(ShortDescription, '') as ShortDescription,
-			isnull(ExtraDescription, '') as ExtraDescription,
-			isnull(LevelNumber, 1) as LevelNumber,
-			isnull(ParentAccount, '') as ParentAccount,
-			isnull(AccountType, '') as AccountType
-		from acc.AccountsMaster
-		where isnull(AllowPostingJournal, 0) = 1
-		order by AccountNumber
-	end
 
-	if @operation='Bank Accounts Master'
-	begin
-		select BankAccountNumber, BankAccountName 
-		from acc.BankAccountsMaster  
-		where AllowPostingJournal=1
-		order by BankAccountNumber
-	end
 
 	if @operation='Account Statement Lines'
 	begin
@@ -268,45 +247,7 @@ BEGIN
 		declare @toDebtor nvarchar(100) = json_value(@LineData, '$.toDebtor')
 		declare @currency nvarchar(50) = json_value(@LineData, '$.currency')
 
-		select 
-			jl.EventNo,
-			jl.JournalNo,
-			jl.LineState,
-			jl.Line,
-			isnull(jl.DebitBook, 0) as DebitBook,
-			isnull(jl.CreditBook, 0) as CreditBook,
-			isnull(jl.DebitTransaction, 0) as DebitTransaction,
-			isnull(jl.CreditTransaction, 0) as CreditTransaction,
-			isnull(jl.LineDescription, '') as LineDescription,
-			isnull(jl.Reference1, '') as Reference1,
-			isnull(jl.Reference2, '') as Reference2,
-			jl.Account,
-			isnull(jl.DebitorCreditor, '') as DebitorCreditor,
-			isnull(jl.Customer, '') as Customer,
-			c.CustomerName as CustomerName,
-			isnull(jl.Vendor, '') as Vendor,
-			v.VendorName as VendorName,
-			isnull(jl.Bank, '') as Bank,
-			isnull(jl.Tax, '') as Tax,
-			isnull(jl.Segment7, '') as Asset,
-			isnull(ast.ValueDescription, '') as AssetName,
-			isnull(jl.Segment8, '') as Employee,
-			isnull(emp.ValueDescription, '') as EmployeeName,
-			isnull(jl.Segment9, '') as Expense,
-			isnull(exp.ValueDescription, '') as ExpenseName,
-			jl.LineCreatedBy,
-			jl.LineCreatedDate,
-			jl.LineType,
-			isnull(jl.LineCurrency, 'SYP') as LineCurrency,
-			isnull(jl.LineExchangeRate, 1) as LineExchangeRate,
-			jl.JournalDate,
-			jl.IsDoucmentRelated
-		from acc.JournalLine jl
-		left join acr.CustomerMaster c on jl.Customer = c.CustomerNo
-		left join acp.VendorMaster v on jl.Vendor = v.VendorNumber
-		left join acc.SegmentsMaster ast on ast.SegmentID = 7 and ast.SegmentValue = jl.Segment7
-		left join acc.SegmentsMaster emp on emp.SegmentID = 8 and emp.SegmentValue = jl.Segment8
-		left join acc.SegmentsMaster exp on exp.SegmentID = 9 and exp.SegmentValue = jl.Segment9
+		select * from PLS.QAccountStatementLines jl
 		where jl.Account = @param1
 		  and (isnull(@param2, '') = '' or jl.JournalDate >= cast(@param2 as date))
 		  and (isnull(@param3, '') = '' or jl.JournalDate <= cast(@param3 as date))
@@ -332,25 +273,25 @@ BEGIN
 			 (isnull(@toBank, '') = '' or jl.Bank <= @toBank))
 		  )
 		  and (
-			(isnull(@fromAsset, '') <> '' and isnull(@toAsset, '') = '' and isnull(jl.Segment7, '') = @fromAsset)
+			(isnull(@fromAsset, '') <> '' and isnull(@toAsset, '') = '' and jl.Asset = @fromAsset)
 			or
 			((isnull(@fromAsset, '') = '' or isnull(@toAsset, '') <> '') and 
-			 (isnull(@fromAsset, '') = '' or isnull(jl.Segment7, '') >= @fromAsset) and
-			 (isnull(@toAsset, '') = '' or isnull(jl.Segment7, '') <= @toAsset))
+			 (isnull(@fromAsset, '') = '' or jl.Asset >= @fromAsset) and
+			 (isnull(@toAsset, '') = '' or jl.Asset <= @toAsset))
 		  )
 		  and (
-			(isnull(@fromEmployee, '') <> '' and isnull(@toEmployee, '') = '' and isnull(jl.Segment8, '') = @fromEmployee)
+			(isnull(@fromEmployee, '') <> '' and isnull(@toEmployee, '') = '' and jl.Employee = @fromEmployee)
 			or
 			((isnull(@fromEmployee, '') = '' or isnull(@toEmployee, '') <> '') and 
-			 (isnull(@fromEmployee, '') = '' or isnull(jl.Segment8, '') >= @fromEmployee) and
-			 (isnull(@toEmployee, '') = '' or isnull(jl.Segment8, '') <= @toEmployee))
+			 (isnull(@fromEmployee, '') = '' or jl.Employee >= @fromEmployee) and
+			 (isnull(@toEmployee, '') = '' or jl.Employee <= @toEmployee))
 		  )
 		  and (
-			(isnull(@fromExpense, '') <> '' and isnull(@toExpense, '') = '' and isnull(jl.Segment9, '') = @fromExpense)
+			(isnull(@fromExpense, '') <> '' and isnull(@toExpense, '') = '' and jl.Expense = @fromExpense)
 			or
 			((isnull(@fromExpense, '') = '' or isnull(@toExpense, '') <> '') and 
-			 (isnull(@fromExpense, '') = '' or isnull(jl.Segment9, '') >= @fromExpense) and
-			 (isnull(@toExpense, '') = '' or isnull(jl.Segment9, '') <= @toExpense))
+			 (isnull(@fromExpense, '') = '' or jl.Expense >= @fromExpense) and
+			 (isnull(@toExpense, '') = '' or jl.Expense <= @toExpense))
 		  )
 		  and (isnull(@currency, '') = '' or isnull(jl.LineCurrency, 'SYP') = @currency)
 		order by jl.JournalDate, jl.JournalNo, jl.Line
@@ -473,80 +414,7 @@ BEGIN
 		order by a.AccountNumber
 	end
 
-	if @operation='Customer Master All'
-	begin
-		select CustomerNo, CustomerName 
-		from acr.CustomerMaster 
-		order by CustomerNo
-	end
 
-	if @operation='DebtorCreditor Master All'
-	begin
-		select x.DRNumber , x.DRName 
-		from acc.DebetorCreditorMaster x
-		order by x.DRNumber
-	end
-
-	if @operation='Vendor Master All'
-	begin
-		select VendorNumber, VendorName 
-		from acp.VendorMaster 
-		order by VendorNumber
-	end
-
-	if @operation='Asset Master All'
-	begin
-		select SegmentValue as AssetID, ValueDescription as AssetName 
-		from acc.SegmentsMaster 
-		where SegmentID = 7 and isnull(AllowPostingJournal, 0) = 1
-		order by SegmentValue
-	end
-
-	if @operation='Employee Master All'
-	begin
-		select SegmentValue as EmployeeID, ValueDescription as EmployeeName 
-		from acc.SegmentsMaster 
-		where SegmentID = 8 and isnull(AllowPostingJournal, 0) = 1
-		order by SegmentValue
-	end
-
-	if @operation='Expense Master All'
-	begin
-		select SegmentValue as ExpenseID, ValueDescription as ExpenseName 
-		from acc.SegmentsMaster 
-		where SegmentID = 9 and isnull(AllowPostingJournal, 0) = 1
-		order by SegmentValue
-	end
-
-	if @operation='Segment Definition Master'
-	begin
-		select SegmentID, SegmentDescription 
-		from acc.SegmentDefinationMaster 
-		where SourceType='M' and isnull(SegmentDescription, '') <> ''
-		order by SegmentID
-	end
-
-	if @operation='Segments Master List'
-	begin
-		declare @segmentID nvarchar(100) = json_value(@LineData, '$.param1')
-
-		select TOP (1000) 
-			SegmentID,
-			SegmentValue,
-			ValueDescription,
-			ValueShortDescription,
-			ValueExtraDescription,
-			LevelNumber,
-			ParentValue,
-			ValueCreatedByUser,
-			ValueCreatedDate,
-			ValueLastMaintBy,
-			ValueLastMaintDate,
-			AllowPostingJournal
-		from acc.SegmentsMaster
-		where SegmentID = @segmentID
-		order by SegmentValue
-	end
 
 	if @operation='Get Journal For Edit'
 	begin
@@ -693,12 +561,7 @@ BEGIN
 		where JournalPrefixYear=year(@targetDate)
 	end
 
-	if @operation='Tax Master All'
-	begin
-		select TaxAccount, TaxAccountDescription
-		from acc.TaxAccountMaster
-		order by TaxAccount
-	end
+
 
 	IF @Operation = 'GetSystemUsers'
 	BEGIN

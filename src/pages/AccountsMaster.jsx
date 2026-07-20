@@ -183,7 +183,7 @@ export default function AccountsMaster({ user, def }) {
     setLoading(true);
     setError('');
     try {
-      const d = await apiCall('Accounts Master All', null, { User: user?.Username });
+      const d = await apiCall('Accounts Master All', null, { User: user?.Username }, 'lookup');
       if (d.State !== 0) {
         setError(d.Message || 'Failed to fetch Accounts Master');
       } else {

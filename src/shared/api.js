@@ -32,6 +32,8 @@ export async function apiCall(operation, lineData = null, extraParams = {}, apiT
     target = 'logistics';
   } else if (apiType === 'journal') {
     target = 'journal';
+  } else if (apiType === 'lookup') {
+    target = 'lookup';
   } else if (apiType === 'express_codes') {
     target = 'express_codes';
   }
@@ -67,6 +69,9 @@ export async function apiCall(operation, lineData = null, extraParams = {}, apiT
   } else if (target === 'journal') {
     url = IS_DEV ? '/journal-api/General/GeneralAPI/' : 'https://sila.silasystem.com:7103/General/GeneralAPI/';
     spName = 'APIPlusJournalOperation';
+  } else if (target === 'lookup') {
+    url = IS_DEV ? '/lookup-api/General/GeneralAPI/' : 'https://sila.silasystem.com:7103/General/GeneralAPI/';
+    spName = 'APIPlusLookupOperation';
   } else if (target === 'express_codes') {
     url = IS_DEV ? '/express-codes-api/Express/GeneralAPI' : 'https://be.glcpaints.com:7788/Express/GeneralAPI';
     spName = 'APIPlusExpressGenerateCodeOperation';

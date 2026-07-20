@@ -385,14 +385,14 @@ export default function FilterPanel({
   }, [accounts, searchText, selectedAccount]);
 
   useEffect(() => {
-    if (hasAccount) apiCall('Accounts Master All', null, { User: user?.Username }).then(d => { if (d.State === 0) setAccounts(d.List0 || []); });
-    if (hasCustomer) apiCall('Customer Master All', null, { User: user?.Username }).then(d => { if (d.State === 0) setCustomers(d.List0 || []); });
-    if (hasVendor) apiCall('Vendor Master All', null, { User: user?.Username }).then(d => { if (d.State === 0) setVendors(d.List0 || []); });
-    if (hasBank) apiCall('Bank Accounts Master', null, { User: user?.Username }).then(d => { if (d.State === 0) setBanks(d.List0 || []); });
-    if (hasAsset) apiCall('Asset Master All', null, { User: user?.Username }).then(d => { if (d.State === 0) setAssets(d.List0 || []); });
-    if (hasEmployee) apiCall('Employee Master All', null, { User: user?.Username }).then(d => { if (d.State === 0) setEmployees(d.List0 || []); });
-    if (hasExpense) apiCall('Expense Master All', null, { User: user?.Username }).then(d => { if (d.State === 0) setExpenses(d.List0 || []); });
-    if (hasDebtor) apiCall('DebtorCreditor Master All', null, { User: user?.Username }).then(d => { if (d.State === 0) setDebtors(d.List0 || []); });
+    if (hasAccount) apiCall('Accounts Master All', null, { User: user?.Username }, 'lookup').then(d => { if (d.State === 0) setAccounts(d.List0 || []); });
+    if (hasCustomer) apiCall('Customer Master All', null, { User: user?.Username }, 'lookup').then(d => { if (d.State === 0) setCustomers(d.List0 || []); });
+    if (hasVendor) apiCall('Vendor Master All', null, { User: user?.Username }, 'lookup').then(d => { if (d.State === 0) setVendors(d.List0 || []); });
+    if (hasBank) apiCall('Bank Accounts Master', null, { User: user?.Username }, 'lookup').then(d => { if (d.State === 0) setBanks(d.List0 || []); });
+    if (hasAsset) apiCall('Asset Master All', null, { User: user?.Username }, 'lookup').then(d => { if (d.State === 0) setAssets(d.List0 || []); });
+    if (hasEmployee) apiCall('Employee Master All', null, { User: user?.Username }, 'lookup').then(d => { if (d.State === 0) setEmployees(d.List0 || []); });
+    if (hasExpense) apiCall('Expense Master All', null, { User: user?.Username }, 'lookup').then(d => { if (d.State === 0) setExpenses(d.List0 || []); });
+    if (hasDebtor) apiCall('DebtorCreditor Master All', null, { User: user?.Username }, 'lookup').then(d => { if (d.State === 0) setDebtors(d.List0 || []); });
   }, [user, hasAccount, hasCustomer, hasVendor, hasBank, hasAsset, hasEmployee, hasExpense, hasDebtor]);
 
   const handleGenerate = () => {

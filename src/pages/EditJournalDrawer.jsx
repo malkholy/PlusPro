@@ -171,22 +171,22 @@ export default function EditJournalDrawer({ row, user, onClose, onSaveSuccess })
     async function loadDropdowns() {
       try {
         const [accts, custs, vends, bnks, debs, txs, s7, s8, s9, s10, s11, s12, s13, s14, s15, s16] = await Promise.all([
-          apiCall('Accounts Master All').catch(() => ({ List0: [] })),
-          apiCall('Customer Master All').catch(() => ({ List0: [] })),
-          apiCall('Vendor Master All').catch(() => ({ List0: [] })),
-          apiCall('Bank Accounts Master').catch(() => ({ List0: [] })),
-          apiCall('DebtorCreditor Master All').catch(() => ({ List0: [] })),
-          apiCall('Tax Master All').catch(() => ({ List0: [] })),
-          apiCall('Segments Master List', { param1: 7 }).catch(() => ({ List0: [] })),
-          apiCall('Segments Master List', { param1: 8 }).catch(() => ({ List0: [] })),
-          apiCall('Segments Master List', { param1: 9 }).catch(() => ({ List0: [] })),
-          apiCall('Segments Master List', { param1: 10 }).catch(() => ({ List0: [] })),
-          apiCall('Segments Master List', { param1: 11 }).catch(() => ({ List0: [] })),
-          apiCall('Segments Master List', { param1: 12 }).catch(() => ({ List0: [] })),
-          apiCall('Segments Master List', { param1: 13 }).catch(() => ({ List0: [] })),
-          apiCall('Segments Master List', { param1: 14 }).catch(() => ({ List0: [] })),
-          apiCall('Segments Master List', { param1: 15 }).catch(() => ({ List0: [] })),
-          apiCall('Segments Master List', { param1: 16 }).catch(() => ({ List0: [] })),
+          apiCall('Accounts Master All', null, {}, 'lookup').catch(() => ({ List0: [] })),
+          apiCall('Customer Master All', null, {}, 'lookup').catch(() => ({ List0: [] })),
+          apiCall('Vendor Master All', null, {}, 'lookup').catch(() => ({ List0: [] })),
+          apiCall('Bank Accounts Master', null, {}, 'lookup').catch(() => ({ List0: [] })),
+          apiCall('DebtorCreditor Master All', null, {}, 'lookup').catch(() => ({ List0: [] })),
+          apiCall('Tax Master All', null, {}, 'lookup').catch(() => ({ List0: [] })),
+          apiCall('Segments Master List', { param1: 7 }, {}, 'lookup').catch(() => ({ List0: [] })),
+          apiCall('Segments Master List', { param1: 8 }, {}, 'lookup').catch(() => ({ List0: [] })),
+          apiCall('Segments Master List', { param1: 9 }, {}, 'lookup').catch(() => ({ List0: [] })),
+          apiCall('Segments Master List', { param1: 10 }, {}, 'lookup').catch(() => ({ List0: [] })),
+          apiCall('Segments Master List', { param1: 11 }, {}, 'lookup').catch(() => ({ List0: [] })),
+          apiCall('Segments Master List', { param1: 12 }, {}, 'lookup').catch(() => ({ List0: [] })),
+          apiCall('Segments Master List', { param1: 13 }, {}, 'lookup').catch(() => ({ List0: [] })),
+          apiCall('Segments Master List', { param1: 14 }, {}, 'lookup').catch(() => ({ List0: [] })),
+          apiCall('Segments Master List', { param1: 15 }, {}, 'lookup').catch(() => ({ List0: [] })),
+          apiCall('Segments Master List', { param1: 16 }, {}, 'lookup').catch(() => ({ List0: [] })),
         ]);
 
         setOptAccounts((accts.List0 || []).map(x => ({ value: x.AccountNumber, label: `${x.AccountNumber} - ${x.AccountDescription}` })));

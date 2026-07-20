@@ -148,7 +148,7 @@ export default function SegmentDefinition({ user, def }) {
   useEffect(() => {
     async function fetchSegments() {
       try {
-        const d = await apiCall('Segment Definition Master', null, { User: user?.Username });
+        const d = await apiCall('Segment Definition Master', null, { User: user?.Username }, 'lookup');
         if (d.State === 0 && d.List0) {
           setSegments(d.List0);
         }
@@ -172,7 +172,7 @@ export default function SegmentDefinition({ user, def }) {
     setSelectedNode(null);
     setSelectedKey(null);
     try {
-      const d = await apiCall('Segments Master List', { param1: selectedSegment }, { User: user?.Username });
+      const d = await apiCall('Segments Master List', { param1: selectedSegment }, { User: user?.Username }, 'lookup');
       if (d.State !== 0) {
         setError(d.Message || 'Failed to fetch segment values');
         setData([]);
