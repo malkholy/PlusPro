@@ -97,6 +97,19 @@ export default defineConfig({
           })
         }
       },
+      '/rma-api': {
+        target: 'https://sila.silasystem.com:7103',
+        changeOrigin: true,
+        secure: false,
+        rewrite: (path) => path.replace(/^\/rma-api/, ''),
+        configure: (proxy) => {
+          proxy.on('proxyReq', (proxyReq) => {
+            proxyReq.setHeader('SP_Name', 'APIPlusRMAOperation')
+            proxyReq.setHeader('Accept', 'application/json')
+            proxyReq.setHeader('Content-Type', 'application/json')
+          })
+        }
+      },
       '/api': {
         target: 'https://sila.silasystem.com:7103',
         changeOrigin: true,

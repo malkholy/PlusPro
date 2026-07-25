@@ -64,6 +64,7 @@ import ItemBalance from './pages/ItemBalance.jsx';
 import WarehouseTransfer from './pages/WarehouseTransfer.jsx';
 import ItemMaster from './pages/ItemMaster.jsx';
 import Orders from './pages/Orders.jsx';
+import RMA from './pages/RMA.jsx';
 
 
 
@@ -289,7 +290,8 @@ const PAGE_COMPONENTS = {
   item_balance: ItemBalance,
   warehouse_transfer: WarehouseTransfer,
   item_master: ItemMaster,
-  orders: Orders
+  orders: Orders,
+  rma: RMA
 };
 
 // The sidebar is built live from PLS.PagesAndGroups at login instead of a

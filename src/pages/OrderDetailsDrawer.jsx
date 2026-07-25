@@ -95,7 +95,12 @@ export default function OrderDetailsDrawer({ order, onClose }) {
     try {
       const res = await apiCall('GetGridData', { PageGroupID: 'orders_lines', orderNumber: order.OrderNumber }, {}, 'plus');
       if (res.State === 0) {
-        setLines(res.List0 || []);
+        // OnHand from the view excludes this order's own allocation (it's reserved,
+        // not "available") -- add it back so OnHand reflects true physical on-hand.
+        setLines((res.List0 || []).map(row => ({
+          ...row,
+          OnHand: (Number(row.OnHand) || 0) + (Number(row.QuantityAllocated) || 0)
+        })));
       } else {
         setError(res.Message || 'Failed to load order lines');
       }

@@ -44,6 +44,8 @@ export async function apiCall(operation, lineData = null, extraParams = {}, apiT
     target = 'loading';
   } else if (apiType === 'warehouse_request') {
     target = 'warehouse_request';
+  } else if (apiType === 'rma') {
+    target = 'rma';
   }
 
   let url = '';
@@ -86,6 +88,9 @@ export async function apiCall(operation, lineData = null, extraParams = {}, apiT
   } else if (target === 'warehouse_request') {
     url = IS_DEV ? '/warehouse-request-api/General/GeneralAPI/' : 'https://sila.silasystem.com:7103/General/GeneralAPI/';
     spName = 'APIPlusWarehouseRequestOperation';
+  } else if (target === 'rma') {
+    url = IS_DEV ? '/rma-api/General/GeneralAPI/' : 'https://sila.silasystem.com:7103/General/GeneralAPI/';
+    spName = 'APIPlusRMAOperation';
   } else {
     url = IS_DEV ? '/api/General/GeneralAPI/' : 'https://sila.silasystem.com:7103/General/GeneralAPI/';
     spName = 'APIPlusOperation';
