@@ -373,6 +373,7 @@ export default function AccountStatement({ user, def }) {
     <div className="flex-row-layout" style={{ height: '100vh', background: 'var(--bg)', fontFamily: 'var(--font)', color: 'var(--text)' }}>
       <FilterPanel 
         filters={['account', 'date', 'currency', 'customer', 'vendor', 'bank', 'asset', 'employee', 'expense', 'debtor']}
+        pageGroupId="account_statement"
         onSearch={fetchAccountStatement}
         loading={loading}
         user={user}

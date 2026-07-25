@@ -606,6 +606,63 @@ BEGIN
 		RETURN;
 	END
 
+    IF @Operation = 'SavePageOrGroup'
+    BEGIN
+        SET @State = 0;
+        SET @Message = 'Success';
+
+        DECLARE @PG_PageGroupID VARCHAR(50) = JSON_VALUE(@LineData, '$.PageGroupID');
+        DECLARE @PG_ParentGroupID VARCHAR(50) = JSON_VALUE(@LineData, '$.ParentGroupID');
+        DECLARE @PG_SortOrder INT = CAST(JSON_VALUE(@LineData, '$.SortOrder') AS INT);
+        DECLARE @PG_Label NVARCHAR(100) = JSON_VALUE(@LineData, '$.Label');
+        DECLARE @PG_Icon NVARCHAR(50) = JSON_VALUE(@LineData, '$.Icon');
+        DECLARE @PG_Description NVARCHAR(500) = JSON_VALUE(@LineData, '$.Description');
+        DECLARE @PG_IsGroup BIT = CAST(JSON_VALUE(@LineData, '$.IsGroup') AS BIT);
+
+        IF EXISTS (SELECT 1 FROM [PLS].[PagesAndGroups] WHERE PageGroupID = @PG_PageGroupID)
+        BEGIN
+            UPDATE [PLS].[PagesAndGroups]
+            SET ParentID = @PG_ParentGroupID,
+                SortOrder = ISNULL(@PG_SortOrder, SortOrder),
+                Label = @PG_Label,
+                Icon = @PG_Icon,
+                Description = @PG_Description,
+                IsGroup = @PG_IsGroup
+            WHERE PageGroupID = @PG_PageGroupID;
+        END
+        ELSE
+        BEGIN
+            INSERT INTO [PLS].[PagesAndGroups] (PageGroupID, ParentID, SortOrder, Label, Icon, Description, IsGroup)
+            VALUES (@PG_PageGroupID, @PG_ParentGroupID, ISNULL(@PG_SortOrder, 99), @PG_Label, @PG_Icon, @PG_Description, @PG_IsGroup);
+        END
+
+        SELECT @State AS State, @Message AS Message;
+        RETURN;
+    END
+
+    IF @Operation = 'DeletePageOrGroup'
+    BEGIN
+        SET @State = 0;
+        SET @Message = 'Success';
+
+        DECLARE @DelPageGroupID VARCHAR(50) = JSON_VALUE(@LineData, '$.PageGroupID');
+
+        IF EXISTS (SELECT 1 FROM [PLS].[PagesAndGroups] WHERE ParentID = @DelPageGroupID)
+        BEGIN
+            SET @State = 1;
+            SET @Message = 'Cannot delete: this group still has pages assigned to it.';
+            SELECT @State AS State, @Message AS Message;
+            RETURN;
+        END
+
+        DELETE FROM [PLS].[UserPagePermissions] WHERE PageGroupID = @DelPageGroupID;
+        DELETE FROM [PLS].[PageQueries] WHERE PageGroupID = @DelPageGroupID;
+        DELETE FROM [PLS].[PagesAndGroups] WHERE PageGroupID = @DelPageGroupID;
+
+        SELECT @State AS State, @Message AS Message;
+        RETURN;
+    END
+
     IF @Operation = 'GetQueryMaster'
     BEGIN
         SET @State = 0;
@@ -613,8 +670,130 @@ BEGIN
 
         SELECT q.QueryID, pq.PageGroupID, q.QueryName, q.SPName, q.Operation, q.Description, q.QuerySQL, q.DatabaseName, q.SchemaName, q.TableOrViewName, q.QueryType, q.ApiUrl 
         FROM [PLS].[QueryMaster] q
-        INNER JOIN [PLS].[PageQueries] pq ON q.QueryID = pq.QueryID
+        LEFT JOIN [PLS].[PageQueries] pq ON q.QueryID = pq.QueryID
         ORDER BY pq.PageGroupID, q.QueryID;
+        RETURN;
+    END
+
+    IF @Operation = 'GetGridData'
+    BEGIN
+        -- ====================================================================
+        -- Generic grid data engine. Every grid page calls this ONE operation,
+        -- passing its PageGroupID + FilterPanel values in @LineData. The base
+        -- query, user row-level permission, and FilterPanel->column mappings
+        -- all come from QueryMaster / UserQueryPermissions / QueryFilterMappings
+        -- so new pages never need a hand-written IF block here again.
+        -- ====================================================================
+        DECLARE @GGD_PageGroupID NVARCHAR(50) = JSON_VALUE(@LineData, '$.PageGroupID');
+
+        DECLARE @GGD_QueryID INT, @GGD_BaseSQL NVARCHAR(MAX);
+        SELECT TOP 1 @GGD_QueryID = q.QueryID, @GGD_BaseSQL = q.QuerySQL
+        FROM [PLS].[QueryMaster] q
+        INNER JOIN [PLS].[PageQueries] pq ON pq.QueryID = q.QueryID
+        WHERE pq.PageGroupID = @GGD_PageGroupID AND q.QueryType IN ('Grid', 'Detail');
+
+        IF @GGD_QueryID IS NULL OR @GGD_BaseSQL IS NULL OR LTRIM(RTRIM(@GGD_BaseSQL)) = ''
+        BEGIN
+            SET @State = -1
+            SET @Message = 'No Grid query registered for PageGroupID: ' + ISNULL(@GGD_PageGroupID, '(null)')
+            RETURN
+        END
+
+        -- User row-level permission condition (same pattern as PLS.APIPlusLookupOperation)
+        DECLARE @GGD_IsAdmin BIT = 0, @GGD_PermFilter NVARCHAR(MAX) = NULL;
+        IF @User = 'sysadmin'
+            SET @GGD_IsAdmin = 1;
+        ELSE
+            SELECT @GGD_IsAdmin = ISNULL(IsAdmin, 0) FROM ERPManagement25.System.UserMaster WHERE Username = @User;
+
+        IF @GGD_IsAdmin = 0
+            SELECT @GGD_PermFilter = SQLFilter FROM [PLS].[UserQueryPermissions] WHERE Username = @User AND QueryID = @GGD_QueryID;
+
+        -- Registered FilterPanel -> column mappings for this query, values pulled from LineData
+        DECLARE @GGD_Maps TABLE (Slot INT IDENTITY(1,1) PRIMARY KEY, FilterType VARCHAR(20), GridColumn VARCHAR(150), DataType VARCHAR(20), FromVal NVARCHAR(200), ToVal NVARCHAR(200));
+
+        INSERT INTO @GGD_Maps (FilterType, GridColumn, DataType, FromVal, ToVal)
+        SELECT
+            m.FilterType, m.GridColumn, m.DataType,
+            NULLIF(JSON_VALUE(@LineData, '$.' + m.FromParam), ''),
+            CASE WHEN m.ToParam IS NOT NULL THEN NULLIF(JSON_VALUE(@LineData, '$.' + m.ToParam), '') ELSE NULL END
+        FROM [PLS].[QueryFilterMappings] m
+        WHERE m.QueryID = @GGD_QueryID
+        ORDER BY m.SortOrder, m.MappingID;
+
+        IF (SELECT COUNT(*) FROM @GGD_Maps) > 15
+        BEGIN
+            SET @State = -1
+            SET @Message = 'Too many filter mappings registered for this query (max 15 supported).'
+            RETURN
+        END
+
+        -- Build the WHERE text. Only whitelisted GridColumn/DataType (trusted metadata
+        -- from QueryFilterMappings) and slot placeholders enter the SQL text -- every
+        -- actual filter value is bound below via sp_executesql, never concatenated in.
+        DECLARE @GGD_Frags TABLE (Slot INT, Frag NVARCHAR(300));
+
+        INSERT INTO @GGD_Frags (Slot, Frag)
+        SELECT Slot,
+            CASE FilterType
+                WHEN 'range' THEN (CASE DataType WHEN 'date' THEN 'CONVERT(date,' WHEN 'number' THEN 'CONVERT(float,' ELSE '(' END) + QUOTENAME(GridColumn) + ') >= @p' + CAST(Slot AS VARCHAR(2)) + 'f'
+                WHEN 'exact' THEN (CASE DataType WHEN 'date' THEN 'CONVERT(date,' WHEN 'number' THEN 'CONVERT(float,' ELSE '(' END) + QUOTENAME(GridColumn) + ') = @p' + CAST(Slot AS VARCHAR(2)) + 'f'
+                WHEN 'like'  THEN QUOTENAME(GridColumn) + ' LIKE ''%'' + @p' + CAST(Slot AS VARCHAR(2)) + 'f + ''%'''
+                WHEN 'asOf'  THEN (CASE DataType WHEN 'date' THEN 'CONVERT(date,' WHEN 'number' THEN 'CONVERT(float,' ELSE '(' END) + QUOTENAME(GridColumn) + ') <= @p' + CAST(Slot AS VARCHAR(2)) + 'f'
+            END
+        FROM @GGD_Maps WHERE FromVal IS NOT NULL;
+
+        INSERT INTO @GGD_Frags (Slot, Frag)
+        SELECT Slot, (CASE DataType WHEN 'date' THEN 'CONVERT(date,' WHEN 'number' THEN 'CONVERT(float,' ELSE '(' END) + QUOTENAME(GridColumn) + ') <= @p' + CAST(Slot AS VARCHAR(2)) + 't'
+        FROM @GGD_Maps WHERE FilterType = 'range' AND ToVal IS NOT NULL;
+
+        DECLARE @GGD_Where NVARCHAR(MAX) = (SELECT STRING_AGG(Frag, ' AND ') WITHIN GROUP (ORDER BY Slot) FROM @GGD_Frags);
+        SET @GGD_Where = ISNULL(@GGD_Where, '');
+
+        IF @GGD_PermFilter IS NOT NULL AND LTRIM(RTRIM(@GGD_PermFilter)) <> ''
+            SET @GGD_Where = CASE WHEN @GGD_Where = '' THEN '(' + @GGD_PermFilter + ')' ELSE @GGD_Where + ' AND (' + @GGD_PermFilter + ')' END;
+
+        IF @GGD_Where <> ''
+            SET @GGD_Where = ' AND ' + @GGD_Where;
+
+        IF CHARINDEX('{FILTER}', @GGD_BaseSQL) > 0
+            SET @GGD_BaseSQL = REPLACE(@GGD_BaseSQL, '{FILTER}', @GGD_Where);
+        ELSE
+            SET @GGD_BaseSQL = @GGD_BaseSQL + N' WHERE 1=1 ' + @GGD_Where;
+
+        -- Bind every filter value through a fixed pool of typed sp_executesql parameters
+        -- (15 range slots = 30 params). Values never touch the SQL text directly.
+        DECLARE @p1f NVARCHAR(200), @p1t NVARCHAR(200), @p2f NVARCHAR(200), @p2t NVARCHAR(200),
+                @p3f NVARCHAR(200), @p3t NVARCHAR(200), @p4f NVARCHAR(200), @p4t NVARCHAR(200),
+                @p5f NVARCHAR(200), @p5t NVARCHAR(200), @p6f NVARCHAR(200), @p6t NVARCHAR(200),
+                @p7f NVARCHAR(200), @p7t NVARCHAR(200), @p8f NVARCHAR(200), @p8t NVARCHAR(200),
+                @p9f NVARCHAR(200), @p9t NVARCHAR(200), @p10f NVARCHAR(200), @p10t NVARCHAR(200),
+                @p11f NVARCHAR(200), @p11t NVARCHAR(200), @p12f NVARCHAR(200), @p12t NVARCHAR(200),
+                @p13f NVARCHAR(200), @p13t NVARCHAR(200), @p14f NVARCHAR(200), @p14t NVARCHAR(200),
+                @p15f NVARCHAR(200), @p15t NVARCHAR(200);
+
+        SELECT @p1f=FromVal,@p1t=ToVal FROM @GGD_Maps WHERE Slot=1
+        SELECT @p2f=FromVal,@p2t=ToVal FROM @GGD_Maps WHERE Slot=2
+        SELECT @p3f=FromVal,@p3t=ToVal FROM @GGD_Maps WHERE Slot=3
+        SELECT @p4f=FromVal,@p4t=ToVal FROM @GGD_Maps WHERE Slot=4
+        SELECT @p5f=FromVal,@p5t=ToVal FROM @GGD_Maps WHERE Slot=5
+        SELECT @p6f=FromVal,@p6t=ToVal FROM @GGD_Maps WHERE Slot=6
+        SELECT @p7f=FromVal,@p7t=ToVal FROM @GGD_Maps WHERE Slot=7
+        SELECT @p8f=FromVal,@p8t=ToVal FROM @GGD_Maps WHERE Slot=8
+        SELECT @p9f=FromVal,@p9t=ToVal FROM @GGD_Maps WHERE Slot=9
+        SELECT @p10f=FromVal,@p10t=ToVal FROM @GGD_Maps WHERE Slot=10
+        SELECT @p11f=FromVal,@p11t=ToVal FROM @GGD_Maps WHERE Slot=11
+        SELECT @p12f=FromVal,@p12t=ToVal FROM @GGD_Maps WHERE Slot=12
+        SELECT @p13f=FromVal,@p13t=ToVal FROM @GGD_Maps WHERE Slot=13
+        SELECT @p14f=FromVal,@p14t=ToVal FROM @GGD_Maps WHERE Slot=14
+        SELECT @p15f=FromVal,@p15t=ToVal FROM @GGD_Maps WHERE Slot=15
+
+        EXEC sp_executesql @GGD_BaseSQL,
+            N'@p1f NVARCHAR(200), @p1t NVARCHAR(200), @p2f NVARCHAR(200), @p2t NVARCHAR(200), @p3f NVARCHAR(200), @p3t NVARCHAR(200), @p4f NVARCHAR(200), @p4t NVARCHAR(200), @p5f NVARCHAR(200), @p5t NVARCHAR(200), @p6f NVARCHAR(200), @p6t NVARCHAR(200), @p7f NVARCHAR(200), @p7t NVARCHAR(200), @p8f NVARCHAR(200), @p8t NVARCHAR(200), @p9f NVARCHAR(200), @p9t NVARCHAR(200), @p10f NVARCHAR(200), @p10t NVARCHAR(200), @p11f NVARCHAR(200), @p11t NVARCHAR(200), @p12f NVARCHAR(200), @p12t NVARCHAR(200), @p13f NVARCHAR(200), @p13t NVARCHAR(200), @p14f NVARCHAR(200), @p14t NVARCHAR(200), @p15f NVARCHAR(200), @p15t NVARCHAR(200)',
+            @p1f=@p1f,@p1t=@p1t,@p2f=@p2f,@p2t=@p2t,@p3f=@p3f,@p3t=@p3t,@p4f=@p4f,@p4t=@p4t,@p5f=@p5f,@p5t=@p5t,
+            @p6f=@p6f,@p6t=@p6t,@p7f=@p7f,@p7t=@p7t,@p8f=@p8f,@p8t=@p8t,@p9f=@p9f,@p9t=@p9t,@p10f=@p10f,@p10t=@p10t,
+            @p11f=@p11f,@p11t=@p11t,@p12f=@p12f,@p12t=@p12t,@p13f=@p13f,@p13t=@p13t,@p14f=@p14f,@p14t=@p14t,@p15f=@p15f,@p15t=@p15t;
+
         RETURN;
     END
 
@@ -830,6 +1009,410 @@ BEGIN
         RETURN;
     END
 
+    -- ====================================================================
+    -- Folded in from APIPlusQueryOperation. This proc has no batch-wide
+    -- TRY/CATCH (unlike APIPlusQueryOperation), so each block wraps its own
+    -- work in TRY/CATCH to preserve the original SQL-exception reporting.
+    -- ====================================================================
+    IF @Operation = 'CreateQueryView'
+    BEGIN
+        SET @State = 0;
+        SET @Message = 'Success';
+
+        BEGIN TRY
+            -- 1. Execute the View creation DDL if provided
+            IF @SqlStatement IS NOT NULL AND LTRIM(RTRIM(@SqlStatement)) <> ''
+            BEGIN
+                EXEC(@SqlStatement);
+            END
+
+            -- 2. Extract metadata and update PLS.QueryMaster
+            IF @LineData IS NOT NULL AND ISJSON(@LineData) = 1
+            BEGIN
+                DECLARE @PageGroupID VARCHAR(50) = JSON_VALUE(@LineData, '$.PageGroupID');
+                DECLARE @QueryName NVARCHAR(150) = JSON_VALUE(@LineData, '$.QueryName');
+                DECLARE @SPName NVARCHAR(250) = JSON_VALUE(@LineData, '$.SPName');
+                DECLARE @QueryOperation VARCHAR(100) = JSON_VALUE(@LineData, '$.QueryOperation');
+                DECLARE @Description NVARCHAR(500) = JSON_VALUE(@LineData, '$.Description');
+                DECLARE @QuerySQL NVARCHAR(MAX) = JSON_VALUE(@LineData, '$.QuerySQL');
+                DECLARE @DatabaseName VARCHAR(100) = JSON_VALUE(@LineData, '$.DatabaseName');
+                DECLARE @SchemaName VARCHAR(100) = JSON_VALUE(@LineData, '$.SchemaName');
+                DECLARE @TableOrViewName VARCHAR(150) = JSON_VALUE(@LineData, '$.TableOrViewName');
+                DECLARE @QueryType VARCHAR(50) = JSON_VALUE(@LineData, '$.QueryType');
+
+                IF @PageGroupID IS NOT NULL AND @QueryOperation IS NOT NULL
+                BEGIN
+                    DECLARE @ExistingQueryID INT;
+                    SELECT @ExistingQueryID = QueryID FROM [PLS].[QueryMaster] WHERE Operation = @QueryOperation;
+
+                    IF @ExistingQueryID IS NOT NULL
+                    BEGIN
+                        UPDATE [PLS].[QueryMaster]
+                        SET QueryName = COALESCE(@QueryName, QueryName),
+                            SPName = COALESCE(@SPName, SPName),
+                            Description = COALESCE(@Description, Description),
+                            QuerySQL = COALESCE(@QuerySQL, QuerySQL),
+                            DatabaseName = COALESCE(@DatabaseName, DatabaseName),
+                            SchemaName = COALESCE(@SchemaName, SchemaName),
+                            TableOrViewName = COALESCE(@TableOrViewName, TableOrViewName),
+                            QueryType = COALESCE(@QueryType, QueryType)
+                        WHERE QueryID = @ExistingQueryID;
+
+                        IF NOT EXISTS (SELECT 1 FROM [PLS].[PageQueries] WHERE PageGroupID = @PageGroupID AND QueryID = @ExistingQueryID)
+                        BEGIN
+                            INSERT INTO [PLS].[PageQueries] (PageGroupID, QueryID) VALUES (@PageGroupID, @ExistingQueryID);
+                        END
+
+                        SET @Message = 'View compiled and QueryMaster updated successfully';
+                    END
+                    ELSE
+                    BEGIN
+                        INSERT INTO [PLS].[QueryMaster] (QueryName, SPName, Operation, Description, QuerySQL, DatabaseName, SchemaName, TableOrViewName, QueryType, CreatedBy)
+                        VALUES (COALESCE(@QueryName, @QueryOperation), COALESCE(@SPName, N'[PLS].[APIPlusOperation]'), @QueryOperation, @Description, @QuerySQL, @DatabaseName, @SchemaName, @TableOrViewName, COALESCE(@QueryType, 'Grid'), @User);
+
+                        SET @ExistingQueryID = SCOPE_IDENTITY();
+                        INSERT INTO [PLS].[PageQueries] (PageGroupID, QueryID) VALUES (@PageGroupID, @ExistingQueryID);
+
+                        SET @Message = 'View compiled and QueryMaster registered successfully';
+                    END
+                END
+                ELSE
+                BEGIN
+                    SET @Message = 'View compiled successfully (QueryMaster registration skipped: PageGroupID or QueryOperation missing)';
+                END
+            END
+            ELSE
+            BEGIN
+                SET @Message = 'View compiled successfully (QueryMaster registration skipped: LineData JSON empty)';
+            END
+        END TRY
+        BEGIN CATCH
+            SET @State = ERROR_NUMBER();
+            SET @Message = 'SQL Exception: ' + ERROR_MESSAGE() + ' (Line: ' + CAST(ERROR_LINE() AS VARCHAR(10)) + ')';
+        END CATCH
+
+        RETURN;
+    END
+
+    IF @Operation = 'ExecuteScript'
+    BEGIN
+        SET @State = 0;
+        SET @Message = 'Success';
+
+        BEGIN TRY
+            IF @SqlStatement IS NULL OR LTRIM(RTRIM(@SqlStatement)) = ''
+            BEGIN
+                SET @State = 1;
+                SET @Message = 'SqlStatement is required';
+                RETURN;
+            END
+
+            EXEC(@SqlStatement);
+
+            SET @Message = 'SQL executed successfully';
+        END TRY
+        BEGIN CATCH
+            SET @State = ERROR_NUMBER();
+            SET @Message = 'SQL Exception: ' + ERROR_MESSAGE() + ' (Line: ' + CAST(ERROR_LINE() AS VARCHAR(10)) + ')';
+        END CATCH
+
+        RETURN;
+    END
+
+    -- ====================================================================
+    -- Generic single-table CRUD engine, driven by PLS.CrudTableMaster /
+    -- PLS.CrudFieldMappings (populated only by PageBuilder.jsx's "Simple
+    -- CRUD" mode). Every simple flat master-data page shares these SAME
+    -- 5 operations -- no page ever gets its own hand-written Save/Delete
+    -- SQL -- mirroring how GetGridData is one universal read operation
+    -- keyed by PageGroupID. Scope: single-column primary key only.
+    -- ====================================================================
+    IF @Operation = 'GetCrudMetadata'
+    BEGIN
+        SET @State = 0;
+        SET @Message = 'Success';
+        DECLARE @GCM_PageGroupID VARCHAR(50) = JSON_VALUE(@LineData, '$.PageGroupID');
+
+        IF NOT EXISTS (SELECT 1 FROM PLS.CrudTableMaster WHERE PageGroupID = @GCM_PageGroupID)
+        BEGIN
+            SET @State = -1;
+            SET @Message = 'No CRUD metadata registered for PageGroupID: ' + ISNULL(@GCM_PageGroupID, '(null)');
+            RETURN;
+        END
+
+        SELECT PageGroupID, TargetSchema, TargetTable, AllowDelete
+        FROM PLS.CrudTableMaster WHERE PageGroupID = @GCM_PageGroupID;
+
+        SELECT MappingID, PageGroupID, ColumnName, JsonKey, Label, DataType, IsRequired, IsKey, IsIdentity, SortOrder
+        FROM PLS.CrudFieldMappings WHERE PageGroupID = @GCM_PageGroupID
+        ORDER BY SortOrder, MappingID;
+        RETURN;
+    END
+
+    IF @Operation = 'SaveCrudTableMaster'
+    BEGIN
+        SET @State = 0;
+        SET @Message = 'Success';
+        DECLARE @SCT_PageGroupID VARCHAR(50) = JSON_VALUE(@LineData, '$.PageGroupID');
+        DECLARE @SCT_TargetSchema VARCHAR(50) = ISNULL(JSON_VALUE(@LineData, '$.TargetSchema'), 'dbo');
+        DECLARE @SCT_TargetTable VARCHAR(150) = JSON_VALUE(@LineData, '$.TargetTable');
+        DECLARE @SCT_AllowDelete BIT = ISNULL(TRY_CAST(JSON_VALUE(@LineData, '$.AllowDelete') AS BIT), 1);
+
+        IF @SCT_PageGroupID IS NULL OR @SCT_TargetTable IS NULL
+        BEGIN
+            SET @State = -1;
+            SET @Message = 'PageGroupID and TargetTable are required.';
+            RETURN;
+        END
+
+        IF EXISTS (SELECT 1 FROM PLS.CrudTableMaster WHERE PageGroupID = @SCT_PageGroupID)
+        BEGIN
+            UPDATE PLS.CrudTableMaster
+            SET TargetSchema = @SCT_TargetSchema, TargetTable = @SCT_TargetTable, AllowDelete = @SCT_AllowDelete
+            WHERE PageGroupID = @SCT_PageGroupID;
+        END
+        ELSE
+        BEGIN
+            INSERT INTO PLS.CrudTableMaster (PageGroupID, TargetSchema, TargetTable, AllowDelete, CreatedBy)
+            VALUES (@SCT_PageGroupID, @SCT_TargetSchema, @SCT_TargetTable, @SCT_AllowDelete, @User);
+        END
+
+        SELECT @State AS State, @Message AS Message;
+        RETURN;
+    END
+
+    IF @Operation = 'SaveCrudFieldMappings'
+    BEGIN
+        SET @State = 0;
+        SET @Message = 'Success';
+        DECLARE @SCF_PageGroupID VARCHAR(50) = JSON_VALUE(@LineData, '$.PageGroupID');
+
+        IF @SCF_PageGroupID IS NULL
+        BEGIN
+            SET @State = -1;
+            SET @Message = 'PageGroupID is required.';
+            RETURN;
+        END
+
+        DELETE FROM PLS.CrudFieldMappings WHERE PageGroupID = @SCF_PageGroupID;
+
+        INSERT INTO PLS.CrudFieldMappings (PageGroupID, ColumnName, JsonKey, Label, DataType, IsRequired, IsKey, IsIdentity, SortOrder)
+        SELECT @SCF_PageGroupID, ColumnName, JsonKey, Label, DataType, IsRequired, IsKey, IsIdentity, SortOrder
+        FROM OPENJSON(@LineData, '$.Fields')
+        WITH (
+            ColumnName VARCHAR(150)  '$.ColumnName',
+            JsonKey    VARCHAR(100)  '$.JsonKey',
+            Label      NVARCHAR(150) '$.Label',
+            DataType   VARCHAR(20)   '$.DataType',
+            IsRequired BIT           '$.IsRequired',
+            IsKey      BIT           '$.IsKey',
+            IsIdentity BIT           '$.IsIdentity',
+            SortOrder  INT           '$.SortOrder'
+        );
+
+        SELECT @State AS State, @Message AS Message;
+        RETURN;
+    END
+
+    IF @Operation = 'GenericRecordSave'
+    BEGIN
+        SET @State = 0;
+        SET @Message = 'Success';
+        DECLARE @GRS_PageGroupID VARCHAR(50) = JSON_VALUE(@LineData, '$.PageGroupID');
+        DECLARE @GRS_Schema VARCHAR(50), @GRS_Table VARCHAR(150);
+
+        SELECT @GRS_Schema = TargetSchema, @GRS_Table = TargetTable
+        FROM PLS.CrudTableMaster WHERE PageGroupID = @GRS_PageGroupID;
+
+        IF @GRS_Table IS NULL
+        BEGIN
+            SET @State = -1;
+            SET @Message = 'No CRUD table registered for PageGroupID: ' + ISNULL(@GRS_PageGroupID, '(null)');
+            RETURN;
+        END
+
+        DECLARE @GRS_Fields TABLE (
+            Slot INT IDENTITY(1,1) PRIMARY KEY, ColumnName VARCHAR(150), JsonKey VARCHAR(100),
+            DataType VARCHAR(20), IsRequired BIT, IsKey BIT, IsIdentity BIT, Val NVARCHAR(MAX)
+        );
+
+        INSERT INTO @GRS_Fields (ColumnName, JsonKey, DataType, IsRequired, IsKey, IsIdentity, Val)
+        SELECT ColumnName, JsonKey, DataType, IsRequired, IsKey, IsIdentity, JSON_VALUE(@LineData, '$.' + JsonKey)
+        FROM PLS.CrudFieldMappings
+        WHERE PageGroupID = @GRS_PageGroupID
+        ORDER BY SortOrder, MappingID;
+
+        IF (SELECT COUNT(*) FROM @GRS_Fields) > 20
+        BEGIN
+            SET @State = -1;
+            SET @Message = 'Too many fields registered for this page (max 20 supported).';
+            RETURN;
+        END
+
+        DECLARE @GRS_Missing VARCHAR(150);
+        SELECT TOP 1 @GRS_Missing = ColumnName FROM @GRS_Fields WHERE IsRequired = 1 AND (Val IS NULL OR LTRIM(RTRIM(Val)) = '');
+        IF @GRS_Missing IS NOT NULL
+        BEGIN
+            SET @State = -1;
+            SET @Message = @GRS_Missing + ' is required.';
+            RETURN;
+        END
+
+        DECLARE @GRS_KeySlot INT, @GRS_KeyCol VARCHAR(150), @GRS_KeyType VARCHAR(20), @GRS_KeyIsIdentity BIT, @GRS_KeyVal NVARCHAR(MAX);
+        SELECT @GRS_KeySlot = Slot, @GRS_KeyCol = ColumnName, @GRS_KeyType = DataType, @GRS_KeyIsIdentity = IsIdentity, @GRS_KeyVal = Val
+        FROM @GRS_Fields WHERE IsKey = 1;
+
+        IF @GRS_KeyCol IS NULL
+        BEGIN
+            SET @State = -1;
+            SET @Message = 'No key field registered for this page.';
+            RETURN;
+        END
+
+        DECLARE @GRS_IsNew BIT = 0;
+        IF @GRS_KeyVal IS NULL OR LTRIM(RTRIM(@GRS_KeyVal)) = ''
+            SET @GRS_IsNew = 1;
+        ELSE
+        BEGIN
+            DECLARE @GRS_ExistsSQL NVARCHAR(MAX) = N'SELECT @Found = CASE WHEN EXISTS (SELECT 1 FROM ' +
+                QUOTENAME(@GRS_Schema) + N'.' + QUOTENAME(@GRS_Table) + N' WHERE ' + QUOTENAME(@GRS_KeyCol) +
+                N' = ' + (CASE @GRS_KeyType WHEN 'date' THEN N'CONVERT(date,@KeyVal)' WHEN 'number' THEN N'CONVERT(float,@KeyVal)' ELSE N'@KeyVal' END) +
+                N') THEN 1 ELSE 0 END;';
+            DECLARE @GRS_Found BIT;
+            EXEC sp_executesql @GRS_ExistsSQL, N'@KeyVal NVARCHAR(MAX), @Found BIT OUTPUT', @KeyVal = @GRS_KeyVal, @Found = @GRS_Found OUTPUT;
+            SET @GRS_IsNew = CASE WHEN @GRS_Found = 1 THEN 0 ELSE 1 END;
+        END
+
+        -- Only trusted metadata (ColumnName, from CrudFieldMappings) enters the SQL text below --
+        -- every actual field VALUE is bound through the fixed @v1..@v20 pool, never concatenated in.
+        DECLARE @GRS_InsCols NVARCHAR(MAX), @GRS_InsVals NVARCHAR(MAX), @GRS_SetFrags NVARCHAR(MAX);
+
+        SELECT @GRS_InsCols = STRING_AGG(CAST(QUOTENAME(ColumnName) AS NVARCHAR(MAX)), ', ') WITHIN GROUP (ORDER BY Slot)
+        FROM @GRS_Fields WHERE IsIdentity = 0;
+
+        SELECT @GRS_InsVals = STRING_AGG(
+            CAST((CASE DataType WHEN 'date' THEN 'CONVERT(date,' WHEN 'number' THEN 'CONVERT(float,' WHEN 'bool' THEN 'CONVERT(bit,' ELSE '(' END) + '@v' + CAST(Slot AS VARCHAR(2)) + ')' AS NVARCHAR(MAX)),
+            ', ') WITHIN GROUP (ORDER BY Slot)
+        FROM @GRS_Fields WHERE IsIdentity = 0;
+
+        SELECT @GRS_SetFrags = STRING_AGG(
+            CAST(QUOTENAME(ColumnName) + ' = ' + (CASE DataType WHEN 'date' THEN 'CONVERT(date,' WHEN 'number' THEN 'CONVERT(float,' WHEN 'bool' THEN 'CONVERT(bit,' ELSE '(' END) + '@v' + CAST(Slot AS VARCHAR(2)) + ')' AS NVARCHAR(MAX)),
+            ', ') WITHIN GROUP (ORDER BY Slot)
+        FROM @GRS_Fields WHERE IsKey = 0;
+
+        IF @GRS_IsNew = 0 AND @GRS_SetFrags IS NULL
+        BEGIN
+            SET @Message = 'Nothing to update.';
+            SELECT @GRS_KeyVal AS KeyValue;
+            RETURN;
+        END
+
+        DECLARE @v1 NVARCHAR(MAX), @v2 NVARCHAR(MAX), @v3 NVARCHAR(MAX), @v4 NVARCHAR(MAX), @v5 NVARCHAR(MAX),
+                @v6 NVARCHAR(MAX), @v7 NVARCHAR(MAX), @v8 NVARCHAR(MAX), @v9 NVARCHAR(MAX), @v10 NVARCHAR(MAX),
+                @v11 NVARCHAR(MAX), @v12 NVARCHAR(MAX), @v13 NVARCHAR(MAX), @v14 NVARCHAR(MAX), @v15 NVARCHAR(MAX),
+                @v16 NVARCHAR(MAX), @v17 NVARCHAR(MAX), @v18 NVARCHAR(MAX), @v19 NVARCHAR(MAX), @v20 NVARCHAR(MAX);
+
+        SELECT @v1=Val FROM @GRS_Fields WHERE Slot=1;   SELECT @v2=Val FROM @GRS_Fields WHERE Slot=2;
+        SELECT @v3=Val FROM @GRS_Fields WHERE Slot=3;   SELECT @v4=Val FROM @GRS_Fields WHERE Slot=4;
+        SELECT @v5=Val FROM @GRS_Fields WHERE Slot=5;   SELECT @v6=Val FROM @GRS_Fields WHERE Slot=6;
+        SELECT @v7=Val FROM @GRS_Fields WHERE Slot=7;   SELECT @v8=Val FROM @GRS_Fields WHERE Slot=8;
+        SELECT @v9=Val FROM @GRS_Fields WHERE Slot=9;   SELECT @v10=Val FROM @GRS_Fields WHERE Slot=10;
+        SELECT @v11=Val FROM @GRS_Fields WHERE Slot=11; SELECT @v12=Val FROM @GRS_Fields WHERE Slot=12;
+        SELECT @v13=Val FROM @GRS_Fields WHERE Slot=13; SELECT @v14=Val FROM @GRS_Fields WHERE Slot=14;
+        SELECT @v15=Val FROM @GRS_Fields WHERE Slot=15; SELECT @v16=Val FROM @GRS_Fields WHERE Slot=16;
+        SELECT @v17=Val FROM @GRS_Fields WHERE Slot=17; SELECT @v18=Val FROM @GRS_Fields WHERE Slot=18;
+        SELECT @v19=Val FROM @GRS_Fields WHERE Slot=19; SELECT @v20=Val FROM @GRS_Fields WHERE Slot=20;
+
+        DECLARE @GRS_KeySlotVar NVARCHAR(10) = '@v' + CAST(@GRS_KeySlot AS VARCHAR(2));
+        DECLARE @GRS_ExecSQL NVARCHAR(MAX);
+
+        IF @GRS_IsNew = 1
+        BEGIN
+            SET @GRS_ExecSQL = N'INSERT INTO ' + QUOTENAME(@GRS_Schema) + N'.' + QUOTENAME(@GRS_Table) +
+                N' (' + @GRS_InsCols + N') VALUES (' + @GRS_InsVals + N'); ' +
+                CASE WHEN @GRS_KeyIsIdentity = 1
+                    THEN N'SELECT CAST(SCOPE_IDENTITY() AS NVARCHAR(50)) AS KeyValue;'
+                    ELSE N'SELECT ' + @GRS_KeySlotVar + N' AS KeyValue;'
+                END;
+        END
+        ELSE
+        BEGIN
+            SET @GRS_ExecSQL = N'UPDATE ' + QUOTENAME(@GRS_Schema) + N'.' + QUOTENAME(@GRS_Table) +
+                N' SET ' + @GRS_SetFrags + N' WHERE ' + QUOTENAME(@GRS_KeyCol) + N' = ' +
+                (CASE @GRS_KeyType WHEN 'date' THEN N'CONVERT(date,' + @GRS_KeySlotVar + N')' WHEN 'number' THEN N'CONVERT(float,' + @GRS_KeySlotVar + N')' ELSE @GRS_KeySlotVar END) +
+                N'; SELECT ' + @GRS_KeySlotVar + N' AS KeyValue;';
+        END
+
+        EXEC sp_executesql @GRS_ExecSQL,
+            N'@v1 NVARCHAR(MAX), @v2 NVARCHAR(MAX), @v3 NVARCHAR(MAX), @v4 NVARCHAR(MAX), @v5 NVARCHAR(MAX), @v6 NVARCHAR(MAX), @v7 NVARCHAR(MAX), @v8 NVARCHAR(MAX), @v9 NVARCHAR(MAX), @v10 NVARCHAR(MAX), @v11 NVARCHAR(MAX), @v12 NVARCHAR(MAX), @v13 NVARCHAR(MAX), @v14 NVARCHAR(MAX), @v15 NVARCHAR(MAX), @v16 NVARCHAR(MAX), @v17 NVARCHAR(MAX), @v18 NVARCHAR(MAX), @v19 NVARCHAR(MAX), @v20 NVARCHAR(MAX)',
+            @v1=@v1,@v2=@v2,@v3=@v3,@v4=@v4,@v5=@v5,@v6=@v6,@v7=@v7,@v8=@v8,@v9=@v9,@v10=@v10,
+            @v11=@v11,@v12=@v12,@v13=@v13,@v14=@v14,@v15=@v15,@v16=@v16,@v17=@v17,@v18=@v18,@v19=@v19,@v20=@v20;
+
+        RETURN;
+    END
+
+    IF @Operation = 'GenericRecordDelete'
+    BEGIN
+        SET @State = 0;
+        SET @Message = 'Success';
+        DECLARE @GRD_PageGroupID VARCHAR(50) = JSON_VALUE(@LineData, '$.PageGroupID');
+        DECLARE @GRD_Schema VARCHAR(50), @GRD_Table VARCHAR(150), @GRD_AllowDelete BIT;
+
+        SELECT @GRD_Schema = TargetSchema, @GRD_Table = TargetTable, @GRD_AllowDelete = AllowDelete
+        FROM PLS.CrudTableMaster WHERE PageGroupID = @GRD_PageGroupID;
+
+        IF @GRD_Table IS NULL
+        BEGIN
+            SET @State = -1;
+            SET @Message = 'No CRUD table registered for PageGroupID: ' + ISNULL(@GRD_PageGroupID, '(null)');
+            RETURN;
+        END
+
+        IF @GRD_AllowDelete = 0
+        BEGIN
+            SET @State = -1;
+            SET @Message = 'Delete not allowed for this page.';
+            RETURN;
+        END
+
+        DECLARE @GRD_KeyCol VARCHAR(150), @GRD_KeyJson VARCHAR(100), @GRD_KeyType VARCHAR(20);
+        SELECT @GRD_KeyCol = ColumnName, @GRD_KeyJson = JsonKey, @GRD_KeyType = DataType
+        FROM PLS.CrudFieldMappings WHERE PageGroupID = @GRD_PageGroupID AND IsKey = 1;
+
+        IF @GRD_KeyCol IS NULL
+        BEGIN
+            SET @State = -1;
+            SET @Message = 'No key field registered for this page.';
+            RETURN;
+        END
+
+        DECLARE @GRD_KeyVal NVARCHAR(MAX) = JSON_VALUE(@LineData, '$.' + @GRD_KeyJson);
+
+        DECLARE @GRD_SQL NVARCHAR(MAX) = N'DELETE FROM ' + QUOTENAME(@GRD_Schema) + N'.' + QUOTENAME(@GRD_Table) +
+            N' WHERE ' + QUOTENAME(@GRD_KeyCol) + N' = ' +
+            (CASE @GRD_KeyType WHEN 'date' THEN N'CONVERT(date,@KeyVal)' WHEN 'number' THEN N'CONVERT(float,@KeyVal)' ELSE N'@KeyVal' END) + N';';
+
+        -- Scoped exception to this proc's usual no-TRY/CATCH convention: master-data rows are
+        -- exactly what other tables reference, so a raw FK-violation (547) becomes a friendly
+        -- message here only -- flagged for explicit sign-off, not a proc-wide style change.
+        BEGIN TRY
+            EXEC sp_executesql @GRD_SQL, N'@KeyVal NVARCHAR(MAX)', @KeyVal = @GRD_KeyVal;
+        END TRY
+        BEGIN CATCH
+            IF ERROR_NUMBER() = 547
+            BEGIN
+                SET @State = -1;
+                SET @Message = 'Cannot delete: this record is referenced elsewhere.';
+            END
+            ELSE
+            BEGIN
+                SET @State = -1;
+                SET @Message = 'SQL Exception: ' + ERROR_MESSAGE();
+            END
+        END CATCH
+        RETURN;
+    END
+
     IF @Operation = 'SaveQueryPageRelation'
     BEGIN
         SET @State = 0;
@@ -850,6 +1433,81 @@ BEGIN
         BEGIN
             DELETE FROM [PLS].[PageQueries] WHERE PageGroupID = @RelPageGroupID AND QueryID = @RelQueryID;
         END
+
+        SELECT @State AS State, @Message AS Message;
+        RETURN;
+    END
+
+    IF @Operation = 'GetReportsMaster'
+    BEGIN
+        SET @State = 0;
+        SET @Message = 'Success';
+
+        SELECT r.ReportID, r.ReportName, r.[FileName], r.PageGroupID, pg.Label AS PageLabel, r.KeyParam, r.Description, r.CreatedBy, r.CreatedDate
+        FROM [PLS].[ReportsMaster] r
+        LEFT JOIN [PLS].[PagesAndGroups] pg ON r.PageGroupID = pg.PageGroupID
+        ORDER BY r.ReportID;
+
+        SELECT ReportQueryID, ReportID, QueryName, QuerySQL, SortOrder
+        FROM [PLS].[ReportQueries]
+        ORDER BY ReportID, SortOrder;
+
+        RETURN;
+    END
+
+    IF @Operation = 'SaveReportsMaster'
+    BEGIN
+        SET @State = 0;
+        SET @Message = 'Success';
+
+        DECLARE @RptReportID INT = NULLIF(JSON_VALUE(@LineData, '$.ReportID'), '');
+        DECLARE @RptReportName NVARCHAR(150) = JSON_VALUE(@LineData, '$.ReportName');
+        DECLARE @RptFileName NVARCHAR(260) = JSON_VALUE(@LineData, '$.FileName');
+        DECLARE @RptPageGroupID VARCHAR(50) = JSON_VALUE(@LineData, '$.PageGroupID');
+        DECLARE @RptKeyParam NVARCHAR(100) = JSON_VALUE(@LineData, '$.KeyParam');
+        DECLARE @RptDescription NVARCHAR(500) = JSON_VALUE(@LineData, '$.Description');
+
+        IF @RptReportID IS NOT NULL
+        BEGIN
+            UPDATE [PLS].[ReportsMaster]
+            SET ReportName = @RptReportName,
+                [FileName] = @RptFileName,
+                PageGroupID = @RptPageGroupID,
+                KeyParam = @RptKeyParam,
+                Description = @RptDescription
+            WHERE ReportID = @RptReportID;
+        END
+        ELSE
+        BEGIN
+            INSERT INTO [PLS].[ReportsMaster] (ReportName, [FileName], PageGroupID, KeyParam, Description, CreatedBy)
+            VALUES (@RptReportName, @RptFileName, @RptPageGroupID, @RptKeyParam, @RptDescription, @User);
+
+            SET @RptReportID = SCOPE_IDENTITY();
+        END
+
+        DELETE FROM [PLS].[ReportQueries] WHERE ReportID = @RptReportID;
+
+        INSERT INTO [PLS].[ReportQueries] (ReportID, QueryName, QuerySQL, SortOrder)
+        SELECT @RptReportID, QueryName, QuerySQL, ROW_NUMBER() OVER (ORDER BY (SELECT NULL))
+        FROM OPENJSON(@LineData, '$.Queries')
+        WITH (
+            QueryName NVARCHAR(150) '$.QueryName',
+            QuerySQL  NVARCHAR(MAX) '$.QuerySQL'
+        );
+
+        SELECT @State AS State, @Message AS Message, @RptReportID AS ReportID;
+        RETURN;
+    END
+
+    IF @Operation = 'DeleteReportsMaster'
+    BEGIN
+        SET @State = 0;
+        SET @Message = 'Success';
+
+        DECLARE @DelReportID INT = JSON_VALUE(@LineData, '$.ReportID');
+
+        DELETE FROM [PLS].[ReportQueries] WHERE ReportID = @DelReportID;
+        DELETE FROM [PLS].[ReportsMaster] WHERE ReportID = @DelReportID;
 
         SELECT @State AS State, @Message AS Message;
         RETURN;
@@ -943,6 +1601,45 @@ BEGIN
             )
             SELECT DISTINCT PageGroupID FROM RecursiveHierarchy;
         END
+        RETURN;
+    END
+
+    -- ====================================================================
+    -- Generic lookup engine, folded in from PLS.APIPlusLookupOperation so
+    -- every dropdown/lookup call runs through this one SP too. Any
+    -- @Operation not matched by an explicit IF block above falls through
+    -- to here and is treated as a registered Lookup query: a QueryMaster
+    -- row with QueryType='Lookup', optionally row-filtered per user via
+    -- UserQueryPermissions -- same pattern GetGridData already uses above
+    -- for Grid/Detail queries.
+    -- ====================================================================
+    DECLARE @LKP_QueryID INT, @LKP_SQL NVARCHAR(MAX);
+    SELECT TOP 1 @LKP_QueryID = QueryID, @LKP_SQL = QuerySQL
+    FROM [PLS].[QueryMaster]
+    WHERE Operation = @Operation AND QueryType = 'Lookup';
+
+    IF @LKP_SQL IS NOT NULL AND LTRIM(RTRIM(@LKP_SQL)) <> ''
+    BEGIN
+        DECLARE @LKP_IsAdmin BIT = 0, @LKP_Filter NVARCHAR(MAX) = NULL;
+        IF @User = 'sysadmin'
+            SET @LKP_IsAdmin = 1;
+        ELSE
+            SELECT @LKP_IsAdmin = ISNULL(IsAdmin, 0) FROM ERPManagement25.System.UserMaster WHERE Username = @User;
+
+        IF @LKP_IsAdmin = 0
+            SELECT @LKP_Filter = SQLFilter
+            FROM [PLS].[UserQueryPermissions]
+            WHERE Username = @User AND QueryID = @LKP_QueryID;
+
+        IF @LKP_Filter IS NOT NULL AND LTRIM(RTRIM(@LKP_Filter)) <> ''
+            SET @LKP_SQL = REPLACE(@LKP_SQL, '{FILTER}', N' AND (' + @LKP_Filter + N')');
+        ELSE
+            SET @LKP_SQL = REPLACE(@LKP_SQL, '{FILTER}', N'');
+
+        -- @LineData defaults to '' (not NULL) on this proc's signature, and JSON_VALUE
+        -- throws on an empty/non-JSON string -- guard with ISJSON before reading it.
+        DECLARE @LKP_Param1 NVARCHAR(100) = CASE WHEN ISJSON(@LineData) = 1 THEN JSON_VALUE(@LineData, '$.param1') ELSE NULL END;
+        EXEC sp_executesql @LKP_SQL, N'@param1 NVARCHAR(100)', @param1 = @LKP_Param1;
         RETURN;
     END
 

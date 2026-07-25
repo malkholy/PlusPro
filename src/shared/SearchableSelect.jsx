@@ -8,6 +8,7 @@ export default function SearchableSelect({ value, options, onChange, placeholder
   const dropdownRef = useRef(null);
   const [coords, setCoords] = useState({ left: 0, top: 0, width: 0, goesUp: false });
   const [highlightedIndex, setHighlightedIndex] = useState(0);
+  const optionRefs = useRef([]);
 
   useEffect(() => {
     function handleClickOutside(event) {
@@ -61,6 +62,10 @@ export default function SearchableSelect({ value, options, onChange, placeholder
   useEffect(() => {
     setHighlightedIndex(0);
   }, [search]);
+
+  useEffect(() => {
+    optionRefs.current[highlightedIndex]?.scrollIntoView({ block: 'nearest' });
+  }, [highlightedIndex]);
 
   const handleKeyDown = (e) => {
     if (e.key === 'ArrowDown') {
@@ -171,12 +176,13 @@ export default function SearchableSelect({ value, options, onChange, placeholder
             }}
           />
           <div style={{ overflowY: 'auto', flex: 1, padding: '4px 0' }}>
-            <div 
+            <div
+              ref={el => optionRefs.current[0] = el}
               onClick={() => { onChange(''); setOpen(false); }}
               onMouseEnter={() => setHighlightedIndex(0)}
-              style={{ 
-                padding: '6px 8px', 
-                cursor: 'pointer', 
+              style={{
+                padding: '6px 8px',
+                cursor: 'pointer',
                 color: 'var(--muted)',
                 fontSize: '13px',
                 background: highlightedIndex === 0 ? 'var(--soft)' : 'transparent'
@@ -186,15 +192,16 @@ export default function SearchableSelect({ value, options, onChange, placeholder
             </div>
             {filtered.length === 0 ? <div style={{ padding: '6px 8px', color: 'var(--muted)', fontSize: '13px' }}>No results</div> : null}
             {filtered.map((opt, i) => (
-              <div 
-                key={i} 
+              <div
+                key={i}
+                ref={el => optionRefs.current[i + 1] = el}
                 onClick={() => { onChange(opt.value); setOpen(false); }}
                 onMouseEnter={() => setHighlightedIndex(i + 1)}
-                style={{ 
-                  padding: '6px 8px', 
-                  cursor: 'pointer', 
+                style={{
+                  padding: '6px 8px',
+                  cursor: 'pointer',
                   fontSize: '13px',
-                  whiteSpace: 'nowrap', 
+                  whiteSpace: 'nowrap',
                   color: 'var(--text)',
                   background: highlightedIndex === i + 1 ? 'var(--soft)' : 'transparent'
                 }}

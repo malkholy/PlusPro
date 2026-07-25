@@ -20,6 +20,7 @@
   2. Register it in the Query Master with `QueryType = 'Lookup'`.
   3. Link it to the corresponding page using the `PageQueries` table.
 
-
-
+- **Stored Procedure Signatures**: Any new stored procedure must inherit the standard 12-parameter signature used by `APIPlusOperation` (including `@State` and `@Message` as outputs). Missing parameters will cause the C# `GeneralAPI` controller to throw exceptions.
+- **SQL Script Execution**: When executing raw SQL via `ExecuteScript` over the HTTP API, you must strip all `GO` statements and properly pre-escape single quotes (e.g., using a JS string replace script) to avoid silent syntax errors and execution failures caused by the backend proxy parser.
+- **Vite Proxy Config**: When adding new API targets in `vite.config.js`, do not hardcode the schema or stored procedure name. Ensure the proxy accurately forwards the exact `SP_Name` header (including schemas like `PLS.`) provided by the frontend `api.js` client.
 

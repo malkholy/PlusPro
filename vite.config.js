@@ -58,27 +58,40 @@ export default defineConfig({
           })
         }
       },
-      '/query-api': {
+      '/inv-api': {
         target: 'https://sila.silasystem.com:7103',
         changeOrigin: true,
         secure: false,
-        rewrite: (path) => path.replace(/^\/query-api/, ''),
+        rewrite: (path) => path.replace(/^\/inv-api/, ''),
         configure: (proxy) => {
           proxy.on('proxyReq', (proxyReq) => {
-            proxyReq.setHeader('SP_Name', 'APIPlusQueryOperation')
+            proxyReq.setHeader('SP_Name', 'PLS.APIPlusInvOperation')
             proxyReq.setHeader('Accept', 'application/json')
             proxyReq.setHeader('Content-Type', 'application/json')
           })
         }
       },
-      '/lookup-api': {
+      '/loading-api': {
         target: 'https://sila.silasystem.com:7103',
         changeOrigin: true,
         secure: false,
-        rewrite: (path) => path.replace(/^\/lookup-api/, ''),
+        rewrite: (path) => path.replace(/^\/loading-api/, ''),
         configure: (proxy) => {
           proxy.on('proxyReq', (proxyReq) => {
-            proxyReq.setHeader('SP_Name', 'APIPlusLookupOperation')
+            proxyReq.setHeader('SP_Name', 'APIPlusLoadingOperation')
+            proxyReq.setHeader('Accept', 'application/json')
+            proxyReq.setHeader('Content-Type', 'application/json')
+          })
+        }
+      },
+      '/warehouse-request-api': {
+        target: 'https://sila.silasystem.com:7103',
+        changeOrigin: true,
+        secure: false,
+        rewrite: (path) => path.replace(/^\/warehouse-request-api/, ''),
+        configure: (proxy) => {
+          proxy.on('proxyReq', (proxyReq) => {
+            proxyReq.setHeader('SP_Name', 'APIPlusWarehouseRequestOperation')
             proxyReq.setHeader('Accept', 'application/json')
             proxyReq.setHeader('Content-Type', 'application/json')
           })

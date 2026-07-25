@@ -1,0 +1,284 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Report ScriptLanguage="CSharp" ReportInfo.Created="10/28/2015 11:50:00" ReportInfo.Modified="09/18/2023 23:03:58" ReportInfo.CreatorVersion="2021.2.8.0">
+  <ScriptText>using System;
+using System.Collections;
+using System.Collections.Generic;
+using System.ComponentModel;
+using System.Windows.Forms;
+using System.Drawing;
+using System.Data;
+using FastReport;
+using FastReport.Data;
+using FastReport.Dialog;
+using FastReport.Barcode;
+using FastReport.Table;
+using FastReport.Utils;
+
+namespace FastReport
+{
+  public class ReportScript
+  {
+    public string ParseDate(decimal x)
+    {    
+      string ReleaseDate= &quot;&quot;;
+      if(x==0)
+      {          
+        ReleaseDate=&quot;&quot;;
+      }
+      else
+      {  
+        ReleaseDate=  x.ToString();
+        DateTime parsedDateTime = DateTime.ParseExact(ReleaseDate, &quot;yyyyMMdd&quot;, System.Globalization.CultureInfo.InvariantCulture);
+        ReleaseDate= parsedDateTime.ToString(&quot;yyyy/MM/dd&quot;);
+      }
+      return ReleaseDate;
+    }
+    
+    public string ParseItemDescription(string item, string description , decimal flag)
+    {
+        if((item == &quot;SDA303000P&quot;) || ( item == &quot;SDA303014P&quot; &amp;&amp; flag == 1 ))
+          return description + &quot; (الصعيد) &quot;;
+        return description ;        
+    }
+    public bool GetDevission(decimal val1,decimal val2)
+    {
+      if (val2==0)
+      {    
+        return false;
+      }
+      else
+      {
+	         return (val1/val2)!=1;
+      }
+    }
+  }
+}
+</ScriptText>
+  <Dictionary>
+    <TableDataSource Name="Table1" ReferenceName="Data.Table1" DataType="System.Int32" Enabled="true">
+      <Column Name="OrderNumber" DataType="System.Int32"/>
+      <Column Name="OrderState" DataType="System.Int32"/>
+      <Column Name="OrderLoadingState" DataType="System.Int32"/>
+      <Column Name="DateOrderEntered" DataType="System.DateTime"/>
+      <Column Name="CustomerNumber" DataType="System.Int32"/>
+      <Column Name="CustomerType" DataType="System.String"/>
+      <Column Name="RequestShipDate" DataType="System.DateTime"/>
+      <Column Name="TotalLines" DataType="System.Int32"/>
+      <Column Name="Salesperson" DataType="System.Int32"/>
+      <Column Name="Warehouse" DataType="System.String"/>
+      <Column Name="TermsCode" DataType="System.String"/>
+      <Column Name="TermsDescription" DataType="System.String"/>
+      <Column Name="ShipToID" DataType="System.Int32"/>
+      <Column Name="ShipToName" DataType="System.String"/>
+      <Column Name="ShipToAddress" DataType="System.String"/>
+      <Column Name="ScheduledShipDate" DataType="System.DateTime"/>
+      <Column Name="PaymentCode" DataType="System.String"/>
+      <Column Name="CustomerTaxCode" DataType="System.String"/>
+      <Column Name="Currency" DataType="System.String"/>
+      <Column Name="ExchangeRate" DataType="System.Double"/>
+      <Column Name="LastShippingdate" DataType="System.DateTime"/>
+      <Column Name="ToatalItemAmount" DataType="System.Double"/>
+      <Column Name="TotalDiscount" DataType="System.Double"/>
+      <Column Name="TotalTaxtableAmount" DataType="System.Double"/>
+      <Column Name="TaxAmount" DataType="System.Double"/>
+      <Column Name="TotalFinalAmount" DataType="System.Double"/>
+      <Column Name="TotalWeight" DataType="System.Double"/>
+      <Column Name="WeightUnitOfMessure" DataType="System.String"/>
+      <Column Name="OrderCarrier" DataType="System.String"/>
+      <Column Name="BackOrderCode" DataType="System.Int32"/>
+      <Column Name="PriceBookDate" DataType="System.DateTime"/>
+      <Column Name="CreatedByUser" DataType="System.String"/>
+      <Column Name="CreatedDate" DataType="System.DateTime"/>
+      <Column Name="LastMaintUser" DataType="System.String"/>
+      <Column Name="LastMaintDate" DataType="System.DateTime"/>
+      <Column Name="InUse" DataType="System.Int32"/>
+      <Column Name="InUseBy" DataType="System.String"/>
+      <Column Name="Facility" DataType="System.String"/>
+      <Column Name="DeleteReasonID" DataType="System.Int32"/>
+      <Column Name="OrderTruckType" DataType="System.Int32"/>
+      <Column Name="AcceptorRejectReasonID" DataType="System.Int32"/>
+      <Column Name="CustomerNote" DataType="System.String"/>
+      <Column Name="SalesNote" DataType="System.String"/>
+      <Column Name="CompanyNoteToCustomer" DataType="System.String"/>
+      <Column Name="AccountingNote" DataType="System.String"/>
+      <Column Name="LogisticNote" DataType="System.String"/>
+      <Column Name="InternalNote" DataType="System.String"/>
+      <Column Name="OrderType" DataType="System.Int32"/>
+      <Column Name="OrderReferenceNumber" DataType="System.Int32"/>
+      <Column Name="RMANumber" DataType="System.Int32"/>
+      <Column Name="CustomerPurchaseOrder" DataType="System.String"/>
+      <Column Name="CustomerPurchaseOrderDescription" DataType="System.String"/>
+      <Column Name="OrderChangedLocked" DataType="System.Int32"/>
+      <Column Name="CustomerNationlID" DataType="System.String"/>
+      <Column Name="TaxRegistration" DataType="System.String"/>
+      <Column Name="CountryID" DataType="System.Int32"/>
+      <Column Name="CountryCode" DataType="System.String"/>
+      <Column Name="CustomerName" DataType="System.String"/>
+      <Column Name="CustomerExtraName" DataType="System.String"/>
+      <Column Name="Phone" DataType="System.String"/>
+      <Column Name="LoadNumber" DataType="System.Int32"/>
+      <Column Name="TruckID" DataType="System.Int32"/>
+      <Column Name="TruckNumber" DataType="System.String"/>
+      <Column Name="DriverName" DataType="System.String"/>
+      <Column Name="Mobile" DataType="System.String"/>
+      <Column Name="AdressDetails" DataType="System.String"/>
+      <Column Name="SalesName" DataType="System.String"/>
+      <Column Name="PickByUser" DataType="System.String"/>
+    </TableDataSource>
+    <TableDataSource Name="Table2" ReferenceName="Data.Table2" DataType="System.Int32" Enabled="true">
+      <Column Name="LineOrderNumber" DataType="System.Int32"/>
+      <Column Name="LineNumber" DataType="System.Int32"/>
+      <Column Name="LineWarehouse" DataType="System.String"/>
+      <Column Name="ItemID" DataType="System.Int32"/>
+      <Column Name="ItemCode" DataType="System.String"/>
+      <Column Name="QuantityAllocated" DataType="System.Double"/>
+      <Column Name="ItemDescription" DataType="System.String"/>
+      <Column Name="SellingConversion" DataType="System.Int32"/>
+      <Column Name="PromotionFlag" DataType="System.Int32"/>
+      <Column Name="ItemExtraDescription" DataType="System.String"/>
+      <Column Name="QuantityOrderedPerConversion" DataType="System.Decimal"/>
+      <Column Name="SellingUM" DataType="System.String"/>
+      <Column Name="QuantityOrdered" DataType="System.Decimal"/>
+    </TableDataSource>
+  </Dictionary>
+  <ReportPage Name="Page2" Watermark.Font="Arial, 60pt">
+    <GroupHeaderBand Name="GroupHeader2" Restrictions="DontResize" Width="718.2" Height="289.44" StartNewPage="true" Condition="[Table1.OrderNumber]" ResetPageNumber="true">
+      <TextObject Name="Memo47" Left="134.37" Top="75.71" Width="66.75" Height="19.2" Text=":رقم الإذن" Padding="2, 1, 2, 1" HorzAlign="Right" Font="Arial, 12pt, style=Bold"/>
+      <TextObject Name="Memo71" Left="130.92" Top="99.95" Width="57.3" Height="19.2" Text=":التاريخ" Padding="2, 1, 2, 1" HorzAlign="Right" Font="Arial, 12pt, style=Bold"/>
+      <TextObject Name="Memo73" Left="621.49" Top="75.71" Width="72.75" Height="19.2" Text=":اسم العميل" Padding="2, 1, 2, 1" HorzAlign="Right" Font="Arial, 12pt, style=Bold"/>
+      <TextObject Name="Memo74" Left="269.55" Top="75.71" Width="343.26" Height="19.2" Text="[Table1.CustomerExtraName]" Padding="2, 1, 2, 1" HorzAlign="Right" Font="Arial, 12pt, style=Bold"/>
+      <TextObject Name="Memo75" Left="620.49" Top="128.85" Width="101.1" Height="19.2" Text=": عنوان التسليم" Padding="2, 1, 2, 1" HorzAlign="Right" Font="Arial, 12pt, style=Bold"/>
+      <TextObject Name="Memo77" Left="286.68" Top="37.8" Width="119.58" Height="33.6" Text="إذن تحميل" Padding="2, 1, 2, 1" HorzAlign="Center" Font="Arial, 21pt, style=Bold, Underline"/>
+      <TextObject Name="Memo78" Left="620.49" Top="99.95" Width="72.75" Height="19.2" Text=":رقم العميل" Padding="2, 1, 2, 1" HorzAlign="Right" Font="Arial, 12pt, style=Bold"/>
+      <TextObject Name="Memo79" Left="362.37" Top="99.95" Width="250.43" Height="19.2" Text="[Table1.CustomerNumber]" Padding="2, 1, 2, 1" HorzAlign="Right" Font="Arial, 12pt, style=Bold"/>
+      <TextObject Name="Memo82" Left="130.92" Top="152.15" Width="47.85" Height="19.2" Text=":الناقل" Padding="2, 1, 2, 1" HorzAlign="Right" Font="Arial, 12pt, style=Bold"/>
+      <TextObject Name="Memo86" Left="131.92" Top="174.41" Width="57.3" Height="19.2" Text=":المخزن" Padding="2, 1, 2, 1" HorzAlign="Right" Font="Arial, 12pt, style=Bold"/>
+      <TextObject Name="Memo30" Left="7.56" Top="75.71" Width="118.15" Height="19.2" Text="[Table1.OrderNumber]" Padding="2, 1, 2, 1" HorzAlign="Right" Font="Arial, 12pt, style=Bold"/>
+      <TextObject Name="Memo31" Left="7.56" Top="99.95" Width="118.15" Height="19.2" Text="[Table1.DateOrderEntered]" Padding="2, 1, 2, 1" HorzAlign="Right" Font="Arial, 12pt, style=Bold"/>
+      <TextObject Name="Memo32" Left="7.56" Top="152.15" Width="118.15" Height="19.2" Text="[Table1.OrderCarrier]" Padding="2, 1, 2, 1" HorzAlign="Right" Font="Arial, 12pt, style=Bold"/>
+      <TextObject Name="Memo33" Left="128.92" Top="124.95" Width="95.1" Height="19.2" Text=":اسم المستخدم" Padding="2, 1, 2, 1" HorzAlign="Right" Font="Arial, 12pt, style=Bold"/>
+      <TextObject Name="Memo34" Left="7.56" Top="124.95" Width="118.15" Height="19.2" Text="[Table1.LastMaintUser]" Padding="2, 1, 2, 1" HorzAlign="Right" Font="Arial, 12pt, style=Bold"/>
+      <TextObject Name="Memo35" Left="7.56" Top="174.41" Width="118.15" Height="19.2" Text="[Table1.Warehouse]" Padding="2, 1, 2, 1" HorzAlign="Right" Font="Arial, 12pt, style=Bold"/>
+      <TextObject Name="Memo36" Left="555.19" Top="256.68" Width="128.51" Height="32.13" Border.Lines="All" Text="رقم الصنف" Padding="2, 1, 2, 1" HorzAlign="Center" VertAlign="Center" Font="Arial, 12pt, style=Bold"/>
+      <TextObject Name="Memo37" Left="252.78" Top="256.68" Width="302.39" Height="32.13" Border.Lines="All" Text="اسم الصنف" Padding="2, 1, 2, 1" HorzAlign="Center" VertAlign="Center" Font="Arial, 12pt, style=Bold"/>
+      <TextObject Name="Memo38" Left="81.59" Top="256.68" Width="76.73" Height="32.13" Border.Lines="All" Fill.Color="228, 228, 228" Text="كرتون" Padding="2, 1, 2, 1" HorzAlign="Center" VertAlign="Center" Font="Arial, 12pt, style=Bold"/>
+      <TextObject Name="Memo42" Left="684.23" Top="256.68" Width="33.43" Height="32.13" Border.Lines="All" Text="م" Padding="2, 1, 2, 1" HorzAlign="Center" VertAlign="Center" Font="Arial, 12pt, style=Bold"/>
+      <TextObject Name="Memo26" Top="256.68" Width="82.39" Height="32.13" Border.Lines="All" Text="ملاحظات" Padding="2, 1, 2, 1" HorzAlign="Center" VertAlign="Center" Font="Arial, 12pt, style=Bold"/>
+      <TextObject Name="Memo27" Left="158.28" Top="256.68" Width="94.76" Height="32.13" Border.Lines="All" Fill.Color="228, 228, 228" Text="الوارد في الطلب" Padding="2, 1, 2, 1" Format="Number" Format.UseLocale="false" Format.DecimalDigits="0" Format.DecimalSeparator="." Format.GroupSeparator="," Format.NegativePattern="3" HorzAlign="Center" VertAlign="Center" Font="Arial, 11pt, style=Bold"/>
+      <TextObject Name="Memo1" Left="253.79" Top="128.95" Width="362.15" Height="19.2" Text="[Table1.ShipToAddress]" Padding="2, 1, 2, 1" HorzAlign="Right" Font="Arial, 12pt, style=Bold"/>
+      <TextObject Name="Text3" Left="253.79" Top="198.45" Width="362.15" Height="19.2" Text="[Table1.InternalNote]" Padding="2, 1, 2, 1" HorzAlign="Right" Font="Arial, 12pt, style=Bold"/>
+      <TextObject Name="Text4" Left="253.79" Top="175.55" Width="362.15" Height="19.2" Text="[Table1.Phone]" Padding="2, 1, 2, 1" HorzAlign="Right" Font="Arial, 12pt, style=Bold"/>
+      <TextObject Name="Text5" Left="623.49" Top="175.55" Width="82.2" Height="19.2" Text=": رقم التلفون" Padding="2, 1, 2, 1" HorzAlign="Right" Font="Arial, 12pt, style=Bold"/>
+      <TextObject Name="Text6" Left="612.7" Top="199.35" Width="82.2" Height="19.2" Text=": ملاحظات" Padding="2, 1, 2, 1" HorzAlign="Right" Font="Arial, 12pt, style=Bold"/>
+      <DataBand Name="MasterData1" Top="293.44" Width="718.2" DataSource="Table1">
+        <DataBand Name="Data1" Top="297.44" Width="718.2" Height="25.96" DataSource="Table2" Filter="[Table1.OrderNumber]==[Table2.LineOrderNumber]">
+          <TextObject Name="Memo16" Left="555.19" Top="0.8" Width="128.51" Height="25.16" Border.Lines="All" Text="[Table2.ItemCode]" Padding="2, 1, 2, 1" HorzAlign="Center" VertAlign="Center" Font="Arial, 11pt, style=Bold">
+            <Highlight>
+              <Condition Expression="[Table2.PromotionFlag] == 1" Fill="LinearGradient" Fill.StartColor="DimGray" Fill.EndColor="White" Fill.Angle="0" Fill.Focus="0.23" Fill.Contrast="1" TextFill.Color="Black" Font="Arial, 9.75pt, style=Bold, Italic" ApplyFill="true" ApplyFont="true"/>
+            </Highlight>
+          </TextObject>
+          <TextObject Name="Memo18" Left="252.78" Top="0.8" Width="302.39" Height="25.16" Border.Lines="All" Text="[Table2.ItemDescription]" Padding="2, 1, 2, 1" HorzAlign="Center" VertAlign="Center" RightToLeft="true" Font="Arial, 9pt, style=Bold">
+            <Highlight>
+              <Condition Expression="[Table2.ItemCode] == &quot;SDA303000P&quot;" Fill.Color="LightGray" Font="Arial, 10pt" ApplyFill="true" ApplyTextFill="false"/>
+              <Condition Expression=" [Table2.PromotionFlag]== 1" Fill="LinearGradient" Fill.StartColor="DimGray" Fill.EndColor="White" Fill.Angle="0" Fill.Focus="0.24" Fill.Contrast="1" TextFill.Color="Black" Font="Arial, 9.75pt, style=Bold, Italic" ApplyFill="true" ApplyFont="true"/>
+            </Highlight>
+          </TextObject>
+          <TextObject Name="Memo19" Left="684.23" Top="0.8" Width="33.43" Height="25.16" Border.Lines="All" Text="[Table2.LineNumber]" Padding="2, 1, 2, 1" HorzAlign="Center" VertAlign="Center" Font="Arial, 11pt, style=Bold">
+            <Highlight>
+              <Condition Expression=" [Table2.PromotionFlag] == 1" Fill="LinearGradient" Fill.StartColor="DimGray" Fill.EndColor="White" Fill.Angle="0" Fill.Focus="0.24" Fill.Contrast="1" TextFill.Color="Black" Font="Arial, 9.75pt, style=Bold, Italic" ApplyFill="true" ApplyFont="true"/>
+            </Highlight>
+          </TextObject>
+          <TextObject Name="Memo20" Left="81.59" Top="0.8" Width="76.73" Height="25.16" Border.Lines="All" Fill.Color="228, 228, 228" Text="[Table2.QuantityOrderedPerConversion]" Padding="2, 1, 2, 1" HorzAlign="Center" VertAlign="Center" Font="Arial, 11pt, style=Bold">
+            <Formats>
+              <NumberFormat UseLocale="false" NegativePattern="3"/>
+              <GeneralFormat/>
+            </Formats>
+            <Highlight>
+              <Condition Expression=" [Table2.PromotionFlag] == 1" Fill="LinearGradient" Fill.StartColor="DimGray" Fill.EndColor="White" Fill.Angle="0" Fill.Focus="0.24" Fill.Contrast="1" TextFill.Color="Black" Font="Arial, 9.75pt, style=Bold, Italic" ApplyFill="true" ApplyFont="true"/>
+            </Highlight>
+          </TextObject>
+          <TextObject Name="Memo43" Top="0.8" Width="82.39" Height="25.16" Border.Lines="All" Padding="2, 1, 2, 1" HorzAlign="Center" VertAlign="Center" Font="Arial, 11pt"/>
+          <TextObject Name="Memo41" Left="158.28" Top="0.8" Width="94.76" Height="25.16" Border.Lines="All" Fill.Color="228, 228, 228" Text="[Table2.QuantityOrdered]" Padding="2, 1, 2, 1" Format="Number" Format.UseLocale="false" Format.DecimalDigits="0" Format.DecimalSeparator="." Format.GroupSeparator="," Format.NegativePattern="3" HorzAlign="Center" VertAlign="Center" Font="Arial, 11pt, style=Bold">
+            <Highlight>
+              <Condition Expression=" [Table2.PromotionFlag] == 1" Fill="LinearGradient" Fill.StartColor="DimGray" Fill.EndColor="White" Fill.Angle="0" Fill.Focus="0.23" Fill.Contrast="1" TextFill.Color="Black" Font="Arial, 9.75pt, style=Bold, Italic" ApplyFill="true" ApplyFont="true"/>
+            </Highlight>
+          </TextObject>
+          <Sort>
+            <Sort Expression="[Table2.LineNumber]"/>
+          </Sort>
+        </DataBand>
+        <Sort>
+          <Sort Expression="[Table1.OrderNumber]"/>
+        </Sort>
+      </DataBand>
+      <GroupFooterBand Name="GroupFooter1" Top="327.4" Width="718.2" Height="162.52">
+        <TextObject Name="Memo45" Left="585.96" Top="51.03" Width="116.04" Height="19.2" Text=": ملاحظات تحضير" Padding="2, 1, 2, 1" HorzAlign="Right" Font="Arial, 11pt, style=Bold"/>
+        <TextObject Name="Memo46" Left="608.04" Top="134.18" Width="93.96" Height="19.2" Text="مشرف التحضير" Padding="2, 1, 2, 1" HorzAlign="Right" Font="Arial, 11pt, style=Bold"/>
+        <TextObject Name="Text7" Left="585.9" Top="2.9" Width="116.04" Height="19.2" Text=": ملاحظات حجز" Padding="2, 1, 2, 1" HorzAlign="Right" Font="Arial, 11pt, style=Bold"/>
+      </GroupFooterBand>
+    </GroupHeaderBand>
+    <PageFooterBand Name="PageFooter1" Top="493.92" Width="718.2" Height="36.21">
+      <TextObject Name="Memo3" Left="7.56" Top="7.56" Width="99.48" Height="19.2" Text="Page [Page]" Padding="2, 1, 2, 1" VertAlign="Center" Font="Arial, 10pt"/>
+      <TextObject Name="Memo4" Left="604.72" Top="-1.89" Width="107.04" Height="38.1" Text="[Date]" Padding="2, 1, 2, 1" HorzAlign="Center" VertAlign="Center" Font="Arial, 9pt, style=Bold"/>
+    </PageFooterBand>
+  </ReportPage>
+  <ReportPage Name="Page4" Watermark.Font="Arial, 60pt">
+    <GroupHeaderBand Name="GroupHeader1" Width="718.2" Height="319.44" StartNewPage="true" Condition="[Table1.OrderNumber]" ResetPageNumber="true">
+      <TextObject Name="Memo6" Left="143.04" Top="136.71" Width="76.2" Height="19.2" Text=":رقم الإذن" Padding="2, 1, 2, 1" HorzAlign="Right" Font="Arial, 12pt, style=Bold"/>
+      <TextObject Name="Memo7" Left="138.48" Top="188.95" Width="66.75" Height="19.2" Text=":التاريخ" Padding="2, 1, 2, 1" HorzAlign="Right" Font="Arial, 12pt, style=Bold"/>
+      <TextObject Name="Memo8" Left="618.14" Top="136.71" Width="91.65" Height="19.2" Text=":اسم العميل" Padding="2, 1, 2, 1" HorzAlign="Right" Font="Arial, 12pt, style=Bold"/>
+      <TextObject Name="Memo9" Left="248.3" Top="136.71" Width="343.26" Height="19.2" Text="[Table1.CustomerExtraName]" Padding="2, 1, 2, 1" HorzAlign="Right" Font="Arial, 12pt, style=Bold"/>
+      <TextObject Name="Memo10" Left="625.7" Top="185.95" Width="84.09" Height="19.2" Text=":رقم السيارة" Padding="2, 1, 2, 1" HorzAlign="Right" Font="Arial, 12pt, style=Bold"/>
+      <TextObject Name="Memo12" Left="625.7" Top="160.95" Width="84.09" Height="19.2" Text=":اسم السائق" Padding="2, 1, 2, 1" HorzAlign="Right" Font="Arial, 12pt, style=Bold"/>
+      <TextObject Name="Memo29" Left="7.56" Top="136.71" Width="110.59" Height="19.2" Text="[Table1.OrderNumber]" Padding="2, 1, 2, 1" HorzAlign="Right" Font="Arial, 12pt, style=Bold"/>
+      <TextObject Name="Memo66" Left="-3.78" Top="188.95" Width="118.15" Height="19.2" Text="[Table1.ScheduledShipDate]" Padding="2, 1, 2, 1" HorzAlign="Right" Font="Arial, 12pt, style=Bold"/>
+      <TextObject Name="Memo94" Left="138.48" Top="162.95" Width="121.55" Height="19.2" Text=":رقم الإذن النهائي" Padding="2, 1, 2, 1" HorzAlign="Right" Font="Arial, 12pt, style=Bold"/>
+      <TextObject Name="Memo98" Left="395.41" Top="266.13" Width="272.13" Height="53.29" Border.Lines="All" Text="اسم الصنف" Padding="2, 1, 2, 1" HorzAlign="Center" VertAlign="Center" Font="Arial, 12pt, style=Bold"/>
+      <TextObject Name="Memo101" Left="667.67" Top="266.13" Width="50.44" Height="53.29" Border.Lines="All" Text="الرقم" Padding="2, 1, 2, 1" HorzAlign="Center" VertAlign="Center" Font="Arial, 12pt, style=Bold"/>
+      <TextObject Name="Memo104" Left="185.2" Top="266.13" Width="209.79" Height="26.76" Border.Lines="All" Text="الكمية الفعلية" Padding="2, 1, 2, 1" HorzAlign="Center" VertAlign="Center" Font="Arial, 12pt, style=Bold"/>
+      <TextObject Name="Memo107" Left="185.2" Top="292.68" Width="104.88" Height="26.76" Border.Lines="All" Text="عدد الطرود" Padding="2, 1, 2, 1" HorzAlign="Center" VertAlign="Center" Font="Arial, 12pt, style=Bold"/>
+      <TextObject Name="Memo108" Left="290.1" Top="292.68" Width="104.88" Height="26.76" Border.Lines="All" Text="العدد" Padding="2, 1, 2, 1" HorzAlign="Center" VertAlign="Center" Font="Arial, 12pt, style=Bold"/>
+      <TextObject Name="Memo63" Left="195.86" Top="60.57" Width="326.4" Height="28.8" Text="إذن تحميل مؤقت خاص بمشرف التحميل" Padding="2, 1, 2, 1" HorzAlign="Center" Font="Arial, 18pt, style=Bold"/>
+      <LineObject Name="Line38" Left="277.89" Top="180.15" Width="326.4" Diagonal="true"/>
+      <LineObject Name="Line1" Left="277.89" Top="205.15" Width="326.4" Diagonal="true"/>
+      <LineObject Name="Line40" Left="7.78" Top="180.15" Width="104.47" Diagonal="true"/>
+      <TextObject Name="Memo11" Top="266.13" Width="185.2" Height="53.29" Border.Lines="All" Text="ملاحظــــــــات" Padding="2, 1, 2, 1" HorzAlign="Center" VertAlign="Center" Font="Arial, 12pt, style=Bold"/>
+      <TextObject Name="Text8" Left="612.4" Top="214.9" Width="101.1" Height="19.2" Text=": عنوان التسليم" Padding="2, 1, 2, 1" HorzAlign="Right" Font="Arial, 12pt, style=Bold"/>
+      <TextObject Name="Text9" Left="245.7" Top="215" Width="362.15" Height="19.2" Text="[Table1.ShipToAddress]" Padding="2, 1, 2, 1" HorzAlign="Right" Font="Arial, 12pt, style=Bold"/>
+      <DataBand Name="MasterData2" Top="323.44" Width="718.2" Height="26.5" DataSource="Table2" Filter="[Table1.OrderNumber]==[Table2.LineOrderNumber]">
+        <TextObject Name="Memo15" Left="395.41" Top="0.8" Width="272.13" Height="25.7" Border.Lines="All" Text="[Table2.ItemDescription]" Padding="2, 1, 2, 1" HorzAlign="Center" VertAlign="Center" RightToLeft="true" Font="Arial, 9pt, style=Bold">
+          <Highlight>
+            <Condition Expression="[Table2.PromotionFlag] == 1" Fill="LinearGradient" Fill.StartColor="DimGray" Fill.EndColor="White" Fill.Angle="0" Fill.Focus="0.24" Fill.Contrast="1" TextFill.Color="Black" Font="Arial, 9.75pt, style=Bold, Italic" ApplyFill="true" ApplyFont="true"/>
+            <Condition Expression="[Table2.ItemCode]==&quot;SDA303000P&quot;" Fill.Color="LightGray" Font="Arial, 10pt" ApplyFill="true" ApplyTextFill="false"/>
+          </Highlight>
+        </TextObject>
+        <TextObject Name="Memo28" Left="667.67" Top="0.8" Width="50.44" Height="25.7" Border.Lines="All" Text="[Table2.LineNumber]" Padding="2, 1, 2, 1" HorzAlign="Center" VertAlign="Center" Font="Arial, 11pt">
+          <Highlight>
+            <Condition Expression=" [Table2.PromotionFlag]== 1" Fill="LinearGradient" Fill.StartColor="DimGray" Fill.EndColor="White" Fill.Angle="0" Fill.Focus="0.27" Fill.Contrast="1" TextFill.Color="Black" Font="Arial, 9.75pt, style=Bold, Italic" ApplyFill="true" ApplyFont="true"/>
+          </Highlight>
+        </TextObject>
+        <TextObject Name="Memo53" Left="290.1" Top="0.8" Width="104.88" Height="25.7" Border.Lines="All" Padding="2, 1, 2, 1" Format="Number" Format.UseLocale="true" Format.DecimalDigits="2" HorzAlign="Center" VertAlign="Center" Font="Arial, 10pt">
+          <Highlight>
+            <Condition Expression=" [Table2.PromotionFlag]== 1" Fill="LinearGradient" Fill.StartColor="DimGray" Fill.EndColor="White" Fill.Angle="0" Fill.Focus="0.27" Fill.Contrast="1" TextFill.Color="Black" Font="Arial, 9.75pt, style=Bold, Italic" ApplyFill="true" ApplyFont="true"/>
+          </Highlight>
+        </TextObject>
+        <TextObject Name="Memo55" Top="0.8" Width="185.2" Height="25.7" Border.Lines="All" Padding="2, 1, 2, 1" HorzAlign="Center" VertAlign="Center" Font="Arial, 11pt"/>
+        <TextObject Name="Memo56" Left="185.2" Top="0.8" Width="104.88" Height="25.7" Border.Lines="All" Padding="2, 1, 2, 1" Format="Number" Format.UseLocale="true" Format.DecimalDigits="2" HorzAlign="Center" VertAlign="Center" Font="Arial, 10pt">
+          <Highlight>
+            <Condition Expression="[Table2.PromotionFlag] == 1" Fill="LinearGradient" Fill.StartColor="DimGray" Fill.EndColor="White" Fill.Angle="0" Fill.Focus="0.27" Fill.Contrast="1" TextFill.Color="Black" Font="Arial, 9.75pt, style=Bold, Italic" ApplyFill="true" ApplyFont="true"/>
+          </Highlight>
+        </TextObject>
+        <Sort>
+          <Sort Expression="[Table2.LineNumber]"/>
+        </Sort>
+      </DataBand>
+      <GroupFooterBand Name="GroupFooter2" Top="353.94" Width="718.2" Height="79.37">
+        <TextObject Name="Memo14" Left="39.72" Top="13.23" Width="88.14" Height="19.2" Text="أسماء العمال" Padding="2, 1, 2, 1" HorzAlign="Center" VertAlign="Center" Font="Arial, 12pt, style=Bold"/>
+        <TextObject Name="Memo48" Left="606.72" Top="3.78" Width="97.59" Height="38.1" Text="مشرف التحميل" Padding="2, 1, 2, 1" HorzAlign="Center" VertAlign="Center" Font="Arial, 12pt, style=Bold"/>
+      </GroupFooterBand>
+    </GroupHeaderBand>
+    <PageFooterBand Name="PageFooter2" Top="437.31" Width="718.2" Height="34.02">
+      <TextObject Name="Memo49" Left="7.56" Top="7.56" Width="99.48" Height="19.2" Text="Page [Page]" Padding="2, 1, 2, 1" VertAlign="Center" Font="Arial, 10pt"/>
+    </PageFooterBand>
+  </ReportPage>
+</Report>

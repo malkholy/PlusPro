@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { apiCall } from './shared/api.js';
 
 // Error Boundary to catch render crashes and display error info instead of blank page
@@ -52,10 +52,19 @@ import JournalModel from './pages/JournalModel.jsx';
 import SmartJournal from './pages/SmartJournal.jsx';
 import UserPermissions from './pages/UserPermissions.jsx';
 import QueryMaster from './pages/QueryMaster.jsx';
+import LookupQueries from './pages/LookupQueries.jsx';
 import AccountingFunctions from './pages/AccountingFunctions.jsx';
 import AccountingMacros from './pages/AccountingMacros.jsx';
 import CashReceive from './pages/CashReceive.jsx';
 import AccountingEvents from './pages/AccountingEvents.jsx';
+import PageBuilder from './pages/PageBuilder.jsx';
+import PageMaster from './pages/PageMaster.jsx';
+import GenericMasterPage from './shared/GenericMasterPage.jsx';
+import ReportsMaster from './pages/ReportsMaster.jsx';
+import ItemBalance from './pages/ItemBalance.jsx';
+import WarehouseTransfer from './pages/WarehouseTransfer.jsx';
+import ItemMaster from './pages/ItemMaster.jsx';
+import Orders from './pages/Orders.jsx';
 
 
 
@@ -66,7 +75,16 @@ const css = `
     --bg: #f1f5f9;
     --surface: #ffffff;
     --soft: #f8fafc;
-    --sidebar: #1a2332;
+    --sidebar: #121b2b;
+    --sidebar-surface: #1b2638;
+    --sidebar-surface-hover: #243146;
+    --sidebar-border: rgba(255, 255, 255, 0.10);
+    --sidebar-text-primary: #f7f8fa;
+    --sidebar-text-secondary: #aeb7c6;
+    --sidebar-text-muted: #747f91;
+    --brand-orange: #ff650f;
+    --brand-orange-hover: #ff7a28;
+    --brand-orange-soft: rgba(255, 101, 15, 0.14);
     --text: #0f172a;
     --muted: #64748b;
     --hint: #94a3b8;
@@ -133,55 +151,73 @@ const css = `
 
   /* ── LAYOUT ── */
   .app { display: flex; min-height: 100vh; }
-  .sidebar { width: 256px; min-width: 256px; background: var(--sidebar); display: flex; flex-direction: column; position: fixed; inset: 0 auto 0 0; overflow: hidden; }
-  .sb-head { padding: 18px 16px 12px; border-bottom: 1px solid rgba(255,255,255,.07); }
+  .sidebar { width: 256px; min-width: 256px; background: var(--sidebar); display: flex; flex-direction: column; position: fixed; inset: 0 auto 0 0; overflow: hidden; font-family: var(--font); }
+  .sb-head { flex-shrink: 0; padding: 16px 14px 14px; border-bottom: 1px solid var(--sidebar-border); }
   .sb-brand { display: flex; align-items: center; gap: 11px; cursor: pointer; user-select: none; }
-  .sb-logo { width: 40px; height: 40px; border-radius: 12px; background: linear-gradient(135deg, var(--orange), var(--orange2)); color: #fff; font-size: 15px; font-weight: 800; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
-  .sb-name { font-size: 15px; font-weight: 800; color: #fff; }
-  .sb-ver { font-size: 10px; color: rgba(255,255,255,.3); font-family: var(--mono); }
-  .sb-nav { flex: 1; overflow-y: auto; padding: 10px 8px; display: flex; flex-direction: column; }
-  .sb-item { display: flex; align-items: center; gap: 10px; padding: 9px 10px; border-radius: var(--radius-sm); cursor: pointer; color: rgba(255,255,255,.62); font-size: 13px; font-weight: 500; transition: all .15s; margin-bottom: 2px; border: none; background: none; width: 100%; text-align: left; font-family: var(--font); }
-  .sb-item:hover { background: rgba(255,255,255,.07); color: #fff; }
-  .sb-item.active { background: linear-gradient(135deg, var(--orange), var(--orange2)); color: #fff; font-weight: 700; box-shadow: 0 4px 14px var(--orange-glow); }
-  .sb-icon { width: 28px; height: 28px; border-radius: 7px; background: rgba(255,255,255,.08); display: flex; align-items: center; justify-content: center; font-size: 14px; flex-shrink: 0; }
-  .sb-item.active .sb-icon { background: rgba(255,255,255,.2); }
-  .sb-group { margin-bottom: 12px; }
-  .sb-group-title { display: flex; align-items: center; justify-content: space-between; padding: 6px 10px; color: rgba(255,255,255,.38); font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: .08em; user-select: none; }
-  .sb-sub-item { display: flex; align-items: center; gap: 10px; padding: 8px 10px 8px 20px; border-radius: var(--radius-sm); cursor: pointer; color: rgba(255,255,255,.62); font-size: 13px; font-weight: 500; transition: all .15s; margin-bottom: 2px; border: none; background: none; width: 100%; text-align: left; font-family: var(--font); }
-  .sb-sub-item:hover { background: rgba(255,255,255,.07); color: #fff; }
-  .sb-sub-item.active { background: linear-gradient(135deg, var(--orange), var(--orange2)); color: #fff; font-weight: 700; box-shadow: 0 4px 14px var(--orange-glow); }
-  .sb-foot { padding: 12px 8px; border-top: 1px solid rgba(255,255,255,.07); }
-  .sb-profile { display: flex; align-items: center; gap: 10px; padding: 8px 10px; margin-bottom: 8px; }
-  .sb-avatar { width: 34px; height: 34px; border-radius: 50%; background: linear-gradient(135deg, var(--orange), var(--orange2)); color: #fff; font-size: 12px; font-weight: 800; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
-  .sb-uname { font-size: 13px; font-weight: 700; color: #fff; }
-  .sb-urole { font-size: 11px; color: rgba(255,255,255,.38); }
-  .sb-actions { display: flex; gap: 6px; }
-  .sb-btn { flex: 1; height: 34px; border: 1px solid rgba(255,255,255,.1); border-radius: var(--radius-xs); background: rgba(255,255,255,.05); color: rgba(255,255,255,.65); font-family: var(--font); font-size: 11px; font-weight: 600; cursor: pointer; transition: all .15s; }
-  .sb-btn:hover { background: rgba(255,255,255,.12); color: #fff; }
-  .sb-btn.danger { border-color: rgba(249,115,22,.22); background: rgba(249,115,22,.08); color: #fb923c; }
-  .sb-btn.danger:hover { background: rgba(249,115,22,.18); color: #fff; }
+  .sb-logo { width: 38px; height: 38px; border-radius: 11px; background: linear-gradient(135deg, var(--brand-orange), var(--brand-orange-hover)); color: #fff; font-size: 14px; font-weight: 800; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  .sb-name { font-size: 15.5px; font-weight: 800; color: var(--sidebar-text-primary); letter-spacing: -.01em; line-height: 1.25; }
+  .sb-ver { font-size: 10px; font-weight: 500; color: var(--sidebar-text-muted); font-family: var(--mono); margin-top: 1px; }
+  .sb-collapse-btn { background: var(--sidebar-surface); border: 1px solid var(--sidebar-border); color: var(--sidebar-text-secondary); cursor: pointer; font-size: 11px; width: 28px; height: 28px; border-radius: 10px; display: flex; align-items: center; justify-content: center; transition: all .18s; flex-shrink: 0; }
+  .sb-collapse-btn:hover { background: var(--sidebar-surface-hover); color: var(--brand-orange-hover); border-color: rgba(255,101,15,.3); }
+  .sb-collapse-btn:focus-visible { outline: 2px solid var(--brand-orange); outline-offset: 2px; }
+
+  .sb-nav { flex: 1; overflow-y: auto; overflow-x: hidden; padding: 12px 10px; display: flex; flex-direction: column; scrollbar-width: thin; scrollbar-color: var(--sidebar-surface-hover) transparent; }
+  .sb-nav::-webkit-scrollbar { width: 6px; }
+  .sb-nav::-webkit-scrollbar-track { background: transparent; }
+  .sb-nav::-webkit-scrollbar-thumb { background: var(--sidebar-surface-hover); border-radius: 999px; }
+  .sb-nav::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,.18); }
+
+  .sb-item, .sb-sub-item { position: relative; display: flex; align-items: center; gap: 11px; min-height: 48px; padding: 8px 12px; border-radius: 12px; cursor: pointer; color: var(--sidebar-text-secondary); font-size: 13.5px; font-weight: 600; letter-spacing: .01em; transition: background .18s, color .18s; margin-bottom: 3px; border: none; background: none; width: 100%; text-align: left; font-family: var(--font); }
+  .sb-sub-item { padding-left: 20px; }
+  .sb-item:hover, .sb-sub-item:hover { background: var(--sidebar-surface-hover); color: var(--sidebar-text-primary); }
+  .sb-item:hover .sb-icon, .sb-sub-item:hover .sb-icon { color: var(--brand-orange-hover); border-color: rgba(255,101,15,.28); }
+  .sb-item:focus-visible, .sb-sub-item:focus-visible, .sb-group-title:focus-visible { outline: 2px solid var(--brand-orange); outline-offset: -2px; }
+  .sb-item.active, .sb-sub-item.active { background: var(--brand-orange); color: #fff; font-weight: 700; box-shadow: 0 3px 10px var(--brand-orange-soft); }
+  .sb-item.active::before, .sb-sub-item.active::before { content: ''; position: absolute; left: 0; top: 8px; bottom: 8px; width: 3px; border-radius: 999px; background: rgba(255,255,255,.85); }
+  .sb-item.active .sb-icon, .sb-sub-item.active .sb-icon { background: rgba(255,255,255,.22); border-color: rgba(255,255,255,.35); color: #fff; }
+
+  .sb-icon { width: 30px; height: 30px; border-radius: 9px; background: var(--sidebar-surface); border: 1px solid var(--sidebar-border); display: flex; align-items: center; justify-content: center; font-size: 15px; flex-shrink: 0; color: var(--sidebar-text-secondary); transition: all .18s; }
+
+  .sb-group { margin-bottom: 10px; }
+  .sb-group-title { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 10px; margin-bottom: 4px; background: var(--sidebar-surface); border: 1px solid var(--sidebar-border); border-left: 3px solid transparent; color: var(--sidebar-text-muted); font-size: 10.5px; font-weight: 800; text-transform: uppercase; letter-spacing: .07em; user-select: none; cursor: pointer; border-radius: 10px; width: 100%; font-family: var(--font); transition: background .18s, color .18s; }
+  .sb-group-title:hover { background: var(--sidebar-surface-hover); color: var(--sidebar-text-secondary); }
+  .sb-group-chevron { font-size: 9px; color: inherit; transition: transform .18s; flex-shrink: 0; }
+
+  .sb-foot { flex-shrink: 0; padding: 12px 10px; border-top: 1px solid var(--sidebar-border); }
+  .sb-profile { display: flex; align-items: center; gap: 10px; padding: 10px; margin-bottom: 10px; background: var(--sidebar-surface); border: 1px solid var(--sidebar-border); border-radius: 12px; }
+  .sb-avatar { width: 34px; height: 34px; border-radius: 50%; background: linear-gradient(135deg, var(--brand-orange), var(--brand-orange-hover)); color: #fff; font-size: 12px; font-weight: 800; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  .sb-uname { font-size: 13px; font-weight: 700; color: var(--sidebar-text-primary); }
+  .sb-urole { font-size: 11px; color: var(--sidebar-text-muted); margin-top: 1px; }
+  .sb-actions { display: flex; gap: 8px; }
+  .sb-btn { flex: 1; height: 36px; border: 1px solid var(--sidebar-border); border-radius: 10px; background: var(--sidebar-surface); color: var(--sidebar-text-secondary); font-family: var(--font); font-size: 11.5px; font-weight: 600; cursor: pointer; transition: all .18s; display: flex; align-items: center; justify-content: center; gap: 5px; }
+  .sb-btn:hover { background: var(--sidebar-surface-hover); color: var(--sidebar-text-primary); }
+  .sb-btn:focus-visible { outline: 2px solid var(--brand-orange); outline-offset: 2px; }
+  .sb-btn.danger { border-color: rgba(255,101,15,.35); background: transparent; color: var(--brand-orange-hover); }
+  .sb-btn.danger:hover { background: var(--brand-orange-soft); color: var(--brand-orange-hover); border-color: var(--brand-orange); }
 
   /* ── COLLAPSIBLE SIDEBAR ── */
   .sidebar { transition: width 0.2s cubic-bezier(0.4, 0, 0.2, 1); }
   .main { transition: margin-left 0.2s cubic-bezier(0.4, 0, 0.2, 1); }
-  
+
   .sidebar.collapsed { width: 68px; min-width: 68px; }
-  .sidebar.collapsed .sb-logo { margin: 0 auto; }
-  .sidebar.collapsed .sb-name,
-  .sidebar.collapsed .sb-ver,
-  .sidebar.collapsed .sb-uname,
-  .sidebar.collapsed .sb-urole,
-  .sidebar.collapsed .sb-actions,
-  .sidebar.collapsed .sb-brand-text,
-  .sidebar.collapsed .sb-group-title span span:last-child,
-  .sidebar.collapsed .sb-item span:last-child,
-  .sidebar.collapsed .sb-sub-item span:last-child { display: none; }
-  
-  .sidebar.collapsed .sb-sub-item { padding: 8px 0; justify-content: center; }
-  .sidebar.collapsed .sb-item { padding: 9px 0; justify-content: center; }
-  .sidebar.collapsed .sb-group-title { justify-content: center; padding: 6px 0; }
-  .sidebar.collapsed .sb-foot { display: flex; flex-direction: column; align-items: center; justify-content: center; }
-  
+  .sidebar.collapsed:hover { width: 256px; min-width: 256px; z-index: 50; box-shadow: 4px 0 24px rgba(0,0,0,.28); }
+  .sidebar.collapsed:not(:hover) .sb-logo { margin: 0 auto; }
+  .sidebar.collapsed:not(:hover) .sb-name,
+  .sidebar.collapsed:not(:hover) .sb-ver,
+  .sidebar.collapsed:not(:hover) .sb-uname,
+  .sidebar.collapsed:not(:hover) .sb-urole,
+  .sidebar.collapsed:not(:hover) .sb-actions,
+  .sidebar.collapsed:not(:hover) .sb-brand-text,
+  .sidebar.collapsed:not(:hover) .sb-group-title span span:last-child,
+  .sidebar.collapsed:not(:hover) .sb-group-chevron,
+  .sidebar.collapsed:not(:hover) .sb-item span:last-child,
+  .sidebar.collapsed:not(:hover) .sb-sub-item span:last-child { display: none; }
+
+  .sidebar.collapsed:not(:hover) .sb-sub-item { padding: 8px 0; justify-content: center; }
+  .sidebar.collapsed:not(:hover) .sb-item { padding: 8px 0; justify-content: center; }
+  .sidebar.collapsed:not(:hover) .sb-group-title { justify-content: center; padding: 8px 0; border-left-width: 0; }
+  .sidebar.collapsed:not(:hover) .sb-foot { display: flex; flex-direction: column; align-items: center; justify-content: center; }
+
   .main.collapsed { margin-left: 68px; }
 
   /* ── MAIN ── */
@@ -196,7 +232,7 @@ const css = `
   .tab-close:hover { background: var(--border); color: var(--muted); }
   .page-area { flex: 1; padding: 24px; display: flex; flex-direction: column; overflow: hidden; }
   .page-area > div { display: flex; flex-direction: column; flex: 1; min-height: 0; height: 100%; }
-  .page-area > div.flex-row-layout { flex-direction: row; }
+  .flex-row-layout { display: flex; flex-direction: row; }
 
   /* ── SHARED PAGE ── */
   .page-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 22px; }
@@ -217,6 +253,11 @@ const css = `
 const styleEl = document.createElement('style');
 styleEl.textContent = css;
 document.head.appendChild(styleEl);
+
+// Muted per-group accent colors (left-edge stripe only -- orange stays reserved for the active state)
+// First group (Accounting) uses the brand orange; the rest keep muted secondary tones.
+const GROUP_ACCENTS = ['#ff650f', '#34d399', '#a78bfa', '#38bdf8', '#f472b6', '#94a3b8'];
+const SIDEBAR_GROUPS = NAV.filter(n => n.isGroup && !n.isSettings);
 
 // ─── Page map ─────────────────────────────────────────────────────────────────
 const PAGE_COMPONENTS = {
@@ -240,9 +281,17 @@ const PAGE_COMPONENTS = {
   smart_journal: SmartJournal,
   user_permissions: UserPermissions,
   query_master: QueryMaster,
+  lookup_queries: LookupQueries,
   accounting_functions: AccountingFunctions,
   accounting_macros: AccountingMacros,
-  accounting_events: AccountingEvents
+  page_builder: PageBuilder,
+  page_master: PageMaster,
+  reports_master: ReportsMaster,
+  accounting_events: AccountingEvents,
+  item_balance: ItemBalance,
+  warehouse_transfer: WarehouseTransfer,
+  item_master: ItemMaster,
+  orders: Orders
 };
 
 // ─── App ─────────────────────────────────────────────────────────────────────
@@ -252,6 +301,19 @@ export default function App() {
   const [openTabs, setOpenTabs] = useState([]);
   const [activeTab, setActiveTab] = useState(null);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [collapsedGroups, setCollapsedGroups] = useState({});
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const settingsRef = useRef(null);
+
+  useEffect(() => {
+    function handleClickOutside(event) {
+      if (settingsRef.current && !settingsRef.current.contains(event.target)) {
+        setIsSettingsOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
   const [allowedPages, setAllowedPages] = useState([]);
 
   // login
@@ -370,19 +432,18 @@ export default function App() {
     });
   };
 
-  const ActivePage = activeTab ? PAGE_COMPONENTS[activeTab] : null;
-  const activeDef = (() => {
-    let def = NAV.find(n => n.id === activeTab);
+  const getDefForId = (id) => {
+    let def = NAV.find(n => n.id === id);
     if (!def) {
       for (const n of NAV) {
         if (n.isGroup && n.children) {
-          const child = n.children.find(c => c.id === activeTab);
+          const child = n.children.find(c => c.id === id);
           if (child) return child;
         }
       }
     }
     return def;
-  })();
+  };
 
   if (!user) {
     return (
@@ -411,6 +472,12 @@ export default function App() {
 
   const initials = (user.Name || user.Username).split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
 
+  const isUserAdmin = user.IsAdmin === 1 || user.IsAdmin === true || (user.Username || '').toLowerCase() === 'sysadmin';
+  const settingsGroup = NAV.find(n => n.isSettings);
+  const allowedSettingsChildren = settingsGroup
+    ? settingsGroup.children.filter(c => isUserAdmin || allowedPages.some(ap => ap.PageGroupID.toLowerCase() === c.id.toLowerCase()))
+    : [];
+
   return (
     <div className={`app${dark ? ' dark' : ''}`}>
       {/* Sidebar */}
@@ -423,32 +490,11 @@ export default function App() {
               <div className="sb-ver">GLC Paints · v1.0.1</div>
             </div>
           </div>
-          <button 
+          <button
+            className="sb-collapse-btn"
             onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
             title={isSidebarCollapsed ? "Expand Sidebar" : "Collapse Sidebar"}
-            style={{
-              background: 'rgba(255,255,255,0.06)',
-              border: '1px solid rgba(255,255,255,0.1)',
-              color: 'rgba(255,255,255,0.5)',
-              cursor: 'pointer',
-              fontSize: '10px',
-              width: '22px',
-              height: '22px',
-              borderRadius: '5px',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              transition: 'all 0.15s',
-              marginLeft: isSidebarCollapsed ? 0 : 8
-            }}
-            onMouseEnter={e => {
-              e.currentTarget.style.color = '#fff';
-              e.currentTarget.style.borderColor = 'var(--orange)';
-            }}
-            onMouseLeave={e => {
-              e.currentTarget.style.color = 'rgba(255,255,255,0.5)';
-              e.currentTarget.style.borderColor = 'rgba(255,255,255,0.1)';
-            }}
+            style={{ marginLeft: isSidebarCollapsed ? 0 : 8 }}
           >
             {isSidebarCollapsed ? '▶' : '◀'}
           </button>
@@ -456,27 +502,40 @@ export default function App() {
         <nav className="sb-nav">
           {NAV.map(n => {
             const isAdmin = user.IsAdmin === 1 || user.IsAdmin === true || (user.Username || '').toLowerCase() === 'sysadmin';
+            if (n.isSettings) return null; // rendered as the Settings button in the footer instead
             if (n.isGroup) {
               const allowedChildren = n.children.filter(c => {
                 return isAdmin || allowedPages.some(ap => ap.PageGroupID.toLowerCase() === c.id.toLowerCase());
               });
               if (allowedChildren.length === 0) return null;
+              const isGroupCollapsed = !!collapsedGroups[n.id];
+              const groupAccent = GROUP_ACCENTS[SIDEBAR_GROUPS.indexOf(n) % GROUP_ACCENTS.length];
               return (
                 <div key={n.id} className="sb-group">
-                  <div className="sb-group-title">
+                  <button
+                    type="button"
+                    className="sb-group-title"
+                    style={{ borderLeftColor: groupAccent }}
+                    onClick={() => setCollapsedGroups(prev => ({ ...prev, [n.id]: !prev[n.id] }))}
+                    aria-expanded={!isGroupCollapsed}
+                    title={n.label}
+                  >
                     <span style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-                      <span style={{ fontSize: 13 }}>{n.icon}</span>
+                      <span style={{ fontSize: 14 }}>{n.icon}</span>
                       <span>{n.label}</span>
                     </span>
-                  </div>
+                    <span className="sb-group-chevron" style={{ transform: isGroupCollapsed ? 'rotate(-90deg)' : 'rotate(0deg)' }}>▾</span>
+                  </button>
+                  {!isGroupCollapsed && (
                   <div className="sb-group-items">
                     {allowedChildren.map(c => (
-                      <button key={c.id} className={`sb-sub-item${activeTab === c.id ? ' active' : ''}`} onClick={() => openPage(c.id)}>
-                        <span className="sb-icon" style={{ width: 22, height: 22, borderRadius: 5, fontSize: 11, background: activeTab === c.id ? 'rgba(255,255,255,.2)' : 'rgba(255,255,255,.05)' }}>{c.icon}</span>
+                      <button key={c.id} className={`sb-sub-item${activeTab === c.id ? ' active' : ''}`} onClick={() => openPage(c.id)} title={c.label}>
+                        <span className="sb-icon">{c.icon}</span>
                         <span>{c.label}</span>
                       </button>
                     ))}
                   </div>
+                  )}
                 </div>
               );
             }
@@ -488,7 +547,7 @@ export default function App() {
             const isItemAllowed = isAdmin || allowedPages.some(ap => ap.PageGroupID.toLowerCase() === n.id.toLowerCase());
             if (!isItemAllowed) return null;
             return (
-              <button key={n.id} className={`sb-item${activeTab === n.id ? ' active' : ''}`} onClick={() => openPage(n.id)}>
+              <button key={n.id} className={`sb-item${activeTab === n.id ? ' active' : ''}`} onClick={() => openPage(n.id)} title={n.label}>
                 <span className="sb-icon">{n.icon}</span>
                 <span>{n.label}</span>
               </button>
@@ -501,10 +560,42 @@ export default function App() {
             <div>
               <div className="sb-uname">{user.Name || user.Username}</div>
               <div className="sb-urole">
-                {user.IsAdmin === 1 || user.IsAdmin === true || (user.Username || '').toLowerCase() === 'sysadmin' ? 'System Admin' : 'System User'}
+                {isUserAdmin ? 'System Admin' : 'System User'}
               </div>
             </div>
           </div>
+          {allowedSettingsChildren.length > 0 && (
+            <div ref={settingsRef} className="sb-actions" style={{ position: 'relative', marginBottom: 8 }}>
+              {isSettingsOpen && (
+                <div style={{
+                  position: 'absolute', bottom: '100%', left: 0, right: 0, marginBottom: 6,
+                  background: 'var(--sidebar-surface)', border: '1px solid var(--sidebar-border)', borderRadius: 10,
+                  boxShadow: '0 8px 24px rgba(0,0,0,.35)', overflow: 'hidden', zIndex: 20
+                }}>
+                  {allowedSettingsChildren.map(c => (
+                    <button
+                      key={c.id}
+                      onClick={() => { openPage(c.id); setIsSettingsOpen(false); }}
+                      style={{
+                        width: '100%', display: 'flex', alignItems: 'center', gap: 8,
+                        padding: '9px 12px', border: 'none', background: activeTab === c.id ? 'var(--brand-orange-soft)' : 'transparent',
+                        color: activeTab === c.id ? 'var(--brand-orange-hover)' : 'var(--sidebar-text-secondary)', fontFamily: 'var(--font)', fontSize: 12.5, fontWeight: 600,
+                        cursor: 'pointer', textAlign: 'left'
+                      }}
+                      onMouseEnter={e => e.currentTarget.style.background = activeTab === c.id ? 'var(--brand-orange-soft)' : 'var(--sidebar-surface-hover)'}
+                      onMouseLeave={e => e.currentTarget.style.background = activeTab === c.id ? 'var(--brand-orange-soft)' : 'transparent'}
+                    >
+                      <span>{c.icon}</span>
+                      <span>{c.label}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+              <button className="sb-btn" style={{ width: '100%' }} onClick={() => setIsSettingsOpen(o => !o)} aria-expanded={isSettingsOpen} title={settingsGroup.label}>
+                {settingsGroup.icon} {settingsGroup.label}
+              </button>
+            </div>
+          )}
           <div className="sb-actions">
             <button className="sb-btn" onClick={toggleDark}>{dark ? '☀️' : '🌙'} Theme</button>
             <button className="sb-btn danger" onClick={handleLogout}>↩ Logout</button>
@@ -527,12 +618,23 @@ export default function App() {
           </header>
         )}
         <div className="page-area">
-          <ErrorBoundary key={activeTab}>
-            {ActivePage
-              ? <ActivePage user={user} def={activeDef} onBack={() => openPage('purchasing')} />
-              : <div style={{ textAlign: 'center', padding: '48px', color: 'var(--muted)' }}>Select a page from the sidebar</div>
-            }
-          </ErrorBoundary>
+          {openTabs.length === 0 && (
+            <div style={{ textAlign: 'center', padding: '48px', color: 'var(--muted)' }}>Select a page from the sidebar</div>
+          )}
+          {openTabs.map(t => {
+            const TabPage = PAGE_COMPONENTS[t.id];
+            if (!TabPage) return null;
+            return (
+              <div
+                key={t.id}
+                style={{ display: t.id === activeTab ? 'flex' : 'none' }}
+              >
+                <ErrorBoundary>
+                  <TabPage user={user} def={getDefForId(t.id)} onBack={() => openPage('purchasing')} />
+                </ErrorBoundary>
+              </div>
+            );
+          })}
         </div>
       </section>
     </div>

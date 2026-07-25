@@ -6,18 +6,34 @@ export default function FilterPanel({
   onSearch, 
   loading = false, 
   user, 
-  defaultFilters = {} 
+  defaultFilters = {},
+  pageGroupId
 }) {
-  const hasAccount = filters.includes('account');
+  const [dynamicLookups, setDynamicLookups] = useState(null);
+
+  useEffect(() => {
+    if (pageGroupId) {
+      apiCall('GetQueryMaster', {}, {}, 'plus').then(d => {
+        if (d.State === 0) {
+          const queries = d.List0 || [];
+          const lookups = queries.filter(q => q.PageGroupID === pageGroupId && q.QueryType === 'Lookup').map(q => q.Operation);
+          setDynamicLookups(lookups);
+        }
+      });
+    }
+  }, [pageGroupId]);
+
+  const hasAccount = pageGroupId && dynamicLookups ? dynamicLookups.includes('Accounts Master All') : filters.includes('account');
   const hasDate = filters.includes('date');
   const hasCurrency = filters.includes('currency');
-  const hasCustomer = filters.includes('customer');
-  const hasVendor = filters.includes('vendor');
-  const hasBank = filters.includes('bank');
-  const hasAsset = filters.includes('asset');
-  const hasEmployee = filters.includes('employee');
-  const hasExpense = filters.includes('expense');
-  const hasDebtor = filters.includes('debtor');
+  const hasCustomer = pageGroupId && dynamicLookups ? dynamicLookups.includes('Customer Master All') : filters.includes('customer');
+  const hasVendor = pageGroupId && dynamicLookups ? dynamicLookups.includes('Vendor Master All') : filters.includes('vendor');
+  const hasBank = pageGroupId && dynamicLookups ? dynamicLookups.includes('Bank Accounts Master') : filters.includes('bank');
+  const hasAsset = pageGroupId && dynamicLookups ? dynamicLookups.includes('Asset Master All') : filters.includes('asset');
+  const hasEmployee = pageGroupId && dynamicLookups ? dynamicLookups.includes('Employee Master All') : filters.includes('employee');
+  const hasExpense = pageGroupId && dynamicLookups ? dynamicLookups.includes('Expense Master All') : filters.includes('expense');
+  const hasDebtor = pageGroupId && dynamicLookups ? dynamicLookups.includes('DebtorCreditor Master All') : filters.includes('debtor');
+  const hasItem = pageGroupId && dynamicLookups ? dynamicLookups.includes('Item Master All') : filters.includes('item');
 
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [isDateCollapsed, setIsDateCollapsed] = useState(false);
@@ -29,6 +45,7 @@ export default function FilterPanel({
   const [isEmployeeCollapsed, setIsEmployeeCollapsed] = useState(false);
   const [isExpenseCollapsed, setIsExpenseCollapsed] = useState(false);
   const [isDebtorCollapsed, setIsDebtorCollapsed] = useState(false);
+  const [isItemCollapsed, setIsItemCollapsed] = useState(false);
 
   const [accounts, setAccounts] = useState([]);
   const [selectedAccountNum, setSelectedAccountNum] = useState(defaultFilters.account || '');
@@ -130,6 +147,18 @@ export default function FilterPanel({
   const [toDebtorSearch, setToDebtorSearch] = useState('');
   const [isToDebtorOpen, setIsToDebtorOpen] = useState(false);
   const toDebtorRef = useRef(null);
+
+  // Item searchable dropdown states
+  const [items, setItems] = useState([]);
+  const [selectedFromItem, setSelectedFromItem] = useState(defaultFilters.fromItem || '');
+  const [fromItemSearch, setFromItemSearch] = useState('');
+  const [isFromItemOpen, setIsFromItemOpen] = useState(false);
+  const fromItemRef = useRef(null);
+
+  const [selectedToItem, setSelectedToItem] = useState(defaultFilters.toItem || '');
+  const [toItemSearch, setToItemSearch] = useState('');
+  const [isToItemOpen, setIsToItemOpen] = useState(false);
+  const toItemRef = useRef(null);
 
 
   const sidebarRef = useRef(null);
@@ -256,7 +285,7 @@ export default function FilterPanel({
       }
       if (fromDebtorRef.current && !fromDebtorRef.current.contains(event.target)) {
         setIsFromDebtorOpen(false);
-        const sel = Array.isArray(debtors) ? debtors.find(e => e && String(e.DRNumber) === String(selectedFromDebtor)) : null;
+        const sel = Array.isArray(debtors) ? debtors.find(d => d && String(d.DRNumber) === String(selectedFromDebtor)) : null;
         if (sel) {
           setFromDebtorSearch(`${sel.DRNumber} - ${sel.DRName}`);
         } else {
@@ -265,11 +294,29 @@ export default function FilterPanel({
       }
       if (toDebtorRef.current && !toDebtorRef.current.contains(event.target)) {
         setIsToDebtorOpen(false);
-        const sel = Array.isArray(debtors) ? debtors.find(e => e && String(e.DRNumber) === String(selectedToDebtor)) : null;
+        const sel = Array.isArray(debtors) ? debtors.find(d => d && String(d.DRNumber) === String(selectedToDebtor)) : null;
         if (sel) {
           setToDebtorSearch(`${sel.DRNumber} - ${sel.DRName}`);
         } else {
           setToDebtorSearch('');
+        }
+      }
+      if (fromItemRef.current && !fromItemRef.current.contains(event.target)) {
+        setIsFromItemOpen(false);
+        const sel = Array.isArray(items) ? items.find(i => i && String(i.ItemCode || i.ItemID) === String(selectedFromItem)) : null;
+        if (sel) {
+          setFromItemSearch(`${sel.ItemCode || sel.ItemID} - ${sel.ItemDescription || sel.ItemName}`);
+        } else {
+          setFromItemSearch('');
+        }
+      }
+      if (toItemRef.current && !toItemRef.current.contains(event.target)) {
+        setIsToItemOpen(false);
+        const sel = Array.isArray(items) ? items.find(i => i && String(i.ItemCode || i.ItemID) === String(selectedToItem)) : null;
+        if (sel) {
+          setToItemSearch(`${sel.ItemCode || sel.ItemID} - ${sel.ItemDescription || sel.ItemName}`);
+        } else {
+          setToItemSearch('');
         }
       }
     }
@@ -283,7 +330,8 @@ export default function FilterPanel({
     assets, selectedFromAsset, selectedToAsset,
     employees, selectedFromEmployee, selectedToEmployee,
     expenses, selectedFromExpense, selectedToExpense,
-    debtors, selectedFromDebtor, selectedToDebtor
+    debtors, selectedFromDebtor, selectedToDebtor,
+    items, selectedFromItem, selectedToItem
   ]);
 
   const selectedAccount = useMemo(() => {
@@ -344,13 +392,11 @@ export default function FilterPanel({
     return expenses.filter(e => e && (String(e.ExpenseID || '').toLowerCase().includes(term) || String(e.ExpenseName || '').toLowerCase().includes(term)));
   };
 
-  const filterDebtorList = (txt, selectedCode) => {
-    if (!Array.isArray(debtors)) return [];
-    if (!txt) return debtors;
-    const selectedObj = debtors.find(e => e && String(e.DRNumber) === String(selectedCode));
-    if (selectedObj && txt === `${selectedObj.DRNumber} - ${selectedObj.DRName}`) return debtors;
+  const getFilteredOptions = (list, txt, fields) => {
+    if (!Array.isArray(list)) return [];
+    if (!txt) return list;
     const term = txt.toLowerCase();
-    return debtors.filter(e => e && (String(e.DRNumber || '').toLowerCase().includes(term) || String(e.DRName || '').toLowerCase().includes(term)));
+    return list.filter(item => fields.some(field => String(item[field] || '').toLowerCase().includes(term)));
   };
 
   const filteredFromCustomers = useMemo(() => filterCustomerList(fromCustSearch, selectedFromCust), [customers, fromCustSearch, selectedFromCust]);
@@ -366,8 +412,10 @@ export default function FilterPanel({
   const filteredFromExpenses = useMemo(() => filterExpenseList(fromExpenseSearch, selectedFromExpense), [expenses, fromExpenseSearch, selectedFromExpense]);
   const filteredToExpenses = useMemo(() => filterExpenseList(toExpenseSearch, selectedToExpense), [expenses, toExpenseSearch, selectedToExpense]);
 
-  const filteredFromDebtors = useMemo(() => filterDebtorList(fromDebtorSearch, selectedFromDebtor), [debtors, fromDebtorSearch, selectedFromDebtor]);
-  const filteredToDebtors = useMemo(() => filterDebtorList(toDebtorSearch, selectedToDebtor), [debtors, toDebtorSearch, selectedToDebtor]);
+  const filteredFromDebtors = useMemo(() => getFilteredOptions(debtors, fromDebtorSearch, ['DRNumber', 'DRName']), [debtors, fromDebtorSearch]);
+  const filteredToDebtors = useMemo(() => getFilteredOptions(debtors, toDebtorSearch, ['DRNumber', 'DRName']), [debtors, toDebtorSearch]);
+  const filteredFromItems = useMemo(() => getFilteredOptions(items, fromItemSearch, ['ItemCode', 'ItemID', 'ItemDescription', 'ItemName']), [items, fromItemSearch]);
+  const filteredToItems = useMemo(() => getFilteredOptions(items, toItemSearch, ['ItemCode', 'ItemID', 'ItemDescription', 'ItemName']), [items, toItemSearch]);
 
 
   const filteredAccounts = useMemo(() => {
@@ -393,7 +441,12 @@ export default function FilterPanel({
     if (hasEmployee) apiCall('Employee Master All', null, { User: user?.Username }, 'lookup').then(d => { if (d.State === 0) setEmployees(d.List0 || []); });
     if (hasExpense) apiCall('Expense Master All', null, { User: user?.Username }, 'lookup').then(d => { if (d.State === 0) setExpenses(d.List0 || []); });
     if (hasDebtor) apiCall('DebtorCreditor Master All', null, { User: user?.Username }, 'lookup').then(d => { if (d.State === 0) setDebtors(d.List0 || []); });
-  }, [user, hasAccount, hasCustomer, hasVendor, hasBank, hasAsset, hasEmployee, hasExpense, hasDebtor]);
+    if (hasItem) apiCall('Item Master All', null, { User: user?.Username }, 'lookup').then(d => { if (d.State === 0) setItems(d.List0 || []); });
+  }, [user, hasAccount, hasCustomer, hasVendor, hasBank, hasAsset, hasEmployee, hasExpense, hasDebtor, hasItem]);
+
+  // When only "From" is picked and "To" is left blank, treat it as an exact
+  // match on "From" rather than an open-ended range.
+  const rangeTo = (from, to) => (from && !to ? from : to);
 
   const handleGenerate = () => {
     if (onSearch) {
@@ -403,17 +456,21 @@ export default function FilterPanel({
         endDate,
         currency: selectedCurrency,
         fromCustomer: selectedFromCust,
-        toCustomer: selectedToCust,
+        toCustomer: rangeTo(selectedFromCust, selectedToCust),
         fromVendor: selectedFromVendor,
-        toVendor: selectedToVendor,
+        toVendor: rangeTo(selectedFromVendor, selectedToVendor),
         fromBank: selectedFromBank,
-        toBank: selectedToBank,
+        toBank: rangeTo(selectedFromBank, selectedToBank),
         fromAsset: selectedFromAsset,
-        toAsset: selectedToAsset,
+        toAsset: rangeTo(selectedFromAsset, selectedToAsset),
         fromEmployee: selectedFromEmployee,
-        toEmployee: selectedToEmployee,
+        toEmployee: rangeTo(selectedFromEmployee, selectedToEmployee),
         fromExpense: selectedFromExpense,
-        toExpense: selectedToExpense
+        toExpense: rangeTo(selectedFromExpense, selectedToExpense),
+        fromDebtor: selectedFromDebtor,
+        toDebtor: rangeTo(selectedFromDebtor, selectedToDebtor),
+        fromItem: selectedFromItem,
+        toItem: rangeTo(selectedFromItem, selectedToItem)
       });
     }
   };
@@ -1058,6 +1115,7 @@ export default function FilterPanel({
                   {hasEmployee && renderRangeFilter('Employee', '👩‍💼', isEmployeeCollapsed, setIsEmployeeCollapsed, fromEmployeeRef, toEmployeeRef, fromEmployeeSearch, setFromEmployeeSearch, selectedFromEmployee, setSelectedFromEmployee, isFromEmployeeOpen, setIsFromEmployeeOpen, filteredFromEmployees, toEmployeeSearch, setToEmployeeSearch, selectedToEmployee, setSelectedToEmployee, isToEmployeeOpen, setIsToEmployeeOpen, filteredToEmployees, 'EmployeeID', 'EmployeeName')}
                   {hasExpense && renderRangeFilter('Expense', '💸', isExpenseCollapsed, setIsExpenseCollapsed, fromExpenseRef, toExpenseRef, fromExpenseSearch, setFromExpenseSearch, selectedFromExpense, setSelectedFromExpense, isFromExpenseOpen, setIsFromExpenseOpen, filteredFromExpenses, toExpenseSearch, setToExpenseSearch, selectedToExpense, setSelectedToExpense, isToExpenseOpen, setIsToExpenseOpen, filteredToExpenses, 'ExpenseID', 'ExpenseName')}
                   {hasDebtor && renderRangeFilter('Debtor / Creditor', '👥', isDebtorCollapsed, setIsDebtorCollapsed, fromDebtorRef, toDebtorRef, fromDebtorSearch, setFromDebtorSearch, selectedFromDebtor, setSelectedFromDebtor, isFromDebtorOpen, setIsFromDebtorOpen, filteredFromDebtors, toDebtorSearch, setToDebtorSearch, selectedToDebtor, setSelectedToDebtor, isToDebtorOpen, setIsToDebtorOpen, filteredToDebtors, 'DRNumber', 'DRName')}
+                  {hasItem && renderRangeFilter('Item', '📦', isItemCollapsed, setIsItemCollapsed, fromItemRef, toItemRef, fromItemSearch, setFromItemSearch, selectedFromItem, setSelectedFromItem, isFromItemOpen, setIsFromItemOpen, filteredFromItems, toItemSearch, setToItemSearch, selectedToItem, setSelectedToItem, isToItemOpen, setIsToItemOpen, filteredToItems, items?.[0]?.ItemCode ? 'ItemCode' : 'ItemID', items?.[0]?.ItemDescription ? 'ItemDescription' : 'ItemName')}
                 </>
               );
             })()}

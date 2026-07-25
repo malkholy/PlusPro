@@ -1,0 +1,25 @@
+# Dependencies
+node_modules/
+
+# Build outputs
+dist/
+dist-ssr/
+publish/
+bin/
+obj/
+
+# C# build outputs inside subfolders
+**/bin/
+**/obj/
+**/publish/
+
+# Operating System Files
+.DS_Store
+Thumbs.db
+
+# Environment and local files
+*.local
+*.log
+
+# Scratch directory
+scratch/

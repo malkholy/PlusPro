@@ -25,7 +25,8 @@ export async function apiCall(operation, lineData = null, extraParams = {}, apiT
   } else if (apiType === 'plus') {
     target = 'plus';
   } else if (apiType === 'query') {
-    target = 'query';
+    // CreateQueryView/ExecuteScript were folded into APIPlusOperation -- route through 'plus'.
+    target = 'plus';
   } else if (apiType === 'purchasing') {
     target = 'purchasing';
   } else if (apiType === 'logistics') {
@@ -33,9 +34,16 @@ export async function apiCall(operation, lineData = null, extraParams = {}, apiT
   } else if (apiType === 'journal') {
     target = 'journal';
   } else if (apiType === 'lookup') {
-    target = 'lookup';
+    // Lookup operations were folded into APIPlusOperation -- route through 'plus'.
+    target = 'plus';
   } else if (apiType === 'express_codes') {
     target = 'express_codes';
+  } else if (apiType === 'inv') {
+    target = 'inv';
+  } else if (apiType === 'loading') {
+    target = 'loading';
+  } else if (apiType === 'warehouse_request') {
+    target = 'warehouse_request';
   }
 
   let url = '';
@@ -55,9 +63,6 @@ export async function apiCall(operation, lineData = null, extraParams = {}, apiT
   } else if (target === 'plus') {
     url = IS_DEV ? '/plus-api/General/GeneralAPI/' : 'https://sila.silasystem.com:7103/General/GeneralAPI/';
     spName = 'APIPlusOperation';
-  } else if (target === 'query') {
-    url = IS_DEV ? '/query-api/General/GeneralAPI/' : 'https://sila.silasystem.com:7103/General/GeneralAPI/';
-    spName = 'APIPlusQueryOperation';
   } else if (target === 'purchasing') {
     url = (IS_DEV || isGitHubPages) 
       ? (IS_DEV ? '/purchasing-api/General/GeneralAPI/' : 'https://sila.silasystem.com:7103/General/GeneralAPI/') 
@@ -69,12 +74,18 @@ export async function apiCall(operation, lineData = null, extraParams = {}, apiT
   } else if (target === 'journal') {
     url = IS_DEV ? '/journal-api/General/GeneralAPI/' : 'https://sila.silasystem.com:7103/General/GeneralAPI/';
     spName = 'APIPlusJournalOperation';
-  } else if (target === 'lookup') {
-    url = IS_DEV ? '/lookup-api/General/GeneralAPI/' : 'https://sila.silasystem.com:7103/General/GeneralAPI/';
-    spName = 'APIPlusLookupOperation';
   } else if (target === 'express_codes') {
     url = IS_DEV ? '/express-codes-api/Express/GeneralAPI' : 'https://be.glcpaints.com:7788/Express/GeneralAPI';
     spName = 'APIPlusExpressGenerateCodeOperation';
+  } else if (target === 'inv') {
+    url = IS_DEV ? '/inv-api/General/GeneralAPI/' : 'https://sila.silasystem.com:7103/General/GeneralAPI/';
+    spName = 'PLS.APIPlusInvOperation';
+  } else if (target === 'loading') {
+    url = IS_DEV ? '/loading-api/General/GeneralAPI/' : 'https://sila.silasystem.com:7103/General/GeneralAPI/';
+    spName = 'APIPlusLoadingOperation';
+  } else if (target === 'warehouse_request') {
+    url = IS_DEV ? '/warehouse-request-api/General/GeneralAPI/' : 'https://sila.silasystem.com:7103/General/GeneralAPI/';
+    spName = 'APIPlusWarehouseRequestOperation';
   } else {
     url = IS_DEV ? '/api/General/GeneralAPI/' : 'https://sila.silasystem.com:7103/General/GeneralAPI/';
     spName = 'APIERPControlOperation';

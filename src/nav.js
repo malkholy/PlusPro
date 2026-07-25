@@ -58,6 +58,18 @@ const NAV = [
         label: 'Cash Receive',
         icon: '💵',
         desc: 'Manage cash receivable transactions'
+      },
+      {
+        id: 'accounting_functions',
+        label: 'Accounting Functions',
+        icon: '🔗',
+        desc: 'Manage master configurations for accounting functions and document types'
+      },
+      {
+        id: 'accounting_macros',
+        label: 'Accounting Macros',
+        icon: '⚡',
+        desc: 'Manage configurations for dynamic macros and variable substitutions'
       }
     ]
   },
@@ -97,9 +109,10 @@ const NAV = [
   },
   {
     id: 'system_admin_group',
-    label: 'System Admin',
+    label: 'Settings',
     icon: '⚙️',
     isGroup: true,
+    isSettings: true,
     children: [
       {
         id: 'user_permissions',
@@ -114,16 +127,68 @@ const NAV = [
         desc: 'Configure generic database query routing and definitions'
       },
       {
-        id: 'accounting_functions',
-        label: 'Accounting Functions',
-        icon: '🔗',
-        desc: 'Manage master configurations for accounting functions and document types'
+        id: 'lookup_queries',
+        label: 'Lookup Queries',
+        icon: '🔍',
+        desc: 'Manage filter/lookup queries used by FilterPanel dropdown pickers'
       },
       {
-        id: 'accounting_macros',
-        label: 'Accounting Macros',
-        icon: '⚡',
-        desc: 'Manage configurations for dynamic macros and variable substitutions'
+        id: 'page_builder',
+        label: 'AI Page Builder',
+        icon: '📝',
+        desc: 'Generate structural prompts to build new pages instantly'
+      },
+      {
+        id: 'page_master',
+        label: 'Page Master',
+        icon: '🗂️',
+        desc: 'Manage sidebar navigation groups and pages'
+      },
+      {
+        id: 'reports_master',
+        label: 'Reports Master',
+        icon: '🖨️',
+        desc: 'Catalog of printable reports, their source files, linked page and data queries'
+      }
+    ]
+  },
+  {
+    id: 'loading_orders_group',
+    label: 'Loading Orders',
+    icon: '🚚',
+    isGroup: true,
+    children: [
+      {
+        id: 'orders',
+        label: 'Orders',
+        icon: '📦',
+        desc: 'View customer orders pending or in the loading/delivery pipeline'
+      }
+    ]
+  },
+  {
+    id: 'inventory_group',
+    label: 'Inventory',
+    icon: '📁',
+    isGroup: true,
+    children: [
+      {
+        id: 'item_balance',
+        label: 'Item Balance',
+        icon: '📄',
+        desc: 'View item balance records'
+      },
+      {
+        id: 'item_master',
+        label: 'Item Master',
+        icon: '🏷️',
+        desc: 'Manage item master records'
+      },
+      {
+        id: 'warehouse_transfer',
+        label: 'Warehouse Transfer',
+        icon: '📄',
+        desc: 'View warehouse transfer requests'
       }
     ]
   }

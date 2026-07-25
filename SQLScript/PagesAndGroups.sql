@@ -36,7 +36,8 @@ VALUES
     ('user_permissions', N'User Permissions', N'🔐', N'Manage page access and row-level query filters', 0, 'system_admin_group', 41),
     ('query_master', N'Query Master', N'🗄️', N'Configure generic database query routing and definitions', 0, 'system_admin_group', 42),
     ('accounting_functions', N'Accounting Functions', N'🔗', N'Manage master configurations for accounting functions and document types', 0, 'system_admin_group', 43),
-    ('accounting_macros', N'Accounting Macros', N'⚡', N'Manage configurations for dynamic macros and variable substitutions', 0, 'system_admin_group', 44);
+    ('accounting_macros', N'Accounting Macros', N'⚡', N'Manage configurations for dynamic macros and variable substitutions', 0, 'system_admin_group', 44),
+    ('page_builder', N'AI Page Builder', N'🪄', N'Generate structural prompts to build new pages instantly', 0, 'system_admin_group', 45);
 GO
 
 SELECT * FROM [PLS].[PagesAndGroups] ORDER BY SortOrder;
