@@ -88,7 +88,7 @@ export async function apiCall(operation, lineData = null, extraParams = {}, apiT
     spName = 'APIPlusWarehouseRequestOperation';
   } else {
     url = IS_DEV ? '/api/General/GeneralAPI/' : 'https://sila.silasystem.com:7103/General/GeneralAPI/';
-    spName = 'APIERPControlOperation';
+    spName = 'APIPlusOperation';
   }
 
   let method = 'POST';
