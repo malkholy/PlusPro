@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect, useRef } from 'react';
+import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import { apiCall } from './shared/api.js';
 
 // Error Boundary to catch render crashes and display error info instead of blank page
@@ -31,7 +31,6 @@ class ErrorBoundary extends React.Component {
     return this.props.children;
   }
 }
-import NAV from './nav.js';
 import Expenses from './pages/Expenses.jsx';
 import Projects from './pages/Projects.jsx';
 import HR from './pages/HR.jsx';
@@ -257,7 +256,6 @@ document.head.appendChild(styleEl);
 // Muted per-group accent colors (left-edge stripe only -- orange stays reserved for the active state)
 // First group (Accounting) uses the brand orange; the rest keep muted secondary tones.
 const GROUP_ACCENTS = ['#ff650f', '#34d399', '#a78bfa', '#38bdf8', '#f472b6', '#94a3b8'];
-const SIDEBAR_GROUPS = NAV.filter(n => n.isGroup && !n.isSettings);
 
 // ─── Page map ─────────────────────────────────────────────────────────────────
 const PAGE_COMPONENTS = {
@@ -294,6 +292,44 @@ const PAGE_COMPONENTS = {
   orders: Orders
 };
 
+// The sidebar is built live from PLS.PagesAndGroups at login instead of a
+// static nav.js -- so registering a new page (bespoke or Simple CRUD) via
+// PageBuilder.jsx makes it appear automatically, no code change needed.
+//
+// A leaf page only ever becomes a clickable nav item if it's actually
+// renderable: either it has a hand-written entry in PAGE_COMPONENTS above, or
+// it's a Simple CRUD page (its PageGroupID appears in the GetCrudPages
+// result). This one check also quietly hides internal "virtual" PageGroupIDs
+// (e.g. warehouse_transfer_lines, orders_lines -- lookup keys for detail
+// queries, never meant to be sidebar pages) and abandoned/broken registration
+// attempts, since neither has a component to render.
+function buildNavTree(rows, crudPageIds) {
+  const isRenderable = (id) => !!PAGE_COMPONENTS[id] || crudPageIds.has(id);
+
+  const topLevel = rows
+    .filter(r => !r.ParentID)
+    .slice()
+    .sort((a, b) => a.SortOrder - b.SortOrder);
+
+  return topLevel
+    .map(r => {
+      if (r.IsGroup) {
+        const children = rows
+          .filter(c => !c.IsGroup && c.ParentID === r.PageGroupID && isRenderable(c.PageGroupID))
+          .sort((a, b) => a.SortOrder - b.SortOrder)
+          .map(c => ({ id: c.PageGroupID, label: c.Label, icon: c.Icon, desc: c.Description }));
+        return {
+          id: r.PageGroupID, label: r.Label, icon: r.Icon, desc: r.Description,
+          isGroup: true, isSettings: r.PageGroupID === 'system_admin_group', children
+        };
+      }
+      return isRenderable(r.PageGroupID)
+        ? { id: r.PageGroupID, label: r.Label, icon: r.Icon, desc: r.Description }
+        : null;
+    })
+    .filter(Boolean);
+}
+
 // ─── App ─────────────────────────────────────────────────────────────────────
 export default function App() {
   const [user, setUser] = useState(null);
@@ -315,6 +351,11 @@ export default function App() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
   const [allowedPages, setAllowedPages] = useState([]);
+  // Sidebar tree built live from PLS.PagesAndGroups at login (see buildNavTree above)
+  const [nav, setNav] = useState([]);
+  // PageGroupIDs with Simple CRUD metadata registered -- these route to GenericMasterPage
+  const [crudPageIds, setCrudPageIds] = useState(new Set());
+  const sidebarGroups = useMemo(() => nav.filter(n => n.isGroup && !n.isSettings), [nav]);
 
   // login
   const [un, setUn] = useState('');
@@ -341,17 +382,25 @@ export default function App() {
         sessionStorage.setItem('FullName', u.Username || un);
         
         let allowed = [];
+        let builtNav = [];
+        let crudIds = new Set();
         try {
-          const res = await apiCall('GetUserAllowedPages', {}, {}, 'plus');
-          if (res.State === 0) {
-            allowed = res.List0 || [];
-          }
+          const [allowedRes, pagesRes, crudRes] = await Promise.all([
+            apiCall('GetUserAllowedPages', {}, {}, 'plus'),
+            apiCall('GetPagesAndGroups', {}, {}, 'plus'),
+            apiCall('GetCrudPages', {}, {}, 'plus')
+          ]);
+          if (allowedRes.State === 0) allowed = allowedRes.List0 || [];
+          if (crudRes.State === 0) crudIds = new Set((crudRes.List0 || []).map(r => r.PageGroupID));
+          if (pagesRes.State === 0) builtNav = buildNavTree(pagesRes.List0 || [], crudIds);
         } catch (err) {
-          console.error('Failed to load user allowed pages:', err);
+          console.error('Failed to load user allowed pages / sidebar:', err);
         }
 
         const loggedUser = { Username: u.Username || un, Name: u.Name || un, IsAdmin: u.IsAdmin };
         setAllowedPages(allowed);
+        setNav(builtNav);
+        setCrudPageIds(crudIds);
         setUser(loggedUser);
 
         const isPageAllowed = (id) => {
@@ -360,7 +409,7 @@ export default function App() {
         };
 
         let firstPage = null;
-        for (const n of NAV) {
+        for (const n of builtNav) {
           if (n.isGroup) {
             const firstAllowedChild = n.children?.find(c => isPageAllowed(c.id));
             if (firstAllowedChild) {
@@ -374,7 +423,7 @@ export default function App() {
         }
 
         if (firstPage) {
-          openPage(firstPage, allowed, loggedUser);
+          openPage(firstPage, allowed, loggedUser, builtNav);
         }
       } else {
         setLoginErr(d.Message || 'Invalid username or password');
@@ -391,7 +440,7 @@ export default function App() {
     setAllowedPages([]);
   };
 
-  const openPage = useCallback((id, currentAllowed = allowedPages, currentUser = user) => {
+  const openPage = useCallback((id, currentAllowed = allowedPages, currentUser = user, currentNav = nav) => {
     if (id === 'hr') {
       const usernameLower = (currentUser?.Username || '').toLowerCase();
       const canAccessHR = usernameLower === 'mhd' || usernameLower === 'm.a.elhout';
@@ -407,9 +456,9 @@ export default function App() {
     setActiveTab(id);
     setOpenTabs(prev => {
       if (prev.find(t => t.id === id)) return prev;
-      let tabDef = NAV.find(n => n.id === id);
+      let tabDef = currentNav.find(n => n.id === id);
       if (!tabDef) {
-        for (const n of NAV) {
+        for (const n of currentNav) {
           if (n.isGroup && n.children) {
             const child = n.children.find(c => c.id === id);
             if (child) {
@@ -421,7 +470,7 @@ export default function App() {
       }
       return [...prev, { id, ...(tabDef || {}) }];
     });
-  }, [allowedPages, user]);
+  }, [allowedPages, user, nav]);
 
   const closeTab = (id, e) => {
     e.stopPropagation();
@@ -433,9 +482,9 @@ export default function App() {
   };
 
   const getDefForId = (id) => {
-    let def = NAV.find(n => n.id === id);
+    let def = nav.find(n => n.id === id);
     if (!def) {
-      for (const n of NAV) {
+      for (const n of nav) {
         if (n.isGroup && n.children) {
           const child = n.children.find(c => c.id === id);
           if (child) return child;
@@ -473,7 +522,7 @@ export default function App() {
   const initials = (user.Name || user.Username).split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
 
   const isUserAdmin = user.IsAdmin === 1 || user.IsAdmin === true || (user.Username || '').toLowerCase() === 'sysadmin';
-  const settingsGroup = NAV.find(n => n.isSettings);
+  const settingsGroup = nav.find(n => n.isSettings);
   const allowedSettingsChildren = settingsGroup
     ? settingsGroup.children.filter(c => isUserAdmin || allowedPages.some(ap => ap.PageGroupID.toLowerCase() === c.id.toLowerCase()))
     : [];
@@ -500,7 +549,7 @@ export default function App() {
           </button>
         </div>
         <nav className="sb-nav">
-          {NAV.map(n => {
+          {nav.map(n => {
             const isAdmin = user.IsAdmin === 1 || user.IsAdmin === true || (user.Username || '').toLowerCase() === 'sysadmin';
             if (n.isSettings) return null; // rendered as the Settings button in the footer instead
             if (n.isGroup) {
@@ -509,7 +558,7 @@ export default function App() {
               });
               if (allowedChildren.length === 0) return null;
               const isGroupCollapsed = !!collapsedGroups[n.id];
-              const groupAccent = GROUP_ACCENTS[SIDEBAR_GROUPS.indexOf(n) % GROUP_ACCENTS.length];
+              const groupAccent = GROUP_ACCENTS[sidebarGroups.indexOf(n) % GROUP_ACCENTS.length];
               return (
                 <div key={n.id} className="sb-group">
                   <button
@@ -622,7 +671,7 @@ export default function App() {
             <div style={{ textAlign: 'center', padding: '48px', color: 'var(--muted)' }}>Select a page from the sidebar</div>
           )}
           {openTabs.map(t => {
-            const TabPage = PAGE_COMPONENTS[t.id];
+            const TabPage = PAGE_COMPONENTS[t.id] || (crudPageIds.has(t.id) ? GenericMasterPage : null);
             if (!TabPage) return null;
             return (
               <div

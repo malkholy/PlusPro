@@ -1127,6 +1127,17 @@ BEGIN
     -- SQL -- mirroring how GetGridData is one universal read operation
     -- keyed by PageGroupID. Scope: single-column primary key only.
     -- ====================================================================
+    IF @Operation = 'GetCrudPages'
+    BEGIN
+        -- Lets the sidebar (App.jsx) resolve which PageGroupIDs are Simple
+        -- CRUD pages at runtime, so they route to GenericMasterPage.jsx
+        -- automatically with zero code changes per new page.
+        SET @State = 0;
+        SET @Message = 'Success';
+        SELECT PageGroupID FROM PLS.CrudTableMaster;
+        RETURN;
+    END
+
     IF @Operation = 'GetCrudMetadata'
     BEGIN
         SET @State = 0;

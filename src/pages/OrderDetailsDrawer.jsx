@@ -59,6 +59,8 @@ export default function OrderDetailsDrawer({ order, onClose }) {
   const [pickConfirmMode, setPickConfirmMode] = useState(false);
   const [pickConfirmOpening, setPickConfirmOpening] = useState(false);
   const [pickConfirmError, setPickConfirmError] = useState(null);
+  // Rows where Confirmed Qty <> Ordered Qty -- shown for review before Confirm Order actually runs
+  const [confirmMismatchRows, setConfirmMismatchRows] = useState(null);
   const [confirmQtys, setConfirmQtys] = useState({});
   const [confirmDate, setConfirmDate] = useState(() => new Date().toISOString().slice(0, 10));
 
@@ -179,6 +181,16 @@ export default function OrderDetailsDrawer({ order, onClose }) {
       return;
     }
 
+    const mismatches = lines.filter(row => (Number(confirmQtys[row.LineNumber]) || 0) !== (Number(row.QuantityOrdered) || 0));
+    if (mismatches.length > 0) {
+      setConfirmMismatchRows(mismatches);
+      return;
+    }
+
+    await performConfirmSave();
+  }
+
+  async function performConfirmSave() {
     const payload = lines.map(row => ({
       orderno: order.OrderNumber,
       line: row.LineNumber,
@@ -210,6 +222,11 @@ export default function OrderDetailsDrawer({ order, onClose }) {
       setPickConfirmError('Connection error: ' + err.message);
     }
     setPickConfirmOpening(false);
+  }
+
+  async function handleConfirmMismatchProceed() {
+    setConfirmMismatchRows(null);
+    await performConfirmSave();
   }
 
   async function handleSaveReleaseClick() {
@@ -344,18 +361,30 @@ export default function OrderDetailsDrawer({ order, onClose }) {
         const invalid = Number(val) > allocated;
         return (
           <div onClick={e => e.stopPropagation()}>
-            <input
-              type="number"
-              value={val}
-              min={0}
-              max={allocated}
-              onChange={e => setConfirmQty(row.LineNumber, e.target.value === '' ? '' : Number(e.target.value))}
-              style={{
-                width: 80, height: 30, padding: '0 8px',
-                border: '1.5px solid ' + (invalid ? 'var(--red)' : 'var(--border)'),
-                borderRadius: 6, fontSize: 12.5, color: 'var(--text)', background: 'var(--surface)', outline: 'none'
-              }}
-            />
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <input
+                type="text"
+                inputMode="decimal"
+                value={val}
+                onChange={e => setConfirmQty(row.LineNumber, e.target.value === '' ? '' : Number(e.target.value))}
+                style={{
+                  width: 80, height: 30, padding: '0 8px',
+                  border: '1.5px solid ' + (invalid ? 'var(--red)' : 'var(--border)'),
+                  borderRadius: 6, fontSize: 12.5, color: 'var(--text)', background: 'var(--surface)', outline: 'none'
+                }}
+              />
+              <button
+                onClick={() => setConfirmQty(row.LineNumber, allocated)}
+                title="Set to Allocated Qty"
+                style={{
+                  width: 22, height: 22, borderRadius: 5, border: '1px solid var(--border)', background: 'var(--soft)',
+                  color: 'var(--muted)', fontSize: 12, fontWeight: 700, lineHeight: 1, cursor: 'pointer', display: 'flex',
+                  alignItems: 'center', justifyContent: 'center', padding: 0, flexShrink: 0
+                }}
+              >
+                =
+              </button>
+            </div>
             {invalid && (
               <div style={{ fontSize: 9.5, color: 'var(--red)', marginTop: 2 }}>Exceeds Allocated</div>
             )}
@@ -380,10 +409,9 @@ export default function OrderDetailsDrawer({ order, onClose }) {
           <div onClick={e => e.stopPropagation()}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
               <input
-                type="number"
+                type="text"
+                inputMode="decimal"
                 value={val}
-                min={0}
-                max={onHand}
                 onChange={e => setReleaseQty(row.LineNumber, e.target.value === '' ? '' : Number(e.target.value))}
                 style={{
                   width: 80, height: 30, padding: '0 8px',
@@ -596,6 +624,56 @@ export default function OrderDetailsDrawer({ order, onClose }) {
           </div>
         </div>
       </div>
+
+      {confirmMismatchRows && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.6)', zIndex: 1100, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ width: 520, maxHeight: '80vh', background: 'var(--bg)', borderRadius: 12, display: 'flex', flexDirection: 'column', overflow: 'hidden', boxShadow: '0 20px 60px rgba(0,0,0,0.4)' }}>
+            <div style={{ padding: '14px 20px', background: 'var(--surface)', borderBottom: '1px solid var(--border)' }}>
+              <h3 style={{ margin: 0, fontSize: 15, fontWeight: 800, color: 'var(--text)' }}>⚠️ Confirmed Qty Differs From Ordered Qty</h3>
+              <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4 }}>
+                {confirmMismatchRows.length} line{confirmMismatchRows.length === 1 ? '' : 's'} below don't match the ordered quantity. Review before confirming.
+              </div>
+            </div>
+            <div style={{ flex: 1, overflowY: 'auto', padding: '8px 0' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
+                <thead>
+                  <tr style={{ background: 'var(--soft)' }}>
+                    <th style={{ padding: '8px 20px', textAlign: 'left', fontSize: 10.5, fontWeight: 800, color: 'var(--muted)', textTransform: 'uppercase' }}>Item</th>
+                    <th style={{ padding: '8px 12px', textAlign: 'right', fontSize: 10.5, fontWeight: 800, color: 'var(--muted)', textTransform: 'uppercase' }}>Ordered</th>
+                    <th style={{ padding: '8px 20px', textAlign: 'right', fontSize: 10.5, fontWeight: 800, color: 'var(--muted)', textTransform: 'uppercase' }}>Confirmed</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {confirmMismatchRows.map(row => (
+                    <tr key={row.LineNumber} style={{ borderTop: '1px solid var(--border)' }}>
+                      <td style={{ padding: '8px 20px' }}>
+                        <div style={{ fontWeight: 700, color: 'var(--text)' }}>{row.ItemCode}</div>
+                        <div style={{ fontSize: 11, color: 'var(--muted)' }}>{row.ItemDescription}</div>
+                      </td>
+                      <td style={{ padding: '8px 12px', textAlign: 'right', color: 'var(--text)' }}>{Number(row.QuantityOrdered) || 0}</td>
+                      <td style={{ padding: '8px 20px', textAlign: 'right', fontWeight: 700, color: 'var(--red)' }}>{Number(confirmQtys[row.LineNumber]) || 0}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div style={{ padding: '14px 20px', borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+              <button
+                onClick={() => setConfirmMismatchRows(null)}
+                style={{ height: 36, padding: '0 16px', background: 'var(--soft)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 12.5, fontWeight: 700, cursor: 'pointer' }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleConfirmMismatchProceed}
+                style={{ height: 36, padding: '0 20px', background: 'linear-gradient(135deg, var(--orange), var(--orange2))', color: '#fff', border: 'none', borderRadius: 8, fontSize: 12.5, fontWeight: 700, cursor: 'pointer' }}
+              >
+                Confirm Anyway
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {reportPreviewUrl && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.6)', zIndex: 1100, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>

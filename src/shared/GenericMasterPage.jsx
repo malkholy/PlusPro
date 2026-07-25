@@ -210,7 +210,8 @@ function GenericMasterDrawer({ pageGroupId, fields, editRow, onClose, onSaveSucc
                   />
                 ) : (
                   <input
-                    type={f.DataType === 'number' ? 'number' : f.DataType === 'date' ? 'date' : 'text'}
+                    type={f.DataType === 'date' ? 'date' : 'text'}
+                    inputMode={f.DataType === 'number' ? 'decimal' : undefined}
                     value={formData[f.JsonKey] ?? ''}
                     disabled={disabled}
                     onChange={e => setFormData({ ...formData, [f.JsonKey]: e.target.value })}

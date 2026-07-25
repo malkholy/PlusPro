@@ -567,11 +567,11 @@ export default function WarehouseRequestDrawer({ user, onClose, onSaved, request
                       </div>
                       <div>
                         <input
-                          type="number"
+                          type="text"
+                          inputMode="decimal"
                           value={l.Qty}
                           onChange={e => updateLineField(i, 'Qty', e.target.value)}
                           placeholder="Qty"
-                          min={0}
                           style={{
                             width: '100%', height: 32, padding: '0 10px',
                             border: '1.5px solid ' + (exceeds ? 'var(--red)' : 'var(--border)'),
