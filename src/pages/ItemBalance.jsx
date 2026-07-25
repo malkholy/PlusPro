@@ -8,43 +8,34 @@ export default function ItemBalance({ user }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
-  // Pagination & Search
   const [searchTerm, setSearchTerm] = useState('');
-  const [page, setPage] = useState(1);
-  const [limit, setLimit] = useState(25);
-  const [totalPages, setTotalPages] = useState(1);
 
   // Filters from FilterPanel
   const [filters, setFilters] = useState({});
   const [hasSearched, setHasSearched] = useState(false);
 
-  const loadData = async (currentFilters, currentPage = 1, currentLimit = 25, currentSearch = '') => {
+  const loadData = async (currentFilters, currentSearch = '') => {
     try {
       setLoading(true);
       setError(null);
-      
+
       const res = await apiCall('GetGridData', { PageGroupID: 'item_balance', ...currentFilters }, {}, 'plus');
-      console.log('Item Balance API Response:', res);
       if (res.State === 0) {
         let items = res.List0 || [];
-        console.log('Items length before search:', items.length);
 
-        // Apply search if needed (API doesn't do it natively for this grid yet)
         if (currentSearch) {
           const lower = currentSearch.toLowerCase();
-          items = items.filter(row => 
-            Object.values(row).some(val => 
+          items = items.filter(row =>
+            Object.values(row).some(val =>
               String(val).toLowerCase().includes(lower)
             )
           );
         }
 
-        const totalItems = items.length;
-        setTotalPages(Math.ceil(totalItems / currentLimit));
-        
-        const startIndex = (currentPage - 1) * currentLimit;
-        const endIndex = startIndex + currentLimit;
-        setData(items.slice(startIndex, endIndex));
+        // Pass the full filtered dataset to DataGrid -- it already handles its
+        // own sorting and pagination internally (up to 1000/page), so pre-slicing
+        // here would only ever let it paginate within whatever page we sliced to.
+        setData(items);
       } else {
         setError(res.Message || 'Failed to load Item Balance.');
       }
@@ -57,8 +48,8 @@ export default function ItemBalance({ user }) {
 
   useEffect(() => {
     if (!hasSearched) return;
-    loadData(filters, page, limit, searchTerm);
-  }, [hasSearched, filters, page, limit, searchTerm]);
+    loadData(filters, searchTerm);
+  }, [hasSearched, filters, searchTerm]);
 
   const columns = [
     { key: 'ItemID', label: 'Item ID' },
@@ -78,7 +69,6 @@ export default function ItemBalance({ user }) {
         loading={loading}
         onSearch={(f) => {
           setFilters(f);
-          setPage(1);
           setHasSearched(true);
         }}
       />
@@ -92,10 +82,7 @@ export default function ItemBalance({ user }) {
               type="text"
               placeholder="Search items..."
               value={searchTerm}
-              onChange={(e) => {
-                setSearchTerm(e.target.value);
-                setPage(1);
-              }}
+              onChange={(e) => setSearchTerm(e.target.value)}
               style={{
                 padding: '10px 16px',
                 borderRadius: '8px',
@@ -125,37 +112,13 @@ export default function ItemBalance({ user }) {
             <p style={{ margin: '8px 0 0 0', fontSize: '13px', maxWidth: '320px' }}>Set your filters, then click "Generate" to load item balances.</p>
           </div>
         ) : (
-          <>
-            <div style={{ flex: 1, overflow: 'hidden' }}>
-              <DataGrid
-                rows={data}
-                columns={columns}
-                loading={loading}
-              />
-            </div>
-
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 16, padding: '12px', background: 'var(--surface)', borderRadius: '8px', border: '1px solid var(--border)' }}>
-              <div style={{ color: 'var(--muted)', fontSize: '14px' }}>
-                Page {page} of {totalPages || 1}
-              </div>
-              <div style={{ display: 'flex', gap: 8 }}>
-                <button
-                  disabled={page === 1}
-                  onClick={() => setPage(p => Math.max(1, p - 1))}
-                  style={{ padding: '8px 16px', borderRadius: '6px', border: '1px solid var(--border)', background: page === 1 ? 'transparent' : 'var(--surface-hover)', color: page === 1 ? 'var(--muted)' : 'var(--text)', cursor: page === 1 ? 'not-allowed' : 'pointer' }}
-                >
-                  Previous
-                </button>
-                <button
-                  disabled={page >= totalPages}
-                  onClick={() => setPage(p => Math.min(totalPages, p + 1))}
-                  style={{ padding: '8px 16px', borderRadius: '6px', border: '1px solid var(--border)', background: page >= totalPages ? 'transparent' : 'var(--surface-hover)', color: page >= totalPages ? 'var(--muted)' : 'var(--text)', cursor: page >= totalPages ? 'not-allowed' : 'pointer' }}
-                >
-                  Next
-                </button>
-              </div>
-            </div>
-          </>
+          <div style={{ flex: 1, overflow: 'hidden' }}>
+            <DataGrid
+              rows={data}
+              columns={columns}
+              loading={loading}
+            />
+          </div>
         )}
       </div>
     </div>
