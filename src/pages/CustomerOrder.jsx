@@ -2,7 +2,9 @@ import React, { useState, useEffect } from 'react';
 import DataGrid from '../shared/DataGrid';
 import FilterPanel from '../shared/FilterPanel';
 import { apiCall } from '../shared/api.js';
-import WarehouseRequestDrawer from './WarehouseRequestDrawer.jsx';
+import CustomerOrderDrawer from './CustomerOrderDrawer.jsx';
+import NewCustomerOrderDrawer from './NewCustomerOrderDrawer.jsx';
+import { hasOperation } from '../shared/permissions.js';
 
 const monthStart = (() => {
   const d = new Date();
@@ -17,7 +19,12 @@ function fmtDate(v) {
   return d.toLocaleDateString('en-GB');
 }
 
-export default function WarehouseTransfer({ user }) {
+function fmtMoney(v) {
+  const n = Number(v) || 0;
+  return n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+export default function CustomerOrder({ user }) {
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -27,15 +34,16 @@ export default function WarehouseTransfer({ user }) {
   const [filters, setFilters] = useState({});
   const [hasSearched, setHasSearched] = useState(false);
 
-  const [showNewRequest, setShowNewRequest] = useState(false);
-  const [selectedRequest, setSelectedRequest] = useState(null);
+  const [selectedOrder, setSelectedOrder] = useState(null);
+  const [showNewOrder, setShowNewOrder] = useState(false);
+  const [editOrderNumber, setEditOrderNumber] = useState(null);
 
   const loadData = async (currentFilters, currentSearch = '') => {
     try {
       setLoading(true);
       setError(null);
 
-      const res = await apiCall('GetGridData', { PageGroupID: 'warehouse_transfer', ...currentFilters }, {}, 'plus');
+      const res = await apiCall('GetGridData', { PageGroupID: 'customer_order', ...currentFilters }, {}, 'plus');
       if (res.State === 0) {
         let items = res.List0 || [];
 
@@ -48,12 +56,9 @@ export default function WarehouseTransfer({ user }) {
           );
         }
 
-        // Pass the full filtered dataset to DataGrid -- it already handles its
-        // own sorting and pagination internally, so pre-slicing here would only
-        // ever let it sort/paginate within whatever page we sliced to.
         setData(items);
       } else {
-        setError(res.Message || 'Failed to load Warehouse Transfer requests.');
+        setError(res.Message || 'Failed to load Customer Orders.');
       }
     } catch (err) {
       setError(err.message || 'Error connecting to server.');
@@ -68,22 +73,25 @@ export default function WarehouseTransfer({ user }) {
   }, [hasSearched, filters, searchTerm]);
 
   const columns = [
-    { key: 'RequestNo', label: 'Request No', width: 120, numeric: true, render: v => String(Number(v) || 0) },
-    { key: 'RequestDate', label: 'Request Date', width: 130, render: fmtDate },
-    { key: 'TypeDescription', label: 'Type', width: 140 },
-    { key: 'RequestedWarehouse', label: 'Requested Warehouse', width: 160 },
-    { key: 'ToWarehouse', label: 'To Warehouse', width: 140 },
-    { key: 'RequestStatus', label: 'Status', width: 130 },
+    { key: 'OrderNumber', label: 'Order No', width: 110, numeric: true, render: v => String(Number(v) || 0) },
+    { key: 'DateOrderEntered', label: 'Order Date', width: 120, render: fmtDate },
+    { key: 'CustomerName', label: 'Customer', width: 200 },
+    { key: 'StateDescription', label: 'Status', width: 110 },
+    { key: 'SalesName', label: 'Salesperson', width: 140 },
+    { key: 'Warehouse', label: 'Warehouse', width: 100 },
+    { key: 'RequestShipDate', label: 'Request Ship Date', width: 130, render: fmtDate },
+    { key: 'ScheduledShipDate', label: 'Scheduled Ship Date', width: 140, render: fmtDate },
+    { key: 'TotalFinalAmount', label: 'Total Amount', width: 130, numeric: true, render: fmtMoney },
     { key: 'TotalLines', label: 'Lines', width: 80, numeric: true },
-    { key: 'Note', label: 'Note', width: 200 },
-    { key: 'CreatedBy', label: 'Created By', width: 120 },
-    { key: 'CreatedDate', label: 'Created Date', width: 130, render: fmtDate }
+    { key: 'GovernorateArabicName', label: 'Governorate', width: 130 },
+    { key: 'CityArabicName', label: 'City', width: 130 },
+    { key: 'CreatedByUser', label: 'Created By', width: 120 }
   ];
 
   return (
     <div className="flex-row-layout" style={{ height: '100vh', background: 'var(--bg)', fontFamily: 'var(--font)', color: 'var(--text)' }}>
       <FilterPanel
-        pageGroupId="warehouse_transfer"
+        pageGroupId="customer_order"
         user={user}
         loading={loading}
         filters={['date']}
@@ -96,12 +104,12 @@ export default function WarehouseTransfer({ user }) {
 
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, minWidth: 0, overflow: 'auto', padding: '20px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-          <h2 style={{ margin: 0, fontSize: '24px' }}>📄 Warehouse Transfer</h2>
+          <h2 style={{ margin: 0, fontSize: '24px' }}>🧾 Customer Order</h2>
 
           <div style={{ display: 'flex', gap: 10 }}>
             <input
               type="text"
-              placeholder="Search transfer requests..."
+              placeholder="Search orders..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               style={{
@@ -113,16 +121,18 @@ export default function WarehouseTransfer({ user }) {
                 width: '250px'
               }}
             />
-            <button
-              onClick={() => setShowNewRequest(true)}
-              style={{
-                height: 38, padding: '0 20px', background: 'linear-gradient(135deg, var(--orange), var(--orange2))',
-                color: '#fff', border: 'none', borderRadius: 8, fontSize: 12.5, fontWeight: 700, cursor: 'pointer',
-                boxShadow: '0 4px 12px var(--orange-glow)'
-              }}
-            >
-              + New Request
-            </button>
+            {hasOperation(user, 'customer_order.new_order') && (
+              <button
+                onClick={() => setShowNewOrder(true)}
+                style={{
+                  height: 38, padding: '0 20px', background: 'linear-gradient(135deg, var(--orange), var(--orange2))',
+                  color: '#fff', border: 'none', borderRadius: 8, fontSize: 12.5, fontWeight: 700, cursor: 'pointer',
+                  boxShadow: '0 4px 12px var(--orange-glow)'
+                }}
+              >
+                + New Order
+              </button>
+            )}
           </div>
         </div>
 
@@ -138,39 +148,38 @@ export default function WarehouseTransfer({ user }) {
             flex: 1, color: 'var(--muted)', textAlign: 'center', padding: '64px 0',
             background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '16px'
           }}>
-            <span style={{ fontSize: '48px', marginBottom: 16 }}>📄</span>
+            <span style={{ fontSize: '48px', marginBottom: 16 }}>🧾</span>
             <h3 style={{ margin: 0, color: 'var(--text)', fontSize: '16px', fontWeight: '700' }}>No Data Loaded Yet</h3>
-            <p style={{ margin: '8px 0 0 0', fontSize: '13px', maxWidth: '320px' }}>Set your filters, then click "Generate" to load transfer requests.</p>
+            <p style={{ margin: '8px 0 0 0', fontSize: '13px', maxWidth: '320px' }}>Set your filters, then click "Generate" to load customer orders.</p>
           </div>
         ) : (
-          <>
-            <div style={{ flex: 1, overflow: 'hidden' }}>
-              <DataGrid
-                rows={data}
-                columns={columns}
-                loading={loading}
-                hideSearch
-                onEdit={(row) => setSelectedRequest(row)}
-              />
-            </div>
-          </>
+          <div style={{ flex: 1, overflow: 'hidden' }}>
+            <DataGrid
+              rows={data}
+              columns={columns}
+              loading={loading}
+              hideSearch
+              onEdit={(row) => setSelectedOrder(row)}
+            />
+          </div>
         )}
       </div>
 
-      {showNewRequest && (
-        <WarehouseRequestDrawer
+      {selectedOrder && (
+        <CustomerOrderDrawer
           user={user}
-          onClose={() => setShowNewRequest(false)}
-          onSaved={() => loadData(filters, searchTerm)}
+          order={selectedOrder}
+          onClose={() => setSelectedOrder(null)}
+          onEdit={(row) => { setSelectedOrder(null); setEditOrderNumber(row.OrderNumber); }}
         />
       )}
 
-      {selectedRequest && (
-        <WarehouseRequestDrawer
+      {(showNewOrder || editOrderNumber) && (
+        <NewCustomerOrderDrawer
           user={user}
-          request={selectedRequest}
-          onClose={() => setSelectedRequest(null)}
-          onSaved={() => loadData(filters, searchTerm)}
+          editOrderNumber={editOrderNumber}
+          onClose={() => { setShowNewOrder(false); setEditOrderNumber(null); }}
+          onSaved={() => { setHasSearched(true); loadData(filters, searchTerm); }}
         />
       )}
     </div>

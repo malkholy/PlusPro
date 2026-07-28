@@ -160,6 +160,7 @@ export default function Orders({ user }) {
                 rows={data}
                 columns={columns}
                 loading={loading}
+                hideSearch
                 onEdit={(row) => setSelectedOrder(row)}
               />
             </div>

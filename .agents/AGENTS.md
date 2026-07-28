@@ -24,3 +24,5 @@
 - **SQL Script Execution**: When executing raw SQL via `ExecuteScript` over the HTTP API, you must strip all `GO` statements and properly pre-escape single quotes (e.g., using a JS string replace script) to avoid silent syntax errors and execution failures caused by the backend proxy parser.
 - **Vite Proxy Config**: When adding new API targets in `vite.config.js`, do not hardcode the schema or stored procedure name. Ensure the proxy accurately forwards the exact `SP_Name` header (including schemas like `PLS.`) provided by the frontend `api.js` client.
 
+- **Entity Lookup Fields**: Any dropdown that lets the user pick a real entity from a DB-backed list (Customer, Item, Warehouse, Ship To, Vendor, etc.) must use the shared `src/shared/SearchableSelect.jsx` component, not a native `<select>`. It supports optional `sublabel`/`meta`/`metaSub` fields for a richer two-line row (item code + description + UM, etc.) when the lookup has that data. Native `<select>` remains fine for small fixed-option pickers (year selectors, 2-3 option toggles, in-page client-side filters over already-loaded data) -- those aren't "lookups" and don't benefit from search.
+

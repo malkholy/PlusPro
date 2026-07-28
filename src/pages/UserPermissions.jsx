@@ -8,6 +8,8 @@ export default function UserPermissions({ user }) {
   const [selectedUser, setSelectedUser] = useState(null);
   const [queries, setQueries] = useState([]);
   const [queryPermissions, setQueryPermissions] = useState([]);
+  const [operationMaster, setOperationMaster] = useState([]);
+  const [operationPermissions, setOperationPermissions] = useState([]);
   
   // Loading states
   const [usersLoading, setUsersLoading] = useState(false);
@@ -30,6 +32,7 @@ export default function UserPermissions({ user }) {
     loadUsers();
     loadPagesAndGroups();
     loadQueryMaster();
+    loadOperationMaster();
   }, []);
 
   useEffect(() => {
@@ -38,6 +41,7 @@ export default function UserPermissions({ user }) {
     } else {
       setUserPermissions([]);
       setQueryPermissions([]);
+      setOperationPermissions([]);
     }
   }, [selectedUser]);
 
@@ -81,6 +85,17 @@ export default function UserPermissions({ user }) {
     }
   }
 
+  async function loadOperationMaster() {
+    try {
+      const res = await apiCall('GetOperationMaster', {}, {}, 'plus');
+      if (res.State === 0) {
+        setOperationMaster(res.List0 || []);
+      }
+    } catch (e) {
+      console.error('Failed to load operation master list:', e);
+    }
+  }
+
   async function loadUserPermissions(username) {
     setPermsLoading(true);
     try {
@@ -99,6 +114,14 @@ export default function UserPermissions({ user }) {
           qp => qp.Username.toLowerCase() === username.toLowerCase()
         );
         setQueryPermissions(filteredQ);
+      }
+
+      const opRes = await apiCall('GetUserOperationPermissions', {}, {}, 'plus');
+      if (opRes.State === 0) {
+        const filteredOp = (opRes.List0 || []).filter(
+          op => op.Username.toLowerCase() === username.toLowerCase()
+        );
+        setOperationPermissions(filteredOp);
       }
     } catch (e) {
       console.error('Failed to load user permissions:', e);
@@ -152,6 +175,28 @@ export default function UserPermissions({ user }) {
     setActionLoadingId(null);
   }
 
+  async function handleToggleOperationPermission(operationKey, currentlyAllowed) {
+    if (!selectedUser) return;
+    const targetState = currentlyAllowed ? 0 : 1;
+    setActionLoadingId(`op_${operationKey}`);
+    try {
+      const res = await apiCall('SaveUserOperationPermission', {
+        Username: selectedUser.Username,
+        OperationKey: operationKey,
+        CanPerform: targetState
+      }, {}, 'plus');
+
+      if (res.State !== 0) {
+        alert(res.Message || 'Failed to update operation permission.');
+      } else {
+        await loadUserPermissions(selectedUser.Username);
+      }
+    } catch (err) {
+      alert('Connection error: ' + err.message);
+    }
+    setActionLoadingId(null);
+  }
+
   const isUserAdmin = (usr) => {
     if (!usr) return false;
     const usernameLower = (usr.Username || '').toLowerCase();
@@ -171,6 +216,10 @@ export default function UserPermissions({ user }) {
 
   const hasPermission = (pageGroupId) => {
     return userPermissions.some(p => p.PageGroupID === pageGroupId && p.CanView);
+  };
+
+  const hasOperationPermission = (operationKey) => {
+    return operationPermissions.some(p => p.OperationKey === operationKey && p.CanPerform);
   };
 
   // Filter user list based on search input
@@ -1009,11 +1058,105 @@ export default function UserPermissions({ user }) {
                         </div>
                       </div>
                     )}
-                    
+
+                    {/* Operation Permissions -- app-wide action/sub-action gating */}
+                    {operationMaster.length > 0 && (
+                      <div style={{ background: 'var(--soft)', border: '1px solid var(--border)', borderRadius: 14, padding: 16 }}>
+                        <div style={{ fontSize: 13, fontWeight: 800, color: 'var(--text)', borderBottom: '1px solid var(--border)', paddingBottom: 12, marginBottom: 12 }}>
+                          ⚙️ Operation Permissions
+                        </div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                          {Object.entries(
+                            operationMaster.reduce((acc, op) => {
+                              const grp = op.PageGroupID || 'General';
+                              if (!acc[grp]) acc[grp] = [];
+                              acc[grp].push(op);
+                              return acc;
+                            }, {})
+                          ).map(([pageGroupId, ops]) => {
+                            const topOps = ops.filter(o => !o.ParentOperationKey);
+                            return (
+                              <div key={pageGroupId}>
+                                <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', marginBottom: 8 }}>
+                                  {pageGroupId}
+                                </div>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                                  {topOps.map(op => {
+                                    const isAllowed = hasOperationPermission(op.OperationKey);
+                                    const children = ops.filter(o => o.ParentOperationKey === op.OperationKey);
+                                    return (
+                                      <div key={op.OperationKey}>
+                                        <div style={{
+                                          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                                          background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 10, padding: '10px 14px'
+                                        }}>
+                                          <div style={{ minWidth: 0, flex: 1, paddingRight: 16 }}>
+                                            <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>{op.Label}</div>
+                                            {op.Description && (
+                                              <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 4 }}>{op.Description}</div>
+                                            )}
+                                          </div>
+                                          <label style={{ display: 'inline-flex', alignItems: 'center', cursor: 'pointer' }}>
+                                            <input
+                                              type="checkbox"
+                                              checked={isAllowed}
+                                              disabled={actionLoadingId === `op_${op.OperationKey}`}
+                                              onChange={() => handleToggleOperationPermission(op.OperationKey, isAllowed)}
+                                              style={{ width: 16, height: 16, marginRight: 8, cursor: 'pointer' }}
+                                            />
+                                            <span style={{ fontSize: 12, fontWeight: 600, color: isAllowed ? 'var(--orange)' : 'var(--muted)' }}>
+                                              {actionLoadingId === `op_${op.OperationKey}` ? 'Saving...' : isAllowed ? 'Allowed' : 'Denied'}
+                                            </span>
+                                          </label>
+                                        </div>
+
+                                        {children.length > 0 && (
+                                          <div style={{ paddingLeft: 24, marginLeft: 16, marginTop: 8, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                                            {children.map(child => {
+                                              const isChildAllowed = hasOperationPermission(child.OperationKey);
+                                              return (
+                                                <div key={child.OperationKey} style={{
+                                                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                                                  background: 'var(--soft)', border: '1px solid var(--border)', borderRadius: 8, padding: '8px 12px'
+                                                }}>
+                                                  <div style={{ minWidth: 0, flex: 1, paddingRight: 16 }}>
+                                                    <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)' }}>↳ {child.Label}</div>
+                                                    {child.Description && (
+                                                      <div style={{ fontSize: 10.5, color: 'var(--muted)', marginTop: 2 }}>{child.Description}</div>
+                                                    )}
+                                                  </div>
+                                                  <label style={{ display: 'inline-flex', alignItems: 'center', cursor: 'pointer' }}>
+                                                    <input
+                                                      type="checkbox"
+                                                      checked={isChildAllowed}
+                                                      disabled={actionLoadingId === `op_${child.OperationKey}`}
+                                                      onChange={() => handleToggleOperationPermission(child.OperationKey, isChildAllowed)}
+                                                      style={{ width: 15, height: 15, marginRight: 8, cursor: 'pointer' }}
+                                                    />
+                                                    <span style={{ fontSize: 11.5, fontWeight: 600, color: isChildAllowed ? 'var(--orange)' : 'var(--muted)' }}>
+                                                      {actionLoadingId === `op_${child.OperationKey}` ? 'Saving...' : isChildAllowed ? 'Allowed' : 'Denied'}
+                                                    </span>
+                                                  </label>
+                                                </div>
+                                              );
+                                            })}
+                                          </div>
+                                        )}
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+
                   </div>
                 )}
               </div>
-              
+
             </div>
           )}
         </div>

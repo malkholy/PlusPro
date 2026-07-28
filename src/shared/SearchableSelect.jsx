@@ -1,9 +1,14 @@
 import React, { useState, useRef, useEffect, useLayoutEffect } from 'react';
 import { createPortal } from 'react-dom';
 
-export default function SearchableSelect({ value, options, onChange, placeholder = '', style = {}, disabled = false }) {
+// Options accept optional `sublabel` (secondary line under the main label,
+// e.g. an Arabic description) and `meta`/`metaSub` (right-aligned column,
+// e.g. a price/UM) for a richer two-line row -- lookups that don't supply
+// these just render the plain single-line label as before.
+export default function SearchableSelect({ value, options, onChange, placeholder = '', style = {}, disabled = false, openOnFocus = false }) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState('');
+  const [searchFocused, setSearchFocused] = useState(false);
   const wrapperRef = useRef(null);
   const dropdownRef = useRef(null);
   const [coords, setCoords] = useState({ left: 0, top: 0, width: 0, goesUp: false });
@@ -27,13 +32,13 @@ export default function SearchableSelect({ value, options, onChange, placeholder
     if (wrapperRef.current) {
       const rect = wrapperRef.current.getBoundingClientRect();
       const spaceBelow = window.innerHeight - rect.bottom;
-      const dropdownHeight = 250; 
+      const dropdownHeight = 300;
       const goesUp = spaceBelow < dropdownHeight && rect.top > dropdownHeight;
-      
+
       setCoords({
         left: rect.left,
         top: goesUp ? rect.top - dropdownHeight : rect.bottom,
-        width: Math.max(rect.width, 200),
+        width: Math.max(rect.width, 240),
         goesUp
       });
     }
@@ -42,9 +47,16 @@ export default function SearchableSelect({ value, options, onChange, placeholder
   useLayoutEffect(() => {
     if (open) {
       updateCoords();
+      // A second pass on the next frame catches cases where the trigger's
+      // real position only settles after this paint -- e.g. a row that was
+      // just inserted into a scrollable list and the browser is still
+      // scrolling it into view (focus-triggered scrollIntoView), which
+      // otherwise leaves the dropdown anchored to a stale/initial rect.
+      const raf = requestAnimationFrame(updateCoords);
       window.addEventListener('resize', updateCoords);
       window.addEventListener('scroll', updateCoords, true);
       return () => {
+        cancelAnimationFrame(raf);
         window.removeEventListener('resize', updateCoords);
         window.removeEventListener('scroll', updateCoords, true);
       };
@@ -54,8 +66,9 @@ export default function SearchableSelect({ value, options, onChange, placeholder
   const selectedOpt = options.find(o => String(o.value) === String(value));
   const displayLabel = selectedOpt ? selectedOpt.label : '';
 
-  const filtered = options.filter(o => 
-    String(o.label).toLowerCase().includes(search.toLowerCase()) || 
+  const filtered = options.filter(o =>
+    String(o.label).toLowerCase().includes(search.toLowerCase()) ||
+    String(o.sublabel || '').toLowerCase().includes(search.toLowerCase()) ||
     String(o.value).toLowerCase().includes(search.toLowerCase())
   );
 
@@ -90,16 +103,14 @@ export default function SearchableSelect({ value, options, onChange, placeholder
 
   return (
     <div ref={wrapperRef} style={{ position: 'relative', width: '100%', ...style }}>
-      <div 
+      <div
         className="searchable-trigger"
         tabIndex={0}
-        onClick={() => { 
-          if (disabled) return;
-          if (!open) {
-            setSearch('');
-            setHighlightedIndex(0);
-          }
-          setOpen(!open); 
+        onClick={() => {
+          if (disabled || open) return;
+          setSearch('');
+          setHighlightedIndex(0);
+          setOpen(true);
         }}
         onKeyDown={(e) => {
           if (disabled) return;
@@ -110,19 +121,25 @@ export default function SearchableSelect({ value, options, onChange, placeholder
             setOpen(true);
           }
         }}
-        style={{ 
-          width: '100%', 
-          padding: '4px 8px', 
-          border: '1px solid var(--border)', 
-          borderRadius: '4px', 
-          background: 'var(--bg)', 
-          cursor: disabled ? 'not-allowed' : 'pointer', 
+        onFocus={() => {
+          if (disabled || !openOnFocus || open) return;
+          setSearch('');
+          setHighlightedIndex(0);
+          setOpen(true);
+        }}
+        style={{
+          width: '100%',
+          padding: '4px 8px',
+          border: '1px solid var(--border)',
+          borderRadius: '4px',
+          background: 'var(--bg)',
+          cursor: disabled ? 'not-allowed' : 'pointer',
           opacity: disabled ? 0.6 : 1,
-          minHeight: '28px', 
-          display: 'flex', 
+          minHeight: '28px',
+          display: 'flex',
           alignItems: 'center',
-          overflow: 'hidden', 
-          whiteSpace: 'nowrap', 
+          overflow: 'hidden',
+          whiteSpace: 'nowrap',
           textOverflow: 'ellipsis',
           fontSize: '13px',
           color: displayLabel ? 'var(--text)' : 'var(--muted)'
@@ -130,85 +147,123 @@ export default function SearchableSelect({ value, options, onChange, placeholder
       >
         {displayLabel || placeholder}
       </div>
-      
+
       {open && createPortal(
-        <div 
+        <div
           ref={dropdownRef}
-          style={{ 
-            position: 'fixed', 
-            top: coords.goesUp ? undefined : coords.top + 2, 
-            bottom: coords.goesUp ? window.innerHeight - coords.top + 2 : undefined,
-            left: coords.left, 
-            width: coords.width, 
-            background: 'var(--bg)', 
-            border: '1px solid var(--border)', 
-            borderRadius: '4px', 
-            zIndex: 999999, 
-            maxHeight: '250px', 
-            display: 'flex', 
-            flexDirection: 'column', 
-            boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+          style={{
+            position: 'fixed',
+            top: coords.goesUp ? undefined : coords.top + 6,
+            bottom: coords.goesUp ? window.innerHeight - coords.top + 6 : undefined,
+            left: coords.left,
+            width: coords.width,
+            background: 'var(--bg)',
+            border: '1px solid var(--border)',
+            borderRadius: '10px',
+            zIndex: 999999,
+            maxHeight: '300px',
+            display: 'flex',
+            flexDirection: 'column',
+            boxShadow: '0 10px 30px rgba(0,0,0,0.18)',
+            overflow: 'hidden'
           }}
         >
-          <input 
-            autoFocus
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Tab') {
-                e.preventDefault();
-                setOpen(false);
-              } else {
-                handleKeyDown(e);
-              }
-            }}
-            placeholder="Search..."
-            style={{ 
-              padding: '8px', 
-              borderBottom: '1px solid var(--border)', 
-              borderTop: 'none', 
-              borderLeft: 'none', 
-              borderRight: 'none', 
-              background: 'var(--surface)', 
-              color: 'var(--text)', 
-              outline: 'none',
-              fontSize: '13px'
-            }}
-          />
-          <div style={{ overflowY: 'auto', flex: 1, padding: '4px 0' }}>
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 8, margin: 8, padding: '0 10px',
+            height: 36, borderRadius: 8, background: 'var(--surface)',
+            border: '1.5px solid ' + (searchFocused ? 'var(--orange)' : 'var(--border)'),
+            boxShadow: searchFocused ? '0 0 0 3px var(--orange-glow)' : 'none',
+            transition: 'border-color 0.15s, box-shadow 0.15s'
+          }}>
+            <span style={{ fontSize: 13, color: searchFocused ? 'var(--orange)' : 'var(--muted)', flexShrink: 0 }}>🔍</span>
+            <input
+              autoFocus
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              onFocus={() => setSearchFocused(true)}
+              onBlur={() => setSearchFocused(false)}
+              onKeyDown={(e) => {
+                if (e.key === 'Tab') {
+                  e.preventDefault();
+                  setOpen(false);
+                } else {
+                  handleKeyDown(e);
+                }
+              }}
+              placeholder="Search..."
+              style={{
+                flex: 1,
+                border: 'none',
+                background: 'transparent',
+                color: 'var(--text)',
+                outline: 'none',
+                fontSize: '13px',
+                height: '100%'
+              }}
+            />
+          </div>
+          <div style={{ overflowY: 'auto', flex: 1, padding: '2px 8px 8px' }}>
             <div
               ref={el => optionRefs.current[0] = el}
               onClick={() => { onChange(''); setOpen(false); }}
               onMouseEnter={() => setHighlightedIndex(0)}
               style={{
-                padding: '6px 8px',
+                padding: '8px 10px',
                 cursor: 'pointer',
                 color: 'var(--muted)',
                 fontSize: '13px',
-                background: highlightedIndex === 0 ? 'var(--soft)' : 'transparent'
+                borderRadius: 8,
+                background: highlightedIndex === 0 ? 'var(--orange-soft)' : 'transparent'
               }}
             >
               —
             </div>
-            {filtered.length === 0 ? <div style={{ padding: '6px 8px', color: 'var(--muted)', fontSize: '13px' }}>No results</div> : null}
-            {filtered.map((opt, i) => (
-              <div
-                key={i}
-                ref={el => optionRefs.current[i + 1] = el}
-                onClick={() => { onChange(opt.value); setOpen(false); }}
-                onMouseEnter={() => setHighlightedIndex(i + 1)}
-                style={{
-                  padding: '6px 8px',
-                  cursor: 'pointer',
-                  fontSize: '13px',
-                  whiteSpace: 'nowrap',
-                  color: 'var(--text)',
-                  background: highlightedIndex === i + 1 ? 'var(--soft)' : 'transparent'
-                }}
-              >
-                {opt.label}
-              </div>
-            ))}
+            {filtered.length === 0 ? <div style={{ padding: '10px', color: 'var(--muted)', fontSize: '13px', textAlign: 'center' }}>No results</div> : null}
+            {filtered.map((opt, i) => {
+              const isHighlighted = highlightedIndex === i + 1;
+              const hasRichContent = opt.sublabel || opt.meta;
+              return (
+                <div
+                  key={i}
+                  ref={el => optionRefs.current[i + 1] = el}
+                  onClick={() => { onChange(opt.value); setOpen(false); }}
+                  onMouseEnter={() => setHighlightedIndex(i + 1)}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    gap: 12,
+                    padding: hasRichContent ? '10px 12px' : '8px 10px',
+                    cursor: 'pointer',
+                    borderRadius: 8,
+                    background: isHighlighted ? 'var(--orange-soft)' : 'transparent'
+                  }}
+                >
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{
+                      fontSize: '13px', fontWeight: hasRichContent ? 700 : 400,
+                      color: isHighlighted && hasRichContent ? 'var(--orange)' : 'var(--text)',
+                      whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis'
+                    }}>
+                      {opt.optionLabel || opt.label}
+                    </div>
+                    {opt.sublabel && (
+                      <div style={{ fontSize: '11.5px', color: 'var(--muted)', marginTop: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        {opt.sublabel}
+                      </div>
+                    )}
+                  </div>
+                  {opt.meta && (
+                    <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                      <div style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text)', whiteSpace: 'nowrap' }}>{opt.meta}</div>
+                      {opt.metaSub && (
+                        <div style={{ fontSize: '10.5px', color: 'var(--muted)', marginTop: 2, whiteSpace: 'nowrap' }}>{opt.metaSub}</div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         </div>,
         document.body

@@ -16,6 +16,7 @@ export default function GenericMasterPage({ user, def }) {
   const [fields, setFields] = useState([]);
   const [rows, setRows] = useState([]);
   const [drawer, setDrawer] = useState(null); // null | { isNew: true } | rowData
+  const [searchTerm, setSearchTerm] = useState('');
 
   async function loadAll() {
     setLoading(true);
@@ -62,6 +63,14 @@ export default function GenericMasterPage({ user, def }) {
       }));
   }, [rows, fields]);
 
+  const filteredRows = useMemo(() => {
+    if (!searchTerm) return rows;
+    const lower = searchTerm.toLowerCase();
+    return rows.filter(row =>
+      Object.values(row).some(val => String(val).toLowerCase().includes(lower))
+    );
+  }, [rows, searchTerm]);
+
   async function handleDelete(rowsToDelete) {
     const row = rowsToDelete[0];
     const keyField = fields.find(f => f.IsKey);
@@ -100,6 +109,20 @@ export default function GenericMasterPage({ user, def }) {
           <h2 style={{ fontSize: 18, fontWeight: 800, color: 'var(--text)' }}>{def?.icon} {def?.label}</h2>
           {def?.desc && <p style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 2 }}>{def.desc}</p>}
         </div>
+        <input
+          type="text"
+          placeholder="Search..."
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+          style={{
+            padding: '10px 16px',
+            borderRadius: '8px',
+            border: '1px solid var(--border)',
+            background: 'var(--surface)',
+            color: 'var(--text)',
+            width: '250px'
+          }}
+        />
       </div>
 
       {error && (
@@ -112,8 +135,9 @@ export default function GenericMasterPage({ user, def }) {
         <DataGrid
           title={def?.label || 'Records'}
           columns={columns}
-          rows={rows}
+          rows={filteredRows}
           loading={loading}
+          hideSearch
           onAdd={() => setDrawer({ isNew: true })}
           onEdit={(row) => setDrawer(row)}
           onDelete={handleDelete}

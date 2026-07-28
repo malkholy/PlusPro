@@ -117,6 +117,7 @@ export default function ItemBalance({ user }) {
               rows={data}
               columns={columns}
               loading={loading}
+              hideSearch
             />
           </div>
         )}

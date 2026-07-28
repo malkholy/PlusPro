@@ -48,9 +48,16 @@ export default function PageMasterDrawer({ user, editItem, groups, onClose, onSa
   const [authSaving, setAuthSaving] = useState(null);
   const [userToGrant, setUserToGrant] = useState('');
 
+  // Operations tab state -- read-only list of PLS.OperationMaster rows
+  // registered against this PageGroupID (see src/shared/permissions.js /
+  // UserPermissions.jsx for how these get granted to users).
+  const [operations, setOperations] = useState([]);
+  const [operationsLoading, setOperationsLoading] = useState(false);
+
   useEffect(() => {
     if ((activeTab === 'filters' || activeTab === 'queries') && savedPageGroupID) loadQueries();
     if (activeTab === 'auth' && savedPageGroupID) loadAuth();
+    if (activeTab === 'operations' && savedPageGroupID) loadOperations();
   }, [activeTab, savedPageGroupID]);
 
   async function loadQueries() {
@@ -90,6 +97,19 @@ export default function PageMasterDrawer({ user, editItem, groups, onClose, onSa
       setError('Connection error: ' + e.message);
     }
     setUsersLoading(false);
+  }
+
+  async function loadOperations() {
+    setOperationsLoading(true);
+    try {
+      const res = await apiCall('GetOperationMaster', {}, {}, 'plus');
+      if (res.State === 0) {
+        setOperations((res.List0 || []).filter(op => op.PageGroupID === savedPageGroupID));
+      }
+    } catch (e) {
+      setError('Connection error: ' + e.message);
+    }
+    setOperationsLoading(false);
   }
 
   async function handleSaveMain() {
@@ -232,7 +252,8 @@ export default function PageMasterDrawer({ user, editItem, groups, onClose, onSa
             { id: 'main', label: 'Main Info' },
             { id: 'filters', label: 'Filters (Links to Page)' },
             { id: 'queries', label: 'Queries' },
-            { id: 'auth', label: 'User Authorization' }
+            { id: 'auth', label: 'User Authorization' },
+            { id: 'operations', label: 'Operations' }
           ].map(tab => (
             <button
               key={tab.id}
@@ -597,6 +618,56 @@ export default function PageMasterDrawer({ user, editItem, groups, onClose, onSa
                   </div>
                 )}
               </>
+            )
+          )}
+
+          {activeTab === 'operations' && (
+            isNew ? (
+              <div style={{ padding: 32, textAlign: 'center', color: 'var(--muted)', fontSize: 13 }}>
+                Please save this page's Main Info first to see its registered operations.
+              </div>
+            ) : operationsLoading ? (
+              <div style={{ padding: 32, textAlign: 'center', color: 'var(--muted)', fontSize: 13 }}>Loading operations...</div>
+            ) : operations.length === 0 ? (
+              <div style={{ padding: 32, textAlign: 'center', color: 'var(--muted)', fontSize: 13, border: '1px dashed var(--border)', borderRadius: 10 }}>
+                No operations registered for this page yet. Operations are added directly in SQL (PLS.OperationMaster) as each form's actions are built -- see src/shared/permissions.js for how they're checked, and User Permissions for granting them to users.
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {operations.filter(op => !op.ParentOperationKey).map(op => {
+                  const children = operations.filter(c => c.ParentOperationKey === op.OperationKey);
+                  return (
+                    <div key={op.OperationKey}>
+                      <div style={{
+                        display: 'flex', flexDirection: 'column', padding: '10px 14px',
+                        background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 10
+                      }}>
+                        <div style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--text)' }}>⚙️ {op.Label}</div>
+                        <div style={{ fontSize: 10, color: 'var(--muted)', marginTop: 2, fontFamily: 'monospace' }}>{op.OperationKey}</div>
+                        {op.Description && (
+                          <div style={{ fontSize: 11, color: 'var(--hint)', marginTop: 4 }}>{op.Description}</div>
+                        )}
+                      </div>
+                      {children.length > 0 && (
+                        <div style={{ paddingLeft: 24, marginLeft: 16, marginTop: 8, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                          {children.map(child => (
+                            <div key={child.OperationKey} style={{
+                              display: 'flex', flexDirection: 'column', padding: '8px 12px',
+                              background: 'var(--soft)', border: '1px solid var(--border)', borderRadius: 8
+                            }}>
+                              <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)' }}>↳ {child.Label}</div>
+                              <div style={{ fontSize: 9.5, color: 'var(--muted)', marginTop: 2, fontFamily: 'monospace' }}>{child.OperationKey}</div>
+                              {child.Description && (
+                                <div style={{ fontSize: 10.5, color: 'var(--hint)', marginTop: 4 }}>{child.Description}</div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
             )
           )}
         </div>

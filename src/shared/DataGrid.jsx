@@ -333,28 +333,33 @@ export default function DataGrid({
     const colDef = visCols.find(c => c.key === col);
     const uniqueVals = [...new Set(rows.map(r => String(r[col] ?? "")))].sort();
     const current = colFilters[col] || new Set(uniqueVals);
-    setColFilterMenu({ 
-      x: r.left, 
-      y: r.bottom + 6, 
-      col, 
-      uniqueVals, 
+    setColFilterMenu({
+      x: r.left,
+      y: r.bottom + 6,
+      col,
+      uniqueVals,
       tempSelected: new Set(current),
-      render: colDef?.render 
+      originalSelected: new Set(current),
+      render: colDef?.render
     });
     setColFilterSearch("");
   }
 
+  // Filter applies live as checkboxes are toggled -- no separate "Apply" click
+  // needed. tempSelected still tracks the popup's own display state; colFilters
+  // (which actually drives the grid's row filtering) is updated in lockstep.
   function toggleColFilterVal(val) {
     setColFilterMenu(prev => {
       const s = new Set(prev.tempSelected);
       s.has(val) ? s.delete(val) : s.add(val);
+      setColFilters(cf => ({ ...cf, [prev.col]: s }));
       return { ...prev, tempSelected: s };
     });
+    setPageIdx(1);
   }
 
   function applyColFilter() {
-    setColFilters(prev => ({ ...prev, [colFilterMenu.col]: colFilterMenu.tempSelected }));
-    setColFilterMenu(null); setPageIdx(1);
+    setColFilterMenu(null);
   }
 
   function selectAllColFilterVals() {
@@ -363,8 +368,10 @@ export default function DataGrid({
       const visibleVals = prev.uniqueVals.filter(v => v.toLowerCase().includes(colFilterSearch.toLowerCase()));
       const s = new Set(prev.tempSelected);
       visibleVals.forEach(v => s.add(v));
+      setColFilters(cf => ({ ...cf, [prev.col]: s }));
       return { ...prev, tempSelected: s };
     });
+    setPageIdx(1);
   }
 
   function clearAllColFilterVals() {
@@ -373,8 +380,17 @@ export default function DataGrid({
       const visibleVals = prev.uniqueVals.filter(v => v.toLowerCase().includes(colFilterSearch.toLowerCase()));
       const s = new Set(prev.tempSelected);
       visibleVals.forEach(v => s.delete(v));
+      setColFilters(cf => ({ ...cf, [prev.col]: s }));
       return { ...prev, tempSelected: s };
     });
+    setPageIdx(1);
+  }
+
+  function cancelColFilter() {
+    if (colFilterMenu) {
+      setColFilters(prev => ({ ...prev, [colFilterMenu.col]: colFilterMenu.originalSelected }));
+    }
+    setColFilterMenu(null);
   }
 
   const isColFiltered = col => {
@@ -726,9 +742,9 @@ export default function DataGrid({
               })}
           </div>
           <div className="dg-col-filter-actions">
-            <button onClick={() => setColFilterMenu(null)}>Cancel</button>
+            <button onClick={cancelColFilter}>Cancel</button>
             <button onClick={() => { setColFilters(p=>{const n={...p};delete n[colFilterMenu.col];return n;}); setColFilterMenu(null); }}>Clear</button>
-            <button className="ok" onClick={applyColFilter}>Apply</button>
+            <button className="ok" onClick={applyColFilter}>Done</button>
           </div>
         </div>,
         document.body

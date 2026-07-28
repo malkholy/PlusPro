@@ -39,7 +39,14 @@ export default function PageMaster({ user }) {
     try {
       const res = await apiCall('GetPagesAndGroups', {}, {}, 'plus');
       if (res.State === 0) {
-        setItems(res.List0 || []);
+        // Internal virtual PageGroupIDs (SortOrder 999) exist only so
+        // PLS.PageQueries -- which has a real FK to PagesAndGroups -- can
+        // link a Detail/Lookup query to something even when it's not a real
+        // sidebar page (e.g. "orders_lines", "item_price_by_type"). They're
+        // not pages a user would ever navigate to, so keep them out of this
+        // list -- they're still fully manageable from Query Master, which
+        // already shows/edits each query's PageGroupID links directly.
+        setItems((res.List0 || []).filter(i => i.SortOrder !== 999));
       } else {
         setError(res.Message || 'Failed to load pages and groups');
       }

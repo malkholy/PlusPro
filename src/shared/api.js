@@ -46,6 +46,10 @@ export async function apiCall(operation, lineData = null, extraParams = {}, apiT
     target = 'warehouse_request';
   } else if (apiType === 'rma') {
     target = 'rma';
+  } else if (apiType === 'customer_order') {
+    target = 'customer_order';
+  } else if (apiType === 'customer_order_price') {
+    target = 'customer_order_price';
   }
 
   let url = '';
@@ -91,6 +95,12 @@ export async function apiCall(operation, lineData = null, extraParams = {}, apiT
   } else if (target === 'rma') {
     url = IS_DEV ? '/rma-api/General/GeneralAPI/' : 'https://sila.silasystem.com:7103/General/GeneralAPI/';
     spName = 'APIPlusRMAOperation';
+  } else if (target === 'customer_order') {
+    url = IS_DEV ? '/customer-order-api/General/GeneralAPI/' : 'https://sila.silasystem.com:7103/General/GeneralAPI/';
+    spName = 'APIPlusCustomerOrderOperation';
+  } else if (target === 'customer_order_price') {
+    url = IS_DEV ? '/customer-order-price-api/General/GeneralAPI/' : 'https://sila.silasystem.com:7103/General/GeneralAPI/';
+    spName = 'COR.APIPlusCustomerOrderPricePromotionOperation';
   } else {
     url = IS_DEV ? '/api/General/GeneralAPI/' : 'https://sila.silasystem.com:7103/General/GeneralAPI/';
     spName = 'APIPlusOperation';

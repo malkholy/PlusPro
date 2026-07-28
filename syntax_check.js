@@ -1,6 +1,6 @@
 const fs = require('fs');
 
-const sql = fs.readFileSync('SQLScript/APIPlusJournalOperation.sql', 'utf8');
+const sql = fs.readFileSync('SQLScript/SPs/APIPlusJournalOperation.sql', 'utf8');
 
 // Basic checks
 const goCount = (sql.match(/^GO/gm) || []).length;

@@ -143,6 +143,7 @@ export default function RMA({ user }) {
               rows={data}
               columns={columns}
               loading={loading}
+              hideSearch
               onEdit={(row) => setSelectedRMA(row)}
             />
           </div>

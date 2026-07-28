@@ -65,6 +65,7 @@ import WarehouseTransfer from './pages/WarehouseTransfer.jsx';
 import ItemMaster from './pages/ItemMaster.jsx';
 import Orders from './pages/Orders.jsx';
 import RMA from './pages/RMA.jsx';
+import CustomerOrder from './pages/CustomerOrder.jsx';
 
 
 
@@ -291,7 +292,8 @@ const PAGE_COMPONENTS = {
   warehouse_transfer: WarehouseTransfer,
   item_master: ItemMaster,
   orders: Orders,
-  rma: RMA
+  rma: RMA,
+  customer_order: CustomerOrder
 };
 
 // The sidebar is built live from PLS.PagesAndGroups at login instead of a
@@ -386,20 +388,23 @@ export default function App() {
         let allowed = [];
         let builtNav = [];
         let crudIds = new Set();
+        let allowedOperations = [];
         try {
-          const [allowedRes, pagesRes, crudRes] = await Promise.all([
+          const [allowedRes, pagesRes, crudRes, allowedOpsRes] = await Promise.all([
             apiCall('GetUserAllowedPages', {}, {}, 'plus'),
             apiCall('GetPagesAndGroups', {}, {}, 'plus'),
-            apiCall('GetCrudPages', {}, {}, 'plus')
+            apiCall('GetCrudPages', {}, {}, 'plus'),
+            apiCall('GetUserAllowedOperations', {}, {}, 'plus')
           ]);
           if (allowedRes.State === 0) allowed = allowedRes.List0 || [];
           if (crudRes.State === 0) crudIds = new Set((crudRes.List0 || []).map(r => r.PageGroupID));
           if (pagesRes.State === 0) builtNav = buildNavTree(pagesRes.List0 || [], crudIds);
+          if (allowedOpsRes.State === 0) allowedOperations = (allowedOpsRes.List0 || []).map(r => r.OperationKey);
         } catch (err) {
           console.error('Failed to load user allowed pages / sidebar:', err);
         }
 
-        const loggedUser = { Username: u.Username || un, Name: u.Name || un, IsAdmin: u.IsAdmin };
+        const loggedUser = { Username: u.Username || un, Name: u.Name || un, IsAdmin: u.IsAdmin, AllowedOperations: allowedOperations };
         setAllowedPages(allowed);
         setNav(builtNav);
         setCrudPageIds(crudIds);

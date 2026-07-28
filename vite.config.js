@@ -110,6 +110,32 @@ export default defineConfig({
           })
         }
       },
+      '/customer-order-api': {
+        target: 'https://sila.silasystem.com:7103',
+        changeOrigin: true,
+        secure: false,
+        rewrite: (path) => path.replace(/^\/customer-order-api/, ''),
+        configure: (proxy) => {
+          proxy.on('proxyReq', (proxyReq) => {
+            proxyReq.setHeader('SP_Name', 'APIPlusCustomerOrderOperation')
+            proxyReq.setHeader('Accept', 'application/json')
+            proxyReq.setHeader('Content-Type', 'application/json')
+          })
+        }
+      },
+      '/customer-order-price-api': {
+        target: 'https://sila.silasystem.com:7103',
+        changeOrigin: true,
+        secure: false,
+        rewrite: (path) => path.replace(/^\/customer-order-price-api/, ''),
+        configure: (proxy) => {
+          proxy.on('proxyReq', (proxyReq) => {
+            proxyReq.setHeader('SP_Name', 'COR.APIPlusCustomerOrderPricePromotionOperation')
+            proxyReq.setHeader('Accept', 'application/json')
+            proxyReq.setHeader('Content-Type', 'application/json')
+          })
+        }
+      },
       '/api': {
         target: 'https://sila.silasystem.com:7103',
         changeOrigin: true,

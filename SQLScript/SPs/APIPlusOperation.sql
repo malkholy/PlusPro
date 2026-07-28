@@ -1616,6 +1616,95 @@ BEGIN
     END
 
     -- ====================================================================
+    -- User Operation Permissions -- app-wide action/sub-action gating
+    -- (New/Edit/Delete an entity, or a granular action inside a form, e.g.
+    -- "change Warehouse while editing a Customer Order"). Same shape as the
+    -- Page-Permission operations above: PLS.OperationMaster is the registry
+    -- (grown incrementally as each form is built), PLS.UserOperationPermissions
+    -- is the per-user grant, GetUserAllowedOperations is what the frontend
+    -- fetches once at login (mirrors GetUserAllowedPages's admin bypass).
+    -- ====================================================================
+    IF @Operation = 'GetOperationMaster'
+    BEGIN
+        SET @State = 0;
+        SET @Message = 'Success';
+
+        SELECT OperationKey, ParentOperationKey, PageGroupID, Label, Description, SortOrder
+        FROM [PLS].[OperationMaster]
+        ORDER BY PageGroupID, SortOrder;
+        RETURN;
+    END
+
+    IF @Operation = 'GetUserOperationPermissions'
+    BEGIN
+        SET @State = 0;
+        SET @Message = 'Success';
+
+        SELECT PermissionID, Username, OperationKey, CanPerform, GrantedBy, GrantedDate
+        FROM [PLS].[UserOperationPermissions]
+        ORDER BY Username, OperationKey;
+        RETURN;
+    END
+
+    IF @Operation = 'SaveUserOperationPermission'
+    BEGIN
+        SET @State = 0;
+        SET @Message = 'Success';
+
+        DECLARE @OpPermUser VARCHAR(100) = JSON_VALUE(@LineData, '$.Username');
+        DECLARE @OpPermKey VARCHAR(150) = JSON_VALUE(@LineData, '$.OperationKey');
+        DECLARE @OpPermCanPerform BIT = ISNULL(TRY_CAST(JSON_VALUE(@LineData, '$.CanPerform') AS BIT), 0);
+
+        IF @OpPermUser IS NULL OR @OpPermKey IS NULL
+        BEGIN
+            SET @State = 1;
+            SET @Message = 'Username and OperationKey are required';
+            RETURN;
+        END
+
+        IF EXISTS (SELECT 1 FROM [PLS].[UserOperationPermissions] WHERE Username = @OpPermUser AND OperationKey = @OpPermKey)
+        BEGIN
+            UPDATE [PLS].[UserOperationPermissions]
+            SET CanPerform = @OpPermCanPerform,
+                GrantedBy = @User,
+                GrantedDate = GETDATE()
+            WHERE Username = @OpPermUser AND OperationKey = @OpPermKey;
+        END
+        ELSE
+        BEGIN
+            INSERT INTO [PLS].[UserOperationPermissions] (Username, OperationKey, CanPerform, GrantedBy, GrantedDate)
+            VALUES (@OpPermUser, @OpPermKey, @OpPermCanPerform, @User, GETDATE());
+        END
+        RETURN;
+    END
+
+    IF @Operation = 'GetUserAllowedOperations'
+    BEGIN
+        SET @State = 0;
+        SET @Message = 'Success';
+
+        DECLARE @OpIsUserAdmin BIT = 0;
+        IF EXISTS (SELECT 1 FROM ERPManagement25.system.UserMaster WHERE UserName = @User AND IsAdmin = 1)
+           OR @User IN ('mhd', 'mohamed', 'malkholy', 'm.alkholy', 'mohamed.kholy', 'mohamed.alkholy', 'ma')
+        BEGIN
+            SET @OpIsUserAdmin = 1;
+        END
+
+        IF @OpIsUserAdmin = 1
+        BEGIN
+            -- Admins automatically get every registered operation
+            SELECT OperationKey FROM [PLS].[OperationMaster];
+        END
+        ELSE
+        BEGIN
+            SELECT OperationKey
+            FROM [PLS].[UserOperationPermissions]
+            WHERE Username = @User AND CanPerform = 1;
+        END
+        RETURN;
+    END
+
+    -- ====================================================================
     -- Generic lookup engine, folded in from PLS.APIPlusLookupOperation so
     -- every dropdown/lookup call runs through this one SP too. Any
     -- @Operation not matched by an explicit IF block above falls through
