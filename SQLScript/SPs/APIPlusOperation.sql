@@ -1852,20 +1852,47 @@ BEGIN
         DECLARE @ICMItemID INT = TRY_CAST(NULLIF(JSON_VALUE(@LineData, '$.ItemID'), '') AS INT);
         DECLARE @ICMSalesPerson INT = TRY_CAST(NULLIF(JSON_VALUE(@LineData, '$.SalesPerson'), '') AS INT);
 
-        SELECT a.SalesYear, a.SalesMonth, c.ItemID, c.ItemCode, c.ItemDescription, c.SellingConversion,
-               a.Customer, b.CustomerName, b.CustomerSalesPerson, sm.SalesName AS SalesPersonName, a.Qty, a.Amount
-        FROM Sales.ItemCustomerMonthly a
-        LEFT OUTER JOIN ACR.CustomerMaster b ON a.Customer = b.CustomerNo
-        LEFT OUTER JOIN inv.ItemMaster c ON c.ItemID = a.Item
-        LEFT OUTER JOIN ACR.SalesMaster sm ON sm.SalesID = b.CustomerSalesPerson
-        WHERE a.Customer <> 60002
-          AND a.SalesYear <> 2022
-          AND (@ICMYear IS NULL OR a.SalesYear = @ICMYear)
-          AND (@ICMMonths IS NULL OR LTRIM(RTRIM(@ICMMonths)) = '' OR a.SalesMonth IN (SELECT CAST(value AS INT) FROM STRING_SPLIT(@ICMMonths, ',')))
-          AND (@ICMCustomer IS NULL OR a.Customer = @ICMCustomer)
-          AND (@ICMItemID IS NULL OR c.ItemID = @ICMItemID)
-          AND (@ICMSalesPerson IS NULL OR b.CustomerSalesPerson = @ICMSalesPerson)
-        ORDER BY a.SalesYear DESC, a.SalesMonth DESC, c.ItemCode;
+        -- Switched from Sales.ItemCustomerMonthly (a pre-aggregated summary
+        -- table) to real ACR.CustomerInvoiceLine detail -- the summary table's
+        -- totals didn't match true invoice-level sums for at least one
+        -- verified case. Query is the user-supplied one verbatim (all joins/
+        -- columns kept, including ones not yet surfaced in the UI, for future
+        -- use); only the WHERE/ORDER BY are new, and Qty/Amount are aliased
+        -- onto InvoicedQuantity/LineTaxtableAmount so the existing frontend
+        -- grouping logic (which reads r.Qty/r.Amount) keeps working unchanged.
+        -- No baseline exclusions this time (explicitly requested) -- every
+        -- real invoice line is included regardless of customer or year.
+        SELECT      year(b.InvoiceDate)        as InvoiceYear ,  b.InvoiceDate ,  b.CustomerNo        as  CustomerNumber ,  C.CustomerSalesPerson  as  SalesPersonNumber,
+                         b.WarehouseLine as     Warehouse ,  b.LineShipToID as    ShipToID,   b.LineCurrency    as Currency , B.LineExchangeRate as ExchangeRate,
+						 b.ItemCode,
+                         b.ItemClass, b.InvoicedQuantity AS Qty,  b.LineTaxtableAmount AS Amount,
+                         b.LineCreatedByUser, b.LineCreatedDate, b.LineWeight,
+                         c.CustomerExtraName, d.ItemType, d.ItemFamily1, d.ItemFamily2, d.ItemFamily3, d.ItemFamily4, d.ItemFamily5, d.ItemExtraDescription, b.ItemID,
+						 c.ParentCustomer, P.ParentName , month(b.invoicedate) as InvoiceMonth ,
+						 d.NetWeight , d.GrossWeight , d.Volume ,
+						 ( select x.FamilyDescription from inv.FamilyMaster x where x.FamilyID=d.ItemFamily1 and x.ItemType='F' ) Family1 ,
+						 ( select x.FamilyDescription from inv.FamilyMaster x where x.FamilyID=d.ItemFamily2 and x.ItemType='F' ) Family2 ,
+						 ( select x.FamilyDescription from inv.FamilyMaster x where x.FamilyID=d.ItemFamily3 and x.ItemType='F' ) Family3 ,
+						 ( select x.FamilyDescription from inv.FamilyMaster x where x.FamilyID=d.ItemFamily4 and x.ItemType='F' ) Family4 ,
+						  x.SalesName , 0 as SalesGroupID , '' as SalesGroupName , 0 as SalesManagerID , '' as SalesManagerName ,
+						 ( select ShipToName  from acr.CustomerShipToMaster y where y.ShipToID=b.LineShipToID ) as ShipToName , IntID ,isnull( PO.Point ,0 ) Point ,
+						  ( b.InvoicedQuantity/d.SellingConversion) as QtyBox , ( select x.ShipToAddress from acr.CustomerShipToMaster x where x.ShipToID=b.LineShipToID ) ShipToAddress
+
+
+
+        FROM
+                         ACR.CustomerInvoiceLine b LEFT OUTER JOIN
+                         ACR.CustomerMaster AS c ON b.CustomerNo  = c.CustomerNo LEFT OUTER JOIN
+                         INV.ItemMaster AS d ON d.itemid = b.ItemID LEFT OUTER JOIN
+                         ACR.CustomerParentMaster AS P ON P.CustomerParentID = c.ParentCustomer left outer join
+						 acr.SalesMaster x on x.SalesID = c.CustomerSalesPerson left outer join
+						 pro.SalesItemPoint PO on PO.itemCode=b.ItemCode
+        WHERE (@ICMYear IS NULL OR YEAR(b.InvoiceDate) = @ICMYear)
+          AND (@ICMMonths IS NULL OR LTRIM(RTRIM(@ICMMonths)) = '' OR MONTH(b.InvoiceDate) IN (SELECT CAST(value AS INT) FROM STRING_SPLIT(@ICMMonths, ',')))
+          AND (@ICMCustomer IS NULL OR b.CustomerNo = @ICMCustomer)
+          AND (@ICMItemID IS NULL OR b.ItemID = @ICMItemID)
+          AND (@ICMSalesPerson IS NULL OR c.CustomerSalesPerson = @ICMSalesPerson)
+        ORDER BY year(b.InvoiceDate) DESC, month(b.invoicedate) DESC, b.ItemCode;
         RETURN;
     END
 

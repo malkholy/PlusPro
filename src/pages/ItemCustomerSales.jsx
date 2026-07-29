@@ -177,12 +177,12 @@ export default function ItemCustomerSales({ user }) {
   const groupedRows = useMemo(() => {
     if (appliedGroupBy.length === 0) return rows;
     const keyFor = r => appliedGroupBy.map(g => {
-      if (g === 'Year') return r.SalesYear;
-      if (g === 'Month') return r.SalesMonth;
-      if (g === 'Quarter') return quarterOf(r.SalesMonth);
+      if (g === 'Year') return r.InvoiceYear;
+      if (g === 'Month') return r.InvoiceMonth;
+      if (g === 'Quarter') return quarterOf(r.InvoiceMonth);
       if (g === 'Item') return r.ItemCode;
-      if (g === 'Customer') return r.Customer;
-      if (g === 'SalesPerson') return r.CustomerSalesPerson;
+      if (g === 'Customer') return r.CustomerNumber;
+      if (g === 'SalesPerson') return r.SalesPersonNumber;
       return '';
     }).join('|');
 
@@ -192,12 +192,12 @@ export default function ItemCustomerSales({ user }) {
       let acc = map.get(k);
       if (!acc) {
         acc = { Qty: 0, Amount: 0 };
-        if (appliedGroupBy.includes('Year')) acc.SalesYear = r.SalesYear;
-        if (appliedGroupBy.includes('Month')) acc.SalesMonth = r.SalesMonth;
-        if (appliedGroupBy.includes('Quarter')) acc.Quarter = quarterOf(r.SalesMonth);
-        if (appliedGroupBy.includes('Item')) { acc.ItemCode = r.ItemCode; acc.ItemDescription = r.ItemDescription; }
-        if (appliedGroupBy.includes('Customer')) { acc.Customer = r.Customer; acc.CustomerName = r.CustomerName; }
-        if (appliedGroupBy.includes('SalesPerson')) acc.SalesPersonName = r.SalesPersonName;
+        if (appliedGroupBy.includes('Year')) acc.InvoiceYear = r.InvoiceYear;
+        if (appliedGroupBy.includes('Month')) acc.InvoiceMonth = r.InvoiceMonth;
+        if (appliedGroupBy.includes('Quarter')) acc.Quarter = quarterOf(r.InvoiceMonth);
+        if (appliedGroupBy.includes('Item')) { acc.ItemCode = r.ItemCode; acc.ItemExtraDescription = r.ItemExtraDescription; }
+        if (appliedGroupBy.includes('Customer')) { acc.CustomerNumber = r.CustomerNumber; acc.CustomerExtraName = r.CustomerExtraName; }
+        if (appliedGroupBy.includes('SalesPerson')) acc.SalesName = r.SalesName;
         map.set(k, acc);
       }
       acc.Qty += Number(r.Qty) || 0;
@@ -209,30 +209,30 @@ export default function ItemCustomerSales({ user }) {
   const columns = useMemo(() => {
     if (appliedGroupBy.length === 0) {
       return [
-        { key: 'SalesYear', label: 'Year', width: 80, numeric: true, render: v => String(v) },
-        { key: 'SalesMonth', label: 'Month', width: 80, render: v => MONTH_NAME[Number(v)] || v },
+        { key: 'InvoiceYear', label: 'Year', width: 80, numeric: true, render: v => String(v) },
+        { key: 'InvoiceMonth', label: 'Month', width: 80, render: v => MONTH_NAME[Number(v)] || v },
         { key: 'ItemCode', label: 'Item Code', width: 120 },
-        { key: 'ItemDescription', label: 'Item Description', width: 240 },
-        { key: 'Customer', label: 'Customer No', width: 110 },
-        { key: 'CustomerName', label: 'Customer Name', width: 220 },
-        { key: 'SalesPersonName', label: 'Sales Person', width: 160 },
+        { key: 'ItemExtraDescription', label: 'Item Description', width: 240 },
+        { key: 'CustomerNumber', label: 'Customer No', width: 110 },
+        { key: 'CustomerExtraName', label: 'Customer Name', width: 220 },
+        { key: 'SalesName', label: 'Sales Person', width: 160 },
         { key: 'Qty', label: 'Qty', width: 110, numeric: true, render: fmtMoney },
         { key: 'Amount', label: 'Amount', width: 130, numeric: true, render: fmtMoney }
       ];
     }
     const cols = [];
-    if (appliedGroupBy.includes('Year')) cols.push({ key: 'SalesYear', label: 'Year', width: 80, numeric: true, render: v => String(v) });
-    if (appliedGroupBy.includes('Month')) cols.push({ key: 'SalesMonth', label: 'Month', width: 90, render: v => MONTH_NAME[Number(v)] || v });
+    if (appliedGroupBy.includes('Year')) cols.push({ key: 'InvoiceYear', label: 'Year', width: 80, numeric: true, render: v => String(v) });
+    if (appliedGroupBy.includes('Month')) cols.push({ key: 'InvoiceMonth', label: 'Month', width: 90, render: v => MONTH_NAME[Number(v)] || v });
     if (appliedGroupBy.includes('Quarter')) cols.push({ key: 'Quarter', label: 'Quarter', width: 80, render: v => v ? `Q${v}` : '' });
     if (appliedGroupBy.includes('Item')) {
       cols.push({ key: 'ItemCode', label: 'Item Code', width: 120 });
-      cols.push({ key: 'ItemDescription', label: 'Item Description', width: 240 });
+      cols.push({ key: 'ItemExtraDescription', label: 'Item Description', width: 240 });
     }
     if (appliedGroupBy.includes('Customer')) {
-      cols.push({ key: 'Customer', label: 'Customer No', width: 110 });
-      cols.push({ key: 'CustomerName', label: 'Customer Name', width: 220 });
+      cols.push({ key: 'CustomerNumber', label: 'Customer No', width: 110 });
+      cols.push({ key: 'CustomerExtraName', label: 'Customer Name', width: 220 });
     }
-    if (appliedGroupBy.includes('SalesPerson')) cols.push({ key: 'SalesPersonName', label: 'Sales Person', width: 160 });
+    if (appliedGroupBy.includes('SalesPerson')) cols.push({ key: 'SalesName', label: 'Sales Person', width: 160 });
     cols.push({ key: 'Qty', label: 'Total Qty', width: 120, numeric: true, render: fmtMoney });
     cols.push({ key: 'Amount', label: 'Total Amount', width: 140, numeric: true, render: fmtMoney });
     return cols;
