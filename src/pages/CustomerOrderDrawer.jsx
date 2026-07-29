@@ -7,6 +7,10 @@ import { hasOperation } from '../shared/permissions.js';
 // ("operations will discuss it later"); this is purely a browse/drill-down
 // page onto the same COR.CustomerOrderHeader/CustomerOrderLine data the
 // Loading module's Orders page already writes to.
+const REPORT_API_BASE = 'https://sila.silasystem.com:7102/api/reports';
+// PLS.ReportsMaster ReportID (seeded by RegisterCustomerOrderReport.sql) --
+// same FastReport service used by the Order Details/RMA drawers' Print buttons.
+const ORDER_PRINT_REPORT_ID = 4;
 function fmtDate(v) {
   if (!v) return '';
   const d = new Date(v);
@@ -24,6 +28,9 @@ export default function CustomerOrderDrawer({ user, order, onClose, onEdit }) {
   const [lines, setLines] = useState([]);
   const [loadingLines, setLoadingLines] = useState(false);
   const [error, setError] = useState(null);
+
+  const [reportPreviewUrl, setReportPreviewUrl] = useState(null);
+  const [reportLoading, setReportLoading] = useState(false);
 
   useEffect(() => {
     if (order?.OrderNumber) fetchLines(order.OrderNumber);
@@ -65,6 +72,15 @@ export default function CustomerOrderDrawer({ user, order, onClose, onEdit }) {
             )}
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <button
+              onClick={() => { setReportLoading(true); setReportPreviewUrl(`${REPORT_API_BASE}/${ORDER_PRINT_REPORT_ID}/${order.OrderNumber}`); }}
+              style={{
+                height: 36, padding: '0 20px', background: 'var(--soft)', color: 'var(--text)',
+                border: '1px solid var(--border)', borderRadius: 8, fontSize: 12.5, fontWeight: 700, cursor: 'pointer'
+              }}
+            >
+              🖨️ Print
+            </button>
             {onEdit && hasOperation(user, 'customer_order.edit_order') && (
               Number(order.OrderState) < 60 ? (
                 <button
@@ -216,6 +232,49 @@ export default function CustomerOrderDrawer({ user, order, onClose, onEdit }) {
           </div>
         </div>
       </div>
+
+      {reportPreviewUrl && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.6)', zIndex: 1100, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ width: '90vw', height: '92vh', background: 'var(--bg)', borderRadius: 12, display: 'flex', flexDirection: 'column', overflow: 'hidden', boxShadow: '0 20px 60px rgba(0,0,0,0.4)' }}>
+            <div style={{ padding: '14px 20px', background: 'var(--surface)', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <h3 style={{ margin: 0, fontSize: 15, fontWeight: 800, color: 'var(--text)' }}>Order Print — Order {order.OrderNumber}</h3>
+              <div style={{ display: 'flex', gap: 10 }}>
+                <a
+                  href={`${reportPreviewUrl}/download`}
+                  download={`OrderPrint_${order.OrderNumber}.pdf`}
+                  style={{
+                    height: 32, padding: '0 16px', background: 'linear-gradient(135deg, var(--orange), var(--orange2))',
+                    color: '#fff', border: 'none', borderRadius: 8, fontSize: 12.5, fontWeight: 700, cursor: 'pointer',
+                    display: 'flex', alignItems: 'center', textDecoration: 'none'
+                  }}
+                >
+                  ⬇ Download
+                </a>
+                <button
+                  onClick={() => { setReportPreviewUrl(null); setReportLoading(false); }}
+                  style={{ width: 32, height: 32, borderRadius: 16, border: 'none', background: 'var(--soft)', color: 'var(--text)', fontSize: 18, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                >
+                  ×
+                </button>
+              </div>
+            </div>
+            <div style={{ flex: 1, position: 'relative' }}>
+              {reportLoading && (
+                <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 12, background: '#fff', zIndex: 1 }}>
+                  <div className="spinner"></div>
+                  <div style={{ fontSize: 12.5, color: 'var(--muted)', fontWeight: 600 }}>Generating report…</div>
+                </div>
+              )}
+              <iframe
+                src={reportPreviewUrl}
+                title="Order Print Preview"
+                onLoad={() => setReportLoading(false)}
+                style={{ width: '100%', height: '100%', border: 'none', background: '#fff' }}
+              />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
