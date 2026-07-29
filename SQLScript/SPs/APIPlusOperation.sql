@@ -1858,14 +1858,15 @@ BEGIN
         -- verified case. Query is the user-supplied one verbatim (all joins/
         -- columns kept, including ones not yet surfaced in the UI, for future
         -- use); only the WHERE/ORDER BY are new, and Qty/Amount are aliased
-        -- onto InvoicedQuantity/LineTaxtableAmount so the existing frontend
-        -- grouping logic (which reads r.Qty/r.Amount) keeps working unchanged.
+        -- onto InvoicedQuantity/(LineTaxtableAmount * LineExchangeRate) so the
+        -- existing frontend grouping logic (which reads r.Qty/r.Amount) keeps
+        -- working unchanged.
         -- No baseline exclusions this time (explicitly requested) -- every
         -- real invoice line is included regardless of customer or year.
         SELECT      year(b.InvoiceDate)        as InvoiceYear ,  b.InvoiceDate ,  b.CustomerNo        as  CustomerNumber ,  C.CustomerSalesPerson  as  SalesPersonNumber,
                          b.WarehouseLine as     Warehouse ,  b.LineShipToID as    ShipToID,   b.LineCurrency    as Currency , B.LineExchangeRate as ExchangeRate,
 						 b.ItemCode,
-                         b.ItemClass, b.InvoicedQuantity AS Qty,  b.LineTaxtableAmount AS Amount,
+                         b.ItemClass, b.InvoicedQuantity AS Qty,  b.LineTaxtableAmount * b.LineExchangeRate AS Amount,
                          b.LineCreatedByUser, b.LineCreatedDate, b.LineWeight,
                          c.CustomerExtraName, d.ItemType, d.ItemFamily1, d.ItemFamily2, d.ItemFamily3, d.ItemFamily4, d.ItemFamily5, d.ItemExtraDescription, b.ItemID,
 						 c.ParentCustomer, P.ParentName , month(b.invoicedate) as InvoiceMonth ,
