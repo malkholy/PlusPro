@@ -123,7 +123,7 @@ function aggregateRows(rowsArr, dims) {
     const k = keyFor(r);
     let acc = map.get(k);
     if (!acc) {
-      acc = { Qty: 0, Amount: 0 };
+      acc = { Qty: 0, Amount: 0, QtyBox: 0 };
       if (dims.includes('Year')) acc.InvoiceYear = r.InvoiceYear;
       if (dims.includes('Month')) acc.InvoiceMonth = r.InvoiceMonth;
       if (dims.includes('Quarter')) acc.Quarter = quarterOf(r.InvoiceMonth);
@@ -134,6 +134,7 @@ function aggregateRows(rowsArr, dims) {
     }
     acc.Qty += Number(r.Qty) || 0;
     acc.Amount += Number(r.Amount) || 0;
+    acc.QtyBox += Number(r.QtyBox) || 0;
   }
   return map;
 }
@@ -248,6 +249,7 @@ export default function ItemCustomerSales({ user }) {
         const b = mapB.get(k) || {};
         const qtyA = a.Qty || 0, qtyB = b.Qty || 0;
         const amtA = a.Amount || 0, amtB = b.Amount || 0;
+        const boxA = a.QtyBox || 0, boxB = b.QtyBox || 0;
         out.push({
           InvoiceMonth: a.InvoiceMonth ?? b.InvoiceMonth,
           Quarter: a.Quarter ?? b.Quarter,
@@ -257,6 +259,7 @@ export default function ItemCustomerSales({ user }) {
           CustomerExtraName: a.CustomerExtraName ?? b.CustomerExtraName,
           SalesName: a.SalesName ?? b.SalesName,
           QtyA: qtyA, QtyB: qtyB, QtyDeltaPct: pctChange(qtyA, qtyB),
+          QtyBoxA: boxA, QtyBoxB: boxB, QtyBoxDeltaPct: pctChange(boxA, boxB),
           AmountA: amtA, AmountB: amtB, AmountDeltaPct: pctChange(amtA, amtB)
         });
       }
@@ -285,6 +288,9 @@ export default function ItemCustomerSales({ user }) {
       cols.push({ key: 'QtyA', label: `Qty ${appliedYear}`, width: 120, numeric: true, render: fmtMoney });
       cols.push({ key: 'QtyB', label: `Qty ${appliedCompareYear}`, width: 120, numeric: true, render: fmtMoney });
       cols.push({ key: 'QtyDeltaPct', label: 'Qty Δ%', width: 90, numeric: true, render: fmtPct });
+      cols.push({ key: 'QtyBoxA', label: `Qty Carton ${appliedYear}`, width: 130, numeric: true, render: fmtMoney });
+      cols.push({ key: 'QtyBoxB', label: `Qty Carton ${appliedCompareYear}`, width: 130, numeric: true, render: fmtMoney });
+      cols.push({ key: 'QtyBoxDeltaPct', label: 'Qty Carton Δ%', width: 110, numeric: true, render: fmtPct });
       cols.push({ key: 'AmountA', label: `Amount ${appliedYear}`, width: 140, numeric: true, render: fmtMoney });
       cols.push({ key: 'AmountB', label: `Amount ${appliedCompareYear}`, width: 140, numeric: true, render: fmtMoney });
       cols.push({ key: 'AmountDeltaPct', label: 'Amount Δ%', width: 100, numeric: true, render: fmtPct });
@@ -300,6 +306,7 @@ export default function ItemCustomerSales({ user }) {
         { key: 'CustomerExtraName', label: 'Customer Name', width: 220 },
         { key: 'SalesName', label: 'Sales Person', width: 160 },
         { key: 'Qty', label: 'Qty', width: 110, numeric: true, render: fmtMoney },
+        { key: 'QtyBox', label: 'Qty (Carton)', width: 120, numeric: true, render: fmtMoney },
         { key: 'Amount', label: 'Amount', width: 130, numeric: true, render: fmtMoney }
       ];
     }
@@ -317,6 +324,7 @@ export default function ItemCustomerSales({ user }) {
     }
     if (appliedGroupBy.includes('SalesPerson')) cols.push({ key: 'SalesName', label: 'Sales Person', width: 160 });
     cols.push({ key: 'Qty', label: 'Total Qty', width: 120, numeric: true, render: fmtMoney });
+    cols.push({ key: 'QtyBox', label: 'Total Qty (Carton)', width: 150, numeric: true, render: fmtMoney });
     cols.push({ key: 'Amount', label: 'Total Amount', width: 140, numeric: true, render: fmtMoney });
     return cols;
   }, [appliedGroupBy, appliedCompareMode, appliedYear, appliedCompareYear]);
