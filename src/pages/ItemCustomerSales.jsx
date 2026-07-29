@@ -93,6 +93,56 @@ function fmtMoney(v) {
   return n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
+function fmtPct(v) {
+  const n = Number(v) || 0;
+  const color = n > 0 ? 'var(--green, #16a34a)' : n < 0 ? 'var(--red)' : 'var(--muted)';
+  const sign = n > 0 ? '+' : '';
+  return <span style={{ color, fontWeight: 700 }}>{sign}{n.toFixed(1)}%</span>;
+}
+
+function quarterOf(monthVal) {
+  const m = Number(monthVal);
+  return m ? Math.ceil(m / 3) : '';
+}
+
+// Shared aggregation used both for normal Group By and for each side of a
+// Year comparison -- sums Qty/Amount per unique combination of `dims`.
+function aggregateRows(rowsArr, dims) {
+  const keyFor = r => dims.map(g => {
+    if (g === 'Year') return r.InvoiceYear;
+    if (g === 'Month') return r.InvoiceMonth;
+    if (g === 'Quarter') return quarterOf(r.InvoiceMonth);
+    if (g === 'Item') return r.ItemCode;
+    if (g === 'Customer') return r.CustomerNumber;
+    if (g === 'SalesPerson') return r.SalesPersonNumber;
+    return '';
+  }).join('|');
+
+  const map = new Map();
+  for (const r of rowsArr) {
+    const k = keyFor(r);
+    let acc = map.get(k);
+    if (!acc) {
+      acc = { Qty: 0, Amount: 0 };
+      if (dims.includes('Year')) acc.InvoiceYear = r.InvoiceYear;
+      if (dims.includes('Month')) acc.InvoiceMonth = r.InvoiceMonth;
+      if (dims.includes('Quarter')) acc.Quarter = quarterOf(r.InvoiceMonth);
+      if (dims.includes('Item')) { acc.ItemCode = r.ItemCode; acc.ItemExtraDescription = r.ItemExtraDescription; }
+      if (dims.includes('Customer')) { acc.CustomerNumber = r.CustomerNumber; acc.CustomerExtraName = r.CustomerExtraName; }
+      if (dims.includes('SalesPerson')) acc.SalesName = r.SalesName;
+      map.set(k, acc);
+    }
+    acc.Qty += Number(r.Qty) || 0;
+    acc.Amount += Number(r.Amount) || 0;
+  }
+  return map;
+}
+
+function pctChange(a, b) {
+  if (a) return ((b - a) / Math.abs(a)) * 100;
+  return b ? 100 : 0;
+}
+
 export default function ItemCustomerSales({ user }) {
   const now = new Date();
   const [period, setPeriod] = useState('monthly');
@@ -104,15 +154,21 @@ export default function ItemCustomerSales({ user }) {
   const [itemId, setItemId] = useState('');
   const [salesPerson, setSalesPerson] = useState('');
   const [groupBy, setGroupBy] = useState([]);
-  // Grouping actually applied to the grid -- only updated on Generate, so
-  // changing the Group By control doesn't re-aggregate until then either.
+  const [compareMode, setCompareMode] = useState(false);
+  const [compareYear, setCompareYear] = useState(now.getFullYear() - 1);
+  // Applied* mirrors state, only updated on Generate -- nothing (including
+  // compare mode/year and Group By) re-applies until then.
   const [appliedGroupBy, setAppliedGroupBy] = useState([]);
+  const [appliedCompareMode, setAppliedCompareMode] = useState(false);
+  const [appliedYear, setAppliedYear] = useState(now.getFullYear());
+  const [appliedCompareYear, setAppliedCompareYear] = useState(now.getFullYear() - 1);
 
   const [customerOptions, setCustomerOptions] = useState([]);
   const [itemOptions, setItemOptions] = useState([]);
   const [salesPersonOptions, setSalesPersonOptions] = useState([]);
 
   const [rows, setRows] = useState([]);
+  const [rowsB, setRowsB] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
@@ -129,30 +185,38 @@ export default function ItemCustomerSales({ user }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  async function fetchYear(y) {
+    const lineData = {
+      ...buildLineData(period, months, quarters, y),
+      Customer: customer || '',
+      ItemID: itemId || '',
+      SalesPerson: salesPerson || ''
+    };
+    const res = await apiCall('GetItemCustomerMonthlySales', lineData, { User: user?.Username }, 'plus');
+    if (res.State !== 0) throw new Error(res.Message || 'Failed to load report data.');
+    return res.List0 || [];
+  }
+
   async function load() {
     setLoading(true);
     setError(null);
     try {
-      const lineData = {
-        ...buildLineData(period, months, quarters, year),
-        Customer: customer || '',
-        ItemID: itemId || '',
-        SalesPerson: salesPerson || ''
-      };
-      const res = await apiCall('GetItemCustomerMonthlySales', lineData, { User: user?.Username }, 'plus');
-      if (res.State === 0) {
-        setRows(res.List0 || []);
+      if (compareMode) {
+        const [rA, rB] = await Promise.all([fetchYear(year), fetchYear(compareYear)]);
+        setRows(rA);
+        setRowsB(rB);
       } else {
-        setError(res.Message || 'Failed to load report data.');
+        setRows(await fetchYear(year));
+        setRowsB([]);
       }
     } catch (err) {
-      setError('Connection error: ' + err.message);
+      setError(err.message || 'Connection error.');
     }
     setLoading(false);
   }
 
-  // Initial load only -- filters/Group By are otherwise not applied until
-  // the user clicks Generate (see handleGenerate).
+  // Initial load only -- filters/Group By/Compare are otherwise not applied
+  // until the user clicks Generate (see handleGenerate).
   useEffect(() => {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -160,51 +224,72 @@ export default function ItemCustomerSales({ user }) {
 
   function handleGenerate() {
     setAppliedGroupBy(groupBy);
+    setAppliedCompareMode(compareMode);
+    setAppliedYear(year);
+    setAppliedCompareYear(compareYear);
     load();
   }
 
   // Group By: purely client-side, over the already-fetched detail rows --
   // sums Qty/Amount for whichever combination of dimensions is selected
   // (e.g. Item alone; Year+Item together; etc). Empty selection shows the
-  // raw detail rows unchanged.
-  function quarterOf(monthVal) {
-    const m = Number(monthVal);
-    return m ? Math.ceil(m / 3) : '';
-  }
-
+  // raw detail rows unchanged. In compare mode, Year is never a grouping
+  // dimension (it's the comparison axis) -- each side is aggregated
+  // separately on the remaining dims, then merged side by side.
   const groupedRows = useMemo(() => {
-    if (appliedGroupBy.length === 0) return rows;
-    const keyFor = r => appliedGroupBy.map(g => {
-      if (g === 'Year') return r.InvoiceYear;
-      if (g === 'Month') return r.InvoiceMonth;
-      if (g === 'Quarter') return quarterOf(r.InvoiceMonth);
-      if (g === 'Item') return r.ItemCode;
-      if (g === 'Customer') return r.CustomerNumber;
-      if (g === 'SalesPerson') return r.SalesPersonNumber;
-      return '';
-    }).join('|');
-
-    const map = new Map();
-    for (const r of rows) {
-      const k = keyFor(r);
-      let acc = map.get(k);
-      if (!acc) {
-        acc = { Qty: 0, Amount: 0 };
-        if (appliedGroupBy.includes('Year')) acc.InvoiceYear = r.InvoiceYear;
-        if (appliedGroupBy.includes('Month')) acc.InvoiceMonth = r.InvoiceMonth;
-        if (appliedGroupBy.includes('Quarter')) acc.Quarter = quarterOf(r.InvoiceMonth);
-        if (appliedGroupBy.includes('Item')) { acc.ItemCode = r.ItemCode; acc.ItemExtraDescription = r.ItemExtraDescription; }
-        if (appliedGroupBy.includes('Customer')) { acc.CustomerNumber = r.CustomerNumber; acc.CustomerExtraName = r.CustomerExtraName; }
-        if (appliedGroupBy.includes('SalesPerson')) acc.SalesName = r.SalesName;
-        map.set(k, acc);
+    if (appliedCompareMode) {
+      const dims = appliedGroupBy.filter(g => g !== 'Year');
+      const mapA = aggregateRows(rows, dims);
+      const mapB = aggregateRows(rowsB, dims);
+      const keys = new Set([...mapA.keys(), ...mapB.keys()]);
+      const out = [];
+      for (const k of keys) {
+        const a = mapA.get(k) || {};
+        const b = mapB.get(k) || {};
+        const qtyA = a.Qty || 0, qtyB = b.Qty || 0;
+        const amtA = a.Amount || 0, amtB = b.Amount || 0;
+        out.push({
+          InvoiceMonth: a.InvoiceMonth ?? b.InvoiceMonth,
+          Quarter: a.Quarter ?? b.Quarter,
+          ItemCode: a.ItemCode ?? b.ItemCode,
+          ItemExtraDescription: a.ItemExtraDescription ?? b.ItemExtraDescription,
+          CustomerNumber: a.CustomerNumber ?? b.CustomerNumber,
+          CustomerExtraName: a.CustomerExtraName ?? b.CustomerExtraName,
+          SalesName: a.SalesName ?? b.SalesName,
+          QtyA: qtyA, QtyB: qtyB, QtyDeltaPct: pctChange(qtyA, qtyB),
+          AmountA: amtA, AmountB: amtB, AmountDeltaPct: pctChange(amtA, amtB)
+        });
       }
-      acc.Qty += Number(r.Qty) || 0;
-      acc.Amount += Number(r.Amount) || 0;
+      out.sort((x, y) => (y.AmountB || 0) - (x.AmountB || 0));
+      return out;
     }
-    return Array.from(map.values());
-  }, [rows, appliedGroupBy]);
+    if (appliedGroupBy.length === 0) return rows;
+    return Array.from(aggregateRows(rows, appliedGroupBy).values());
+  }, [rows, rowsB, appliedGroupBy, appliedCompareMode]);
 
   const columns = useMemo(() => {
+    if (appliedCompareMode) {
+      const dims = appliedGroupBy.filter(g => g !== 'Year');
+      const cols = [];
+      if (dims.includes('Month')) cols.push({ key: 'InvoiceMonth', label: 'Month', width: 80, numeric: true, render: v => String(v) });
+      if (dims.includes('Quarter')) cols.push({ key: 'Quarter', label: 'Quarter', width: 80, render: v => v ? `Q${v}` : '' });
+      if (dims.includes('Item')) {
+        cols.push({ key: 'ItemCode', label: 'Item Code', width: 120 });
+        cols.push({ key: 'ItemExtraDescription', label: 'Item Description', width: 200 });
+      }
+      if (dims.includes('Customer')) {
+        cols.push({ key: 'CustomerNumber', label: 'Customer No', width: 110 });
+        cols.push({ key: 'CustomerExtraName', label: 'Customer Name', width: 200 });
+      }
+      if (dims.includes('SalesPerson')) cols.push({ key: 'SalesName', label: 'Sales Person', width: 140 });
+      cols.push({ key: 'QtyA', label: `Qty ${appliedYear}`, width: 120, numeric: true, render: fmtMoney });
+      cols.push({ key: 'QtyB', label: `Qty ${appliedCompareYear}`, width: 120, numeric: true, render: fmtMoney });
+      cols.push({ key: 'QtyDeltaPct', label: 'Qty Δ%', width: 90, numeric: true, render: fmtPct });
+      cols.push({ key: 'AmountA', label: `Amount ${appliedYear}`, width: 140, numeric: true, render: fmtMoney });
+      cols.push({ key: 'AmountB', label: `Amount ${appliedCompareYear}`, width: 140, numeric: true, render: fmtMoney });
+      cols.push({ key: 'AmountDeltaPct', label: 'Amount Δ%', width: 100, numeric: true, render: fmtPct });
+      return cols;
+    }
     if (appliedGroupBy.length === 0) {
       return [
         { key: 'InvoiceYear', label: 'Year', width: 80, numeric: true, render: v => String(v) },
@@ -234,7 +319,7 @@ export default function ItemCustomerSales({ user }) {
     cols.push({ key: 'Qty', label: 'Total Qty', width: 120, numeric: true, render: fmtMoney });
     cols.push({ key: 'Amount', label: 'Total Amount', width: 140, numeric: true, render: fmtMoney });
     return cols;
-  }, [appliedGroupBy]);
+  }, [appliedGroupBy, appliedCompareMode, appliedYear, appliedCompareYear]);
 
   const filterPanel = (
     <div style={{
@@ -260,6 +345,23 @@ export default function ItemCustomerSales({ user }) {
           <select value={year} onChange={e => setYear(Number(e.target.value))} style={{ height: 34, padding: '0 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text)', fontSize: 12.5, outline: 'none' }}>
             {YEARS.map(y => <option key={y} value={y}>{y}</option>)}
           </select>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer', marginLeft: 4 }}>
+            <input
+              type="checkbox"
+              checked={compareMode}
+              onChange={e => {
+                const on = e.target.checked;
+                setCompareMode(on);
+                if (on) setGroupBy(prev => prev.filter(g => g !== 'Year'));
+              }}
+            />
+            <span style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--muted)' }}>vs</span>
+          </label>
+          {compareMode && (
+            <select value={compareYear} onChange={e => setCompareYear(Number(e.target.value))} style={{ height: 34, padding: '0 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text)', fontSize: 12.5, outline: 'none' }}>
+              {YEARS.map(y => <option key={y} value={y}>{y}</option>)}
+            </select>
+          )}
         </div>
       </div>
 
@@ -280,12 +382,18 @@ export default function ItemCustomerSales({ user }) {
 
       <div>
         <label style={{ display: 'block', fontSize: 10.5, fontWeight: 700, color: 'var(--muted)', marginBottom: 5, textTransform: 'uppercase' }}>Group By</label>
-        <MultiSelect options={GROUP_BY_OPTIONS} selected={groupBy} onChange={setGroupBy} placeholder="No grouping (detail rows)" allowEmpty />
+        <MultiSelect
+          options={compareMode ? GROUP_BY_OPTIONS.filter(o => o.value !== 'Year') : GROUP_BY_OPTIONS}
+          selected={groupBy}
+          onChange={setGroupBy}
+          placeholder={compareMode ? 'Grand total (both years)' : 'No grouping (detail rows)'}
+          allowEmpty
+        />
       </div>
 
-      {(customer || itemId || salesPerson || groupBy.length > 0) && (
+      {(customer || itemId || salesPerson || groupBy.length > 0 || compareMode) && (
         <button
-          onClick={() => { setCustomer(''); setItemId(''); setSalesPerson(''); setGroupBy([]); }}
+          onClick={() => { setCustomer(''); setItemId(''); setSalesPerson(''); setGroupBy([]); setCompareMode(false); }}
           style={{ height: 34, padding: '0 14px', background: 'var(--soft)', color: 'var(--muted)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: 'pointer' }}
         >
           ✕ Clear filters
@@ -313,9 +421,15 @@ export default function ItemCustomerSales({ user }) {
       <div style={{ flex: 1, minHeight: 0 }}>
         <DataGrid
           title="Item Customer Sales"
-          subtitle={appliedGroupBy.length > 0
-            ? `Grouped by: ${appliedGroupBy.map(g => GROUP_BY_OPTIONS.find(o => o.value === g)?.label).join(', ')} (${groupedRows.length} groups from ${rows.length} rows)`
-            : 'Monthly / Quarterly / Yearly item-by-customer sales (detail rows) -- change filters and click Generate'}
+          subtitle={appliedCompareMode
+            ? (() => {
+                const dims = appliedGroupBy.filter(g => g !== 'Year');
+                const by = dims.length ? ` by: ${dims.map(g => GROUP_BY_OPTIONS.find(o => o.value === g)?.label).join(', ')}` : ' (grand total)';
+                return `Comparing ${appliedYear} vs ${appliedCompareYear}${by} -- ${groupedRows.length} rows`;
+              })()
+            : appliedGroupBy.length > 0
+              ? `Grouped by: ${appliedGroupBy.map(g => GROUP_BY_OPTIONS.find(o => o.value === g)?.label).join(', ')} (${groupedRows.length} groups from ${rows.length} rows)`
+              : 'Monthly / Quarterly / Yearly item-by-customer sales (detail rows) -- change filters and click Generate'}
           columns={columns}
           rows={groupedRows}
           loading={loading}
