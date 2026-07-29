@@ -97,81 +97,6 @@ export default function NewCustomerOrderDrawer({ user, onClose, onSaved, editOrd
     prevLinesLengthRef.current = lines.length;
   }, [lines.length]);
 
-  // Debug popup: shows the exact Get Price payload before it's sent, for
-  // testing -- pauses the commit chain until the user clicks Continue/Cancel.
-  const [debugSqlPreview, setDebugSqlPreview] = useState(null);
-  const debugResolverRef = useRef(null);
-
-  function currentSqlUser() {
-    return (sessionStorage.getItem('Username') || sessionStorage.getItem('FullName') || 'system').replace(/'/g, "''");
-  }
-
-  // Builds the exact T-SQL EXEC for the given Get Price payload, matching
-  // COR.APIPlusCustomerOrderPricePromotionOperation's real parameter list --
-  // run it directly in SSMS to test the SP without going through the API.
-  function buildGetPriceSql(payload) {
-    const lineDataLiteral = JSON.stringify(payload, null, 4).replace(/'/g, "''");
-    return `DECLARE @Operation nvarchar(500) = 'Get Price';
-DECLARE @LineData nvarchar(max) = N'${lineDataLiteral}';
-DECLARE @User nvarchar(50) = '${currentSqlUser()}';
-DECLARE @State int;
-DECLARE @Message nvarchar(500);
-
-EXEC [COR].[APIPlusCustomerOrderPricePromotionOperation]
-    @Operation = @Operation,
-    @LineData = @LineData,
-    @User = @User,
-    @State = @State OUTPUT,
-    @Message = @Message OUTPUT;
-
-SELECT @State AS [State], @Message AS [Message];`;
-  }
-
-  // Builds the exact T-SQL EXEC for a dbo.APIPlusCustomerOrderOperation call
-  // (New Header / New Line / Edit Line / Delete Line all share this SP) --
-  // @LineMember is a separate top-level param, not nested in @LineData.
-  function buildCustomerOrderSql(operation, lineData, lineMember) {
-    const lineDataLiteral = JSON.stringify(lineData, null, 4).replace(/'/g, "''");
-    const lineMemberLiteral = lineMember != null ? JSON.stringify(lineMember, null, 4).replace(/'/g, "''") : '';
-    return `DECLARE @Operation nvarchar(100) = '${operation.replace(/'/g, "''")}';
-DECLARE @LineData nvarchar(max) = N'${lineDataLiteral}';
-DECLARE @LineMember nvarchar(max) = N'${lineMemberLiteral}';
-DECLARE @Order int = ${Number(lineData.order) || 0};
-DECLARE @User nvarchar(100) = '${currentSqlUser()}';
-DECLARE @State int;
-DECLARE @Message nvarchar(500);
-
-EXEC [dbo].[APIPlusCustomerOrderOperation]
-    @Operation = @Operation,
-    @LineData = @LineData,
-    @LineMember = @LineMember,
-    @Order = @Order,
-    @User = @User,
-    @State = @State OUTPUT,
-    @Message = @Message OUTPUT;
-
-SELECT @State AS [State], @Message AS [Message];`;
-  }
-
-  function confirmSql(sqlText) {
-    return new Promise(resolve => {
-      debugResolverRef.current = resolve;
-      setDebugSqlPreview(sqlText);
-    });
-  }
-
-  function confirmDebugPayload(payload) {
-    return confirmSql(buildGetPriceSql(payload));
-  }
-
-  function resolveDebugPayload(proceed) {
-    setDebugSqlPreview(null);
-    if (debugResolverRef.current) {
-      debugResolverRef.current(proceed);
-      debugResolverRef.current = null;
-    }
-  }
-
   useEffect(() => {
     apiCall('Customer Master All', null, { User: user?.Username }, 'plus').then(d => {
       if (d.State === 0) setCustomerOptions((d.List0 || []).map(c => ({ label: `${c.CustomerNo} - ${c.CustomerName}`, value: c.CustomerNo, customerNo: c.CustomerNo, customerName: c.CustomerName })));
@@ -443,8 +368,6 @@ SELECT @State AS [State], @Message AS [Message];`;
       manualpromotionamount: 0,
       manualpromotiondescription: ''
     };
-    const proceed = await confirmDebugPayload(payload);
-    if (!proceed) throw new Error('Get Price cancelled.');
     const res = await apiCall('Get Price', payload, {}, 'customer_order_price');
     if (res.State !== 0) throw new Error(res.Message || 'Failed to get price.');
     return (res.List0 || [])[0] || {};
@@ -639,9 +562,6 @@ SELECT @State AS [State], @Message AS [Message];`;
       const orderNo = await ensureOrderNumber();
       const lineData = { ...headerLineData(), order: orderNo };
       const operation = editOrderNumber ? 'Edit Header' : 'New Header';
-
-      const proceed = await confirmSql(buildCustomerOrderSql(operation, lineData, null));
-      if (!proceed) { setSaving(false); return; }
 
       const headerRes = await apiCall(operation, lineData, {}, 'customer_order');
       if (headerRes.State !== 0) { setError(headerRes.Message || `Failed to save order header.`); setSaving(false); return; }
@@ -923,40 +843,6 @@ SELECT @State AS [State], @Message AS [Message];`;
         </div>
         )}
       </div>
-
-      {debugSqlPreview && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.45)', zIndex: 1200, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <div style={{ width: 620, maxWidth: '92vw', background: 'var(--bg)', borderRadius: 14, boxShadow: '0 10px 40px rgba(0,0,0,0.3)' }}>
-            <div style={{ padding: '20px 22px' }}>
-              <h3 style={{ margin: 0, fontSize: 16, fontWeight: 800, color: 'var(--text)' }}>SP Execution Preview</h3>
-              <p style={{ margin: '8px 0 12px 0', fontSize: 12, color: 'var(--muted)' }}>This is the exact SP call about to be made -- paste it into SSMS to test directly, or click Continue to actually send it.</p>
-              <pre style={{ margin: 0, padding: 14, background: 'var(--soft)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 11.5, color: 'var(--text)', maxHeight: 320, overflow: 'auto', whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
-                {debugSqlPreview}
-              </pre>
-            </div>
-            <div style={{ padding: '14px 22px', borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'flex-end', gap: 12 }}>
-              <button
-                onClick={() => navigator.clipboard.writeText(debugSqlPreview)}
-                style={{ height: 36, padding: '0 20px', background: 'var(--soft)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 12.5, fontWeight: 700, cursor: 'pointer' }}
-              >
-                Copy
-              </button>
-              <button
-                onClick={() => resolveDebugPayload(false)}
-                style={{ height: 36, padding: '0 20px', background: 'var(--soft)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 12.5, fontWeight: 700, cursor: 'pointer' }}
-              >
-                Cancel
-              </button>
-              <button
-                onClick={() => resolveDebugPayload(true)}
-                style={{ height: 36, padding: '0 24px', background: 'linear-gradient(135deg, var(--orange), var(--orange2))', color: '#fff', border: 'none', borderRadius: 8, fontSize: 12.5, fontWeight: 700, cursor: 'pointer' }}
-              >
-                Continue
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
