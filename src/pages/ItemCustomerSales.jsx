@@ -93,8 +93,6 @@ function fmtMoney(v) {
   return n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
-const MONTH_NAME = Object.fromEntries(MONTHS.map(m => [m.value, m.label.slice(0, 3)]));
-
 export default function ItemCustomerSales({ user }) {
   const now = new Date();
   const [period, setPeriod] = useState('monthly');
@@ -210,7 +208,7 @@ export default function ItemCustomerSales({ user }) {
     if (appliedGroupBy.length === 0) {
       return [
         { key: 'InvoiceYear', label: 'Year', width: 80, numeric: true, render: v => String(v) },
-        { key: 'InvoiceMonth', label: 'Month', width: 80, render: v => MONTH_NAME[Number(v)] || v },
+        { key: 'InvoiceMonth', label: 'Month', width: 80, numeric: true, render: v => String(v) },
         { key: 'ItemCode', label: 'Item Code', width: 120 },
         { key: 'ItemExtraDescription', label: 'Item Description', width: 240 },
         { key: 'CustomerNumber', label: 'Customer No', width: 110 },
@@ -222,7 +220,7 @@ export default function ItemCustomerSales({ user }) {
     }
     const cols = [];
     if (appliedGroupBy.includes('Year')) cols.push({ key: 'InvoiceYear', label: 'Year', width: 80, numeric: true, render: v => String(v) });
-    if (appliedGroupBy.includes('Month')) cols.push({ key: 'InvoiceMonth', label: 'Month', width: 90, render: v => MONTH_NAME[Number(v)] || v });
+    if (appliedGroupBy.includes('Month')) cols.push({ key: 'InvoiceMonth', label: 'Month', width: 90, numeric: true, render: v => String(v) });
     if (appliedGroupBy.includes('Quarter')) cols.push({ key: 'Quarter', label: 'Quarter', width: 80, render: v => v ? `Q${v}` : '' });
     if (appliedGroupBy.includes('Item')) {
       cols.push({ key: 'ItemCode', label: 'Item Code', width: 120 });
