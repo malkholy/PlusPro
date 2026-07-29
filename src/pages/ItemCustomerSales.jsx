@@ -209,7 +209,7 @@ export default function ItemCustomerSales({ user }) {
   const columns = useMemo(() => {
     if (appliedGroupBy.length === 0) {
       return [
-        { key: 'SalesYear', label: 'Year', width: 80, numeric: true },
+        { key: 'SalesYear', label: 'Year', width: 80, numeric: true, render: v => String(v) },
         { key: 'SalesMonth', label: 'Month', width: 80, render: v => MONTH_NAME[Number(v)] || v },
         { key: 'ItemCode', label: 'Item Code', width: 120 },
         { key: 'ItemDescription', label: 'Item Description', width: 240 },
@@ -221,7 +221,7 @@ export default function ItemCustomerSales({ user }) {
       ];
     }
     const cols = [];
-    if (appliedGroupBy.includes('Year')) cols.push({ key: 'SalesYear', label: 'Year', width: 80, numeric: true });
+    if (appliedGroupBy.includes('Year')) cols.push({ key: 'SalesYear', label: 'Year', width: 80, numeric: true, render: v => String(v) });
     if (appliedGroupBy.includes('Month')) cols.push({ key: 'SalesMonth', label: 'Month', width: 90, render: v => MONTH_NAME[Number(v)] || v });
     if (appliedGroupBy.includes('Quarter')) cols.push({ key: 'Quarter', label: 'Quarter', width: 80, render: v => v ? `Q${v}` : '' });
     if (appliedGroupBy.includes('Item')) {
