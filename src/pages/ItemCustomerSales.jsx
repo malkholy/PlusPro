@@ -106,6 +106,9 @@ export default function ItemCustomerSales({ user }) {
   const [itemId, setItemId] = useState('');
   const [salesPerson, setSalesPerson] = useState('');
   const [groupBy, setGroupBy] = useState([]);
+  // Grouping actually applied to the grid -- only updated on Generate, so
+  // changing the Group By control doesn't re-aggregate until then either.
+  const [appliedGroupBy, setAppliedGroupBy] = useState([]);
 
   const [customerOptions, setCustomerOptions] = useState([]);
   const [itemOptions, setItemOptions] = useState([]);
@@ -150,10 +153,17 @@ export default function ItemCustomerSales({ user }) {
     setLoading(false);
   }
 
+  // Initial load only -- filters/Group By are otherwise not applied until
+  // the user clicks Generate (see handleGenerate).
   useEffect(() => {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [period, months, quarters, year, customer, itemId, salesPerson]);
+  }, []);
+
+  function handleGenerate() {
+    setAppliedGroupBy(groupBy);
+    load();
+  }
 
   // Group By: purely client-side, over the already-fetched detail rows --
   // sums Qty/Amount for whichever combination of dimensions is selected
@@ -165,8 +175,8 @@ export default function ItemCustomerSales({ user }) {
   }
 
   const groupedRows = useMemo(() => {
-    if (groupBy.length === 0) return rows;
-    const keyFor = r => groupBy.map(g => {
+    if (appliedGroupBy.length === 0) return rows;
+    const keyFor = r => appliedGroupBy.map(g => {
       if (g === 'Year') return r.SalesYear;
       if (g === 'Month') return r.SalesMonth;
       if (g === 'Quarter') return quarterOf(r.SalesMonth);
@@ -182,22 +192,22 @@ export default function ItemCustomerSales({ user }) {
       let acc = map.get(k);
       if (!acc) {
         acc = { Qty: 0, Amount: 0 };
-        if (groupBy.includes('Year')) acc.SalesYear = r.SalesYear;
-        if (groupBy.includes('Month')) acc.SalesMonth = r.SalesMonth;
-        if (groupBy.includes('Quarter')) acc.Quarter = quarterOf(r.SalesMonth);
-        if (groupBy.includes('Item')) { acc.ItemCode = r.ItemCode; acc.ItemDescription = r.ItemDescription; }
-        if (groupBy.includes('Customer')) { acc.Customer = r.Customer; acc.CustomerName = r.CustomerName; }
-        if (groupBy.includes('SalesPerson')) acc.SalesPersonName = r.SalesPersonName;
+        if (appliedGroupBy.includes('Year')) acc.SalesYear = r.SalesYear;
+        if (appliedGroupBy.includes('Month')) acc.SalesMonth = r.SalesMonth;
+        if (appliedGroupBy.includes('Quarter')) acc.Quarter = quarterOf(r.SalesMonth);
+        if (appliedGroupBy.includes('Item')) { acc.ItemCode = r.ItemCode; acc.ItemDescription = r.ItemDescription; }
+        if (appliedGroupBy.includes('Customer')) { acc.Customer = r.Customer; acc.CustomerName = r.CustomerName; }
+        if (appliedGroupBy.includes('SalesPerson')) acc.SalesPersonName = r.SalesPersonName;
         map.set(k, acc);
       }
       acc.Qty += Number(r.Qty) || 0;
       acc.Amount += Number(r.Amount) || 0;
     }
     return Array.from(map.values());
-  }, [rows, groupBy]);
+  }, [rows, appliedGroupBy]);
 
   const columns = useMemo(() => {
-    if (groupBy.length === 0) {
+    if (appliedGroupBy.length === 0) {
       return [
         { key: 'SalesYear', label: 'Year', width: 80, numeric: true },
         { key: 'SalesMonth', label: 'Month', width: 80, render: v => MONTH_NAME[Number(v)] || v },
@@ -211,22 +221,22 @@ export default function ItemCustomerSales({ user }) {
       ];
     }
     const cols = [];
-    if (groupBy.includes('Year')) cols.push({ key: 'SalesYear', label: 'Year', width: 80, numeric: true });
-    if (groupBy.includes('Month')) cols.push({ key: 'SalesMonth', label: 'Month', width: 90, render: v => MONTH_NAME[Number(v)] || v });
-    if (groupBy.includes('Quarter')) cols.push({ key: 'Quarter', label: 'Quarter', width: 80, render: v => v ? `Q${v}` : '' });
-    if (groupBy.includes('Item')) {
+    if (appliedGroupBy.includes('Year')) cols.push({ key: 'SalesYear', label: 'Year', width: 80, numeric: true });
+    if (appliedGroupBy.includes('Month')) cols.push({ key: 'SalesMonth', label: 'Month', width: 90, render: v => MONTH_NAME[Number(v)] || v });
+    if (appliedGroupBy.includes('Quarter')) cols.push({ key: 'Quarter', label: 'Quarter', width: 80, render: v => v ? `Q${v}` : '' });
+    if (appliedGroupBy.includes('Item')) {
       cols.push({ key: 'ItemCode', label: 'Item Code', width: 120 });
       cols.push({ key: 'ItemDescription', label: 'Item Description', width: 240 });
     }
-    if (groupBy.includes('Customer')) {
+    if (appliedGroupBy.includes('Customer')) {
       cols.push({ key: 'Customer', label: 'Customer No', width: 110 });
       cols.push({ key: 'CustomerName', label: 'Customer Name', width: 220 });
     }
-    if (groupBy.includes('SalesPerson')) cols.push({ key: 'SalesPersonName', label: 'Sales Person', width: 160 });
+    if (appliedGroupBy.includes('SalesPerson')) cols.push({ key: 'SalesPersonName', label: 'Sales Person', width: 160 });
     cols.push({ key: 'Qty', label: 'Total Qty', width: 120, numeric: true, render: fmtMoney });
     cols.push({ key: 'Amount', label: 'Total Amount', width: 140, numeric: true, render: fmtMoney });
     return cols;
-  }, [groupBy]);
+  }, [appliedGroupBy]);
 
   const filterPanel = (
     <div style={{
@@ -283,6 +293,18 @@ export default function ItemCustomerSales({ user }) {
           ✕ Clear filters
         </button>
       )}
+
+      <button
+        onClick={handleGenerate}
+        disabled={loading}
+        style={{
+          height: 34, padding: '0 24px', background: 'linear-gradient(135deg, var(--orange), var(--orange2))',
+          color: '#fff', border: 'none', borderRadius: 8, fontSize: 12.5, fontWeight: 700, cursor: loading ? 'default' : 'pointer',
+          boxShadow: '0 4px 12px var(--orange-glow)', opacity: loading ? 0.7 : 1
+        }}
+      >
+        {loading ? 'Generating...' : '▶ Generate'}
+      </button>
     </div>
   );
 
@@ -293,9 +315,9 @@ export default function ItemCustomerSales({ user }) {
       <div style={{ flex: 1, minHeight: 0 }}>
         <DataGrid
           title="Item Customer Sales"
-          subtitle={groupBy.length > 0
-            ? `Grouped by: ${groupBy.map(g => GROUP_BY_OPTIONS.find(o => o.value === g)?.label).join(', ')} (${groupedRows.length} groups from ${rows.length} rows)`
-            : 'Monthly / Quarterly / Yearly item-by-customer sales (detail rows)'}
+          subtitle={appliedGroupBy.length > 0
+            ? `Grouped by: ${appliedGroupBy.map(g => GROUP_BY_OPTIONS.find(o => o.value === g)?.label).join(', ')} (${groupedRows.length} groups from ${rows.length} rows)`
+            : 'Monthly / Quarterly / Yearly item-by-customer sales (detail rows) -- change filters and click Generate'}
           columns={columns}
           rows={groupedRows}
           loading={loading}
