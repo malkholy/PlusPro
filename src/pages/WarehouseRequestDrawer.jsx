@@ -78,7 +78,10 @@ export default function WarehouseRequestDrawer({ user, onClose, onSaved, request
     });
     apiCall('Item Master All', null, { User: user?.Username }, 'lookup').then(d => {
       if (d.State === 0) {
-        setItemOptions((d.List0 || []).map(i => ({ label: `${i.ItemCode} - ${i.ItemName}`, value: i.ItemID, itemCode: i.ItemCode, itemName: i.ItemName, lotControl: Number(i.LotControl) || 0, sellingConversion: Number(i.SellingConversion) || 1 })));
+        setItemOptions((d.List0 || []).map(i => ({
+          label: `${i.ItemCode} - ${i.ItemName}`, optionLabel: i.ItemCode, sublabel: i.ItemName, meta: i.SellingUM,
+          value: i.ItemID, itemCode: i.ItemCode, itemName: i.ItemName, lotControl: Number(i.LotControl) || 0, sellingConversion: Number(i.SellingConversion) || 1
+        })));
       }
     });
     apiCall('xxxx', null, { User: user?.Username }, 'lookup').then(d => {

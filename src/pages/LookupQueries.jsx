@@ -5,13 +5,9 @@ import DataGrid from '../shared/DataGrid.jsx';
 const EMPTY_FORM = {
   QueryID: '',
   QueryName: '',
-  SPName: '[PLS].[APIPlusOperation]',
   Operation: '',
   Description: '',
   QuerySQL: '',
-  DatabaseName: 'ERPMega',
-  SchemaName: 'dbo',
-  TableOrViewName: '',
   ApiUrl: ''
 };
 
@@ -52,8 +48,6 @@ export default function LookupQueries({ user }) {
   const columns = [
     { key: 'QueryName', label: 'Lookup Name', width: 220 },
     { key: 'Operation', label: 'Operation', width: 200 },
-    { key: 'SPName', label: 'Stored Procedure', width: 200 },
-    { key: 'TableOrViewName', label: 'Table / View', width: 180 },
     { key: 'ApiUrl', label: 'API URL', flex: 1 }
   ];
 
@@ -67,13 +61,9 @@ export default function LookupQueries({ user }) {
     setFormData({
       QueryID: row.QueryID,
       QueryName: row.QueryName,
-      SPName: row.SPName,
       Operation: row.Operation,
       Description: row.Description || '',
       QuerySQL: row.QuerySQL || '',
-      DatabaseName: row.DatabaseName || '',
-      SchemaName: row.SchemaName || '',
-      TableOrViewName: row.TableOrViewName || '',
       ApiUrl: row.ApiUrl || ''
     });
     setError(null);
@@ -165,31 +155,17 @@ export default function LookupQueries({ user }) {
                 />
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-                <div>
-                  <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: 'var(--muted)', marginBottom: 6, textTransform: 'uppercase' }}>
-                    Operation Code
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.Operation}
-                    onChange={e => setFormData({ ...formData, Operation: e.target.value })}
-                    placeholder="e.g. GetCustomerLookup"
-                    style={{ width: '100%', height: 38, padding: '0 12px', border: '1.5px solid var(--border)', borderRadius: 8, fontSize: 12.5, color: 'var(--text)', background: 'var(--surface)', outline: 'none', fontFamily: 'monospace' }}
-                  />
-                </div>
-                <div>
-                  <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: 'var(--muted)', marginBottom: 6, textTransform: 'uppercase' }}>
-                    Stored Procedure
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.SPName}
-                    onChange={e => setFormData({ ...formData, SPName: e.target.value })}
-                    placeholder="[PLS].[APIPlusOperation]"
-                    style={{ width: '100%', height: 38, padding: '0 12px', border: '1.5px solid var(--border)', borderRadius: 8, fontSize: 12.5, color: 'var(--text)', background: 'var(--surface)', outline: 'none', fontFamily: 'monospace' }}
-                  />
-                </div>
+              <div>
+                <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: 'var(--muted)', marginBottom: 6, textTransform: 'uppercase' }}>
+                  Operation Code
+                </label>
+                <input
+                  type="text"
+                  value={formData.Operation}
+                  onChange={e => setFormData({ ...formData, Operation: e.target.value })}
+                  placeholder="e.g. GetCustomerLookup"
+                  style={{ width: '100%', height: 38, padding: '0 12px', border: '1.5px solid var(--border)', borderRadius: 8, fontSize: 12.5, color: 'var(--text)', background: 'var(--surface)', outline: 'none', fontFamily: 'monospace' }}
+                />
               </div>
 
               <div>
@@ -202,45 +178,6 @@ export default function LookupQueries({ user }) {
                   placeholder="Optional lookup purpose description..."
                   style={{ width: '100%', height: 60, padding: '10px 12px', border: '1.5px solid var(--border)', borderRadius: 8, fontSize: 12.5, color: 'var(--text)', background: 'var(--surface)', outline: 'none', resize: 'none' }}
                 />
-              </div>
-
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
-                <div>
-                  <label style={{ display: 'block', fontSize: 9.5, fontWeight: 700, color: 'var(--muted)', marginBottom: 5, textTransform: 'uppercase' }}>
-                    Database
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.DatabaseName}
-                    onChange={e => setFormData({ ...formData, DatabaseName: e.target.value })}
-                    placeholder="ERPMega"
-                    style={{ width: '100%', height: 36, padding: '0 10px', border: '1.5px solid var(--border)', borderRadius: 8, fontSize: 12, color: 'var(--text)', background: 'var(--surface)', outline: 'none' }}
-                  />
-                </div>
-                <div>
-                  <label style={{ display: 'block', fontSize: 9.5, fontWeight: 700, color: 'var(--muted)', marginBottom: 5, textTransform: 'uppercase' }}>
-                    Schema
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.SchemaName}
-                    onChange={e => setFormData({ ...formData, SchemaName: e.target.value })}
-                    placeholder="dbo"
-                    style={{ width: '100%', height: 36, padding: '0 10px', border: '1.5px solid var(--border)', borderRadius: 8, fontSize: 12, color: 'var(--text)', background: 'var(--surface)', outline: 'none' }}
-                  />
-                </div>
-                <div>
-                  <label style={{ display: 'block', fontSize: 9.5, fontWeight: 700, color: 'var(--muted)', marginBottom: 5, textTransform: 'uppercase' }}>
-                    Table / View
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.TableOrViewName}
-                    onChange={e => setFormData({ ...formData, TableOrViewName: e.target.value })}
-                    placeholder="e.g. QGetCustomerLookup"
-                    style={{ width: '100%', height: 36, padding: '0 10px', border: '1.5px solid var(--border)', borderRadius: 8, fontSize: 12, color: 'var(--text)', background: 'var(--surface)', outline: 'none' }}
-                  />
-                </div>
               </div>
 
               <div>

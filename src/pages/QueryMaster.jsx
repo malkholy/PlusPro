@@ -11,23 +11,24 @@ export default function QueryMaster({ user }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [filterType, setFilterType] = useState('All');
   
-  const [activeDetailTab, setActiveDetailTab] = useState('config'); // 'config' or 'permissions'
+  const [activeDetailTab, setActiveDetailTab] = useState('config'); // 'config' | 'fields' | 'permissions'
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
   const [successMsg, setSuccessMsg] = useState(null);
 
+  // Query Fields tab (PLS.QueryFields -- per-column grid display metadata)
+  const [queryFields, setQueryFields] = useState([]);
+  const [fieldsLoading, setFieldsLoading] = useState(false);
+  const [fieldSavingId, setFieldSavingId] = useState(null);
+
   // Form State
   const [formData, setFormData] = useState({
     QueryID: '',
     QueryName: '',
-    SPName: '[PLS].[APIPlusOperation]',
     Operation: '',
     Description: '',
     QuerySQL: '',
-    DatabaseName: 'ERPMega',
-    SchemaName: 'dbo',
-    TableOrViewName: '',
     QueryType: 'Grid',
     ApiUrl: ''
   });
@@ -42,6 +43,50 @@ export default function QueryMaster({ user }) {
   useEffect(() => {
     loadData();
   }, []);
+
+  useEffect(() => {
+    if (activeDetailTab === 'fields' && formData.QueryID) {
+      loadQueryFields(formData.QueryID);
+    }
+  }, [activeDetailTab, formData.QueryID]);
+
+  async function loadQueryFields(queryId) {
+    setFieldsLoading(true);
+    try {
+      const res = await apiCall('GetQueryFieldsMaster', { QueryID: queryId }, {}, 'plus');
+      if (res.State === 0) {
+        setQueryFields(res.List0 || []);
+      } else {
+        setError(res.Message || 'Failed to load query fields');
+      }
+    } catch (err) {
+      setError('Connection error: ' + err.message);
+    }
+    setFieldsLoading(false);
+  }
+
+  function handleFieldChange(id, key, value) {
+    setQueryFields(prev => prev.map(f => f.ID === id ? { ...f, [key]: value } : f));
+  }
+
+  async function handleSaveFieldMeta(field) {
+    setFieldSavingId(field.ID);
+    try {
+      const res = await apiCall('SaveQueryFieldMeta', {
+        ID: field.ID,
+        Label: field.Label,
+        Format: field.Format,
+        Width: field.Width,
+        ColorRules: field.ColorRules
+      }, {}, 'plus');
+      if (res.State !== 0) {
+        setError(res.Message || 'Failed to save field metadata');
+      }
+    } catch (err) {
+      setError('Connection error: ' + err.message);
+    }
+    setFieldSavingId(null);
+  }
 
   async function loadData() {
     setLoading(true);
@@ -59,13 +104,9 @@ export default function QueryMaster({ user }) {
             qMap[row.QueryID] = {
               QueryID: row.QueryID,
               QueryName: row.QueryName,
-              SPName: row.SPName,
               Operation: row.Operation,
               Description: row.Description,
               QuerySQL: row.QuerySQL,
-              DatabaseName: row.DatabaseName,
-              SchemaName: row.SchemaName,
-              TableOrViewName: row.TableOrViewName,
               QueryType: row.QueryType,
               ApiUrl: row.ApiUrl || '',
               PageGroups: []
@@ -99,10 +140,9 @@ export default function QueryMaster({ user }) {
 
   const filteredQueries = useMemo(() => {
     return queries.filter(q => {
-      const matchesSearch = 
+      const matchesSearch =
         q.QueryName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        q.Operation.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (q.TableOrViewName || '').toLowerCase().includes(searchQuery.toLowerCase());
+        q.Operation.toLowerCase().includes(searchQuery.toLowerCase());
       
       const matchesType = filterType === 'All' || q.QueryType === filterType;
       return matchesSearch && matchesType;
@@ -122,13 +162,9 @@ export default function QueryMaster({ user }) {
     setFormData({
       QueryID: q.QueryID,
       QueryName: q.QueryName,
-      SPName: q.SPName,
       Operation: q.Operation,
       Description: q.Description || '',
       QuerySQL: q.QuerySQL || '',
-      DatabaseName: q.DatabaseName || '',
-      SchemaName: q.SchemaName || '',
-      TableOrViewName: q.TableOrViewName || '',
       QueryType: q.QueryType,
       ApiUrl: q.ApiUrl || ''
     });
@@ -140,6 +176,7 @@ export default function QueryMaster({ user }) {
     setLinkedPages(pageMap);
     setGrantUsername('');
     setGrantSQLFilter('');
+    setQueryFields([]);
   }
 
   function handleNewQuery() {
@@ -150,17 +187,13 @@ export default function QueryMaster({ user }) {
     setFormData({
       QueryID: '',
       QueryName: '',
-      SPName: '[PLS].[APIPlusOperation]',
       Operation: '',
       Description: '',
       QuerySQL: '',
-      DatabaseName: 'ERPMega',
-      SchemaName: 'dbo',
-      TableOrViewName: '',
       QueryType: 'Grid',
       ApiUrl: ''
     });
-    
+
     const pageMap = {};
     pages.forEach(p => {
       pageMap[p.PageGroupID] = false;
@@ -168,6 +201,7 @@ export default function QueryMaster({ user }) {
     setLinkedPages(pageMap);
     setGrantUsername('');
     setGrantSQLFilter('');
+    setQueryFields([]);
   }
 
   async function handleSave() {
@@ -210,13 +244,9 @@ export default function QueryMaster({ user }) {
               qMap[row.QueryID] = {
                 QueryID: row.QueryID,
                 QueryName: row.QueryName,
-                SPName: row.SPName,
                 Operation: row.Operation,
                 Description: row.Description,
                 QuerySQL: row.QuerySQL,
-                DatabaseName: row.DatabaseName,
-                SchemaName: row.SchemaName,
-                TableOrViewName: row.TableOrViewName,
                 QueryType: row.QueryType,
                 ApiUrl: row.ApiUrl || '',
                 PageGroups: []
@@ -459,18 +489,12 @@ export default function QueryMaster({ user }) {
                     </div>
 
                     <div style={{ fontSize: 10, color: 'var(--muted)', marginTop: 4, fontFamily: 'monospace' }}>
-                      {q.SPName} • {q.Operation}
+                      {q.Operation}
                     </div>
 
                     {q.ApiUrl && (
                       <div style={{ fontSize: 9.5, color: 'var(--muted)', marginTop: 2, display: 'flex', alignItems: 'center', gap: 4 }}>
                         <span>🌐</span> <span style={{ fontFamily: 'monospace' }}>{q.ApiUrl}</span>
-                      </div>
-                    )}
-
-                    {q.TableOrViewName && (
-                      <div style={{ fontSize: 9.5, color: 'var(--hint)', marginTop: 2, display: 'flex', alignItems: 'center', gap: 4 }}>
-                        <span>📂</span> {q.DatabaseName}.{q.SchemaName}.{q.TableOrViewName}
                       </div>
                     )}
 
@@ -549,7 +573,24 @@ export default function QueryMaster({ user }) {
               >
                 ⚙️ Configuration
               </button>
-              
+
+              <button
+                onClick={() => setActiveDetailTab('fields')}
+                style={{
+                  padding: '8px 4px',
+                  background: 'none',
+                  border: 'none',
+                  borderBottom: '2px solid ' + (activeDetailTab === 'fields' ? 'var(--orange)' : 'transparent'),
+                  color: activeDetailTab === 'fields' ? 'var(--text)' : 'var(--muted)',
+                  fontSize: 12.5,
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  outline: 'none'
+                }}
+              >
+                🧩 Query Fields {queryFields.length > 0 && `(${queryFields.length})`}
+              </button>
+
               <button
                 onClick={() => setActiveDetailTab('permissions')}
                 style={{
@@ -637,30 +678,6 @@ export default function QueryMaster({ user }) {
 
                   <div>
                     <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: 'var(--muted)', marginBottom: 6, textTransform: 'uppercase' }}>
-                      Stored Procedure Name
-                    </label>
-                    <input 
-                      type="text"
-                      value={formData.SPName}
-                      onChange={e => setFormData({ ...formData, SPName: e.target.value })}
-                      placeholder="[PLS].[APIPlusOperation]"
-                      style={{
-                        width: '100%',
-                        height: 38,
-                        padding: '0 12px',
-                        border: '1.5px solid var(--border)',
-                        borderRadius: 8,
-                        fontSize: 12.5,
-                        color: 'var(--text)',
-                        background: 'var(--bg)',
-                        outline: 'none',
-                        fontFamily: 'monospace'
-                      }}
-                    />
-                  </div>
-
-                  <div>
-                    <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: 'var(--muted)', marginBottom: 6, textTransform: 'uppercase' }}>
                       Operation Code
                     </label>
                     <input 
@@ -705,82 +722,6 @@ export default function QueryMaster({ user }) {
                       resize: 'none'
                     }}
                   />
-                </div>
-
-                <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 12 }}>
-                  <span style={{ fontSize: 14 }}>📂</span>
-                  <span style={{ fontSize: 12, fontWeight: 800, color: 'var(--text)', textTransform: 'uppercase' }}>Target Database Source</span>
-                </div>
-                
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12, marginBottom: 20 }}>
-                  <div>
-                    <label style={{ display: 'block', fontSize: 9.5, fontWeight: 700, color: 'var(--muted)', marginBottom: 5, textTransform: 'uppercase' }}>
-                      Database
-                    </label>
-                    <input 
-                      type="text"
-                      value={formData.DatabaseName}
-                      onChange={e => setFormData({ ...formData, DatabaseName: e.target.value })}
-                      placeholder="ERPMega"
-                      style={{
-                        width: '100%',
-                        height: 36,
-                        padding: '0 10px',
-                        border: '1.5px solid var(--border)',
-                        borderRadius: 8,
-                        fontSize: 12,
-                        color: 'var(--text)',
-                        background: 'var(--bg)',
-                        outline: 'none'
-                      }}
-                    />
-                  </div>
-
-                  <div>
-                    <label style={{ display: 'block', fontSize: 9.5, fontWeight: 700, color: 'var(--muted)', marginBottom: 5, textTransform: 'uppercase' }}>
-                      Schema
-                    </label>
-                    <input 
-                      type="text"
-                      value={formData.SchemaName}
-                      onChange={e => setFormData({ ...formData, SchemaName: e.target.value })}
-                      placeholder="dbo"
-                      style={{
-                        width: '100%',
-                        height: 36,
-                        padding: '0 10px',
-                        border: '1.5px solid var(--border)',
-                        borderRadius: 8,
-                        fontSize: 12,
-                        color: 'var(--text)',
-                        background: 'var(--bg)',
-                        outline: 'none'
-                      }}
-                    />
-                  </div>
-
-                  <div>
-                    <label style={{ display: 'block', fontSize: 9.5, fontWeight: 700, color: 'var(--muted)', marginBottom: 5, textTransform: 'uppercase' }}>
-                      Table / View
-                    </label>
-                    <input 
-                      type="text"
-                      value={formData.TableOrViewName}
-                      onChange={e => setFormData({ ...formData, TableOrViewName: e.target.value })}
-                      placeholder="e.g. QGetPurchaseOrders"
-                      style={{
-                        width: '100%',
-                        height: 36,
-                        padding: '0 10px',
-                        border: '1.5px solid var(--border)',
-                        borderRadius: 8,
-                        fontSize: 12,
-                        color: 'var(--text)',
-                        background: 'var(--bg)',
-                        outline: 'none'
-                      }}
-                    />
-                  </div>
                 </div>
 
                 <div style={{ marginBottom: 20 }}>
@@ -915,6 +856,104 @@ export default function QueryMaster({ user }) {
                 >
                   {saving ? 'Saving...' : 'Save Configuration'}
                 </button>
+              </div>
+            </>
+          ) : activeDetailTab === 'fields' ? (
+            <>
+              {/* Query Fields Tab -- PLS.QueryFields per-column display metadata */}
+              <div style={{ flex: 1, overflowY: 'auto', padding: 20 }}>
+                {!formData.QueryID ? (
+                  <div style={{ padding: 32, textAlign: 'center', color: 'var(--muted)', fontSize: 13 }}>
+                    Please save this query configuration first to manage its fields.
+                  </div>
+                ) : (
+                  <>
+                    {error && (
+                      <div style={{ background: 'var(--red-soft)', border: '1px solid rgba(220,38,38,0.2)', color: 'var(--red)', padding: 10, borderRadius: 8, fontSize: 12.5, marginBottom: 16 }}>
+                        {error}
+                      </div>
+                    )}
+                    <div style={{ fontSize: 11.5, color: 'var(--muted)', marginBottom: 16, lineHeight: 1.5 }}>
+                      FieldName / Type / Length are auto-discovered from this query's SQL every time it's saved.
+                      Label, Format, Width, and Color Rules are edited here and preserved across future saves.
+                    </div>
+
+                    {fieldsLoading ? (
+                      <div style={{ padding: 24, textAlign: 'center', color: 'var(--muted)', fontSize: 12.5 }}>Loading fields...</div>
+                    ) : queryFields.length === 0 ? (
+                      <div style={{ padding: 24, textAlign: 'center', color: 'var(--muted)', fontSize: 12.5, border: '1px dashed var(--border)', borderRadius: 10 }}>
+                        No fields registered yet. Save this query's Configuration tab to auto-discover its columns.
+                      </div>
+                    ) : (
+                      <div style={{ border: '1px solid var(--border)', borderRadius: 10, overflow: 'hidden' }}>
+                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, textAlign: 'left' }}>
+                          <thead>
+                            <tr style={{ background: 'var(--soft)', borderBottom: '1px solid var(--border)' }}>
+                              <th style={{ padding: '9px 12px', fontWeight: 700, color: 'var(--muted)' }}>Field</th>
+                              <th style={{ padding: '9px 12px', fontWeight: 700, color: 'var(--muted)' }}>Type</th>
+                              <th style={{ padding: '9px 12px', fontWeight: 700, color: 'var(--muted)' }}>Label</th>
+                              <th style={{ padding: '9px 12px', fontWeight: 700, color: 'var(--muted)' }}>Format</th>
+                              <th style={{ padding: '9px 12px', fontWeight: 700, color: 'var(--muted)' }}>Width</th>
+                              <th style={{ padding: '9px 12px', fontWeight: 700, color: 'var(--muted)' }}>Color Rules</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {queryFields.map(f => (
+                              <tr key={f.ID} style={{ borderBottom: '1px solid var(--border)' }}>
+                                <td style={{ padding: '8px 12px', fontWeight: 700, color: 'var(--text)', fontFamily: 'monospace', fontSize: 11.5 }}>
+                                  {f.FieldName}
+                                </td>
+                                <td style={{ padding: '8px 12px', color: 'var(--muted)', fontFamily: 'monospace', fontSize: 11 }}>
+                                  {f.DataType}{f.Length ? `(${f.Length})` : ''}
+                                </td>
+                                <td style={{ padding: '6px 8px' }}>
+                                  <input
+                                    type="text"
+                                    value={f.Label || ''}
+                                    onChange={e => handleFieldChange(f.ID, 'Label', e.target.value)}
+                                    onBlur={() => handleSaveFieldMeta(f)}
+                                    placeholder={f.FieldName}
+                                    style={{ width: '100%', height: 30, padding: '0 8px', border: '1px solid var(--border)', borderRadius: 6, fontSize: 11.5, color: 'var(--text)', background: 'var(--bg)', outline: 'none' }}
+                                  />
+                                </td>
+                                <td style={{ padding: '6px 8px' }}>
+                                  <input
+                                    type="text"
+                                    value={f.Format || ''}
+                                    onChange={e => handleFieldChange(f.ID, 'Format', e.target.value)}
+                                    onBlur={() => handleSaveFieldMeta(f)}
+                                    placeholder="e.g. currency, date"
+                                    style={{ width: '100%', height: 30, padding: '0 8px', border: '1px solid var(--border)', borderRadius: 6, fontSize: 11.5, color: 'var(--text)', background: 'var(--bg)', outline: 'none' }}
+                                  />
+                                </td>
+                                <td style={{ padding: '6px 8px' }}>
+                                  <input
+                                    type="number"
+                                    value={f.Width || ''}
+                                    onChange={e => handleFieldChange(f.ID, 'Width', e.target.value)}
+                                    onBlur={() => handleSaveFieldMeta(f)}
+                                    placeholder="px"
+                                    style={{ width: 70, height: 30, padding: '0 8px', border: '1px solid var(--border)', borderRadius: 6, fontSize: 11.5, color: 'var(--text)', background: 'var(--bg)', outline: 'none' }}
+                                  />
+                                </td>
+                                <td style={{ padding: '6px 8px' }}>
+                                  <input
+                                    type="text"
+                                    value={f.ColorRules || ''}
+                                    onChange={e => handleFieldChange(f.ID, 'ColorRules', e.target.value)}
+                                    onBlur={() => handleSaveFieldMeta(f)}
+                                    placeholder="e.g. <0:red;>0:green"
+                                    style={{ width: '100%', height: 30, padding: '0 8px', border: '1px solid var(--border)', borderRadius: 6, fontSize: 11, fontFamily: 'monospace', color: 'var(--text)', background: 'var(--bg)', outline: 'none' }}
+                                  />
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </>
+                )}
               </div>
             </>
           ) : (

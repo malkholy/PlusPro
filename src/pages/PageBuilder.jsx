@@ -291,13 +291,9 @@ export default function PageBuilder({ user, def }) {
       const r = await apiCall('CreateQueryView', {
         PageGroupID: pageId,
         QueryName: mainQuery || pageName + ' Grid',
-        SPName: spName || 'APIPlusOperation',
         QueryOperation: mainQuery || pageName + ' Grid',
         Description: 'Main Grid for ' + pageName,
         QuerySQL: `SELECT * FROM [PLS].[${viewName}];`,
-        DatabaseName: 'ERPMega25',
-        SchemaName: 'PLS',
-        TableOrViewName: viewName,
         QueryType: 'Grid'
       }, { SqlStatement: ddl }, 'query');
       if (r.State === 0) {
@@ -429,13 +425,9 @@ export default function PageBuilder({ user, def }) {
     try {
       const r = await apiCall('SaveQueryMaster', {
         QueryName: mainQuery || pageName + ' Grid',
-        SPName: spName || 'APIPlusOperation',
         Operation: mainQuery || pageName + ' Grid',
         Description: 'Main Grid for ' + pageName,
         QuerySQL: mainQuerySql.trim() ? `SELECT * FROM [PLS].[${viewName}];` : '',
-        DatabaseName: 'ERPMega25',
-        SchemaName: 'PLS',
-        TableOrViewName: viewName,
         QueryType: 'Grid',
         ApiUrl: ''
       }, {}, 'plus');

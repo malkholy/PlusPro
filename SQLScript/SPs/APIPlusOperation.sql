@@ -668,7 +668,7 @@ BEGIN
         SET @State = 0;
         SET @Message = 'Success';
 
-        SELECT q.QueryID, pq.PageGroupID, q.QueryName, q.SPName, q.Operation, q.Description, q.QuerySQL, q.DatabaseName, q.SchemaName, q.TableOrViewName, q.QueryType, q.ApiUrl 
+        SELECT q.QueryID, pq.PageGroupID, q.QueryName, q.Operation, q.Description, q.QuerySQL, q.QueryType, q.ApiUrl 
         FROM [PLS].[QueryMaster] q
         LEFT JOIN [PLS].[PageQueries] pq ON q.QueryID = pq.QueryID
         ORDER BY pq.PageGroupID, q.QueryID;
@@ -842,6 +842,57 @@ BEGIN
         RETURN;
     END
 
+    -- ====================================================================
+    -- PLS.QueryFields admin access -- the persisted per-column grid display
+    -- metadata table (FieldName/DataType/Length are auto-populated whenever
+    -- a query is saved via SaveQueryMaster/CreateQueryView below; Label/
+    -- Format/Width/ColorRules are hand-edited here and never touched by that
+    -- auto-population). Not to be confused with 'GetQueryFields' further
+    -- down, which describes a query's LIVE result-set columns via DMV for
+    -- the SQLFilterInput autocomplete -- a different, transient concept.
+    -- ====================================================================
+    IF @Operation = 'GetQueryFieldsMaster'
+    BEGIN
+        SET @State = 0;
+        SET @Message = 'Success';
+
+        DECLARE @QFMQueryID INT = TRY_CAST(JSON_VALUE(@LineData, '$.QueryID') AS INT);
+
+        SELECT ID, QueryID, FieldName, DataType, Length, Label, Format, Width, ColorRules
+        FROM [PLS].[QueryFields]
+        WHERE QueryID = @QFMQueryID
+        ORDER BY ID;
+        RETURN;
+    END
+
+    IF @Operation = 'SaveQueryFieldMeta'
+    BEGIN
+        SET @State = 0;
+        SET @Message = 'Success';
+
+        DECLARE @QFM_ID INT = TRY_CAST(JSON_VALUE(@LineData, '$.ID') AS INT);
+        DECLARE @QFM_Label NVARCHAR(150) = JSON_VALUE(@LineData, '$.Label');
+        DECLARE @QFM_Format NVARCHAR(100) = JSON_VALUE(@LineData, '$.Format');
+        DECLARE @QFM_Width INT = TRY_CAST(JSON_VALUE(@LineData, '$.Width') AS INT);
+        DECLARE @QFM_ColorRules NVARCHAR(MAX) = JSON_VALUE(@LineData, '$.ColorRules');
+
+        IF @QFM_ID IS NULL
+        BEGIN
+            SET @State = 1;
+            SET @Message = 'ID is required';
+            RETURN;
+        END
+
+        UPDATE [PLS].[QueryFields]
+        SET Label = @QFM_Label,
+            Format = @QFM_Format,
+            Width = @QFM_Width,
+            ColorRules = @QFM_ColorRules
+        WHERE ID = @QFM_ID;
+
+        RETURN;
+    END
+
     IF @Operation = 'GetQueryFields'
     BEGIN
         SET @State = 0;
@@ -858,6 +909,9 @@ BEGIN
             SET @Message = 'Query not found';
             RETURN;
         END
+
+        IF CHARINDEX('{FILTER}', @QFTSQL) > 0
+            SET @QFTSQL = REPLACE(@QFTSQL, '{FILTER}', N'');
 
         DECLARE @QFParams NVARCHAR(MAX) = N'@FromDate datetime, @ToDate datetime, @PONumber varchar(100), @ItemCode varchar(100), @ItemID int, @SaftyStock decimal(18,5), @LeadTime int, @PermUser varchar(100), @PermPageGroupID varchar(100), @PermCanView bit, @View_ModelID int, @Get_FunctionPrefix varchar(100), @SelectedTable varchar(100), @Get_MacroID int, @Get_EventID int, @Get_CashID int, @jNo varchar(100), @eNo int, @jeFrom datetime, @jeTo datetime, @sjeFrom datetime, @sjeTo datetime';
 
@@ -896,32 +950,49 @@ BEGIN
 
         IF @ValCondition IS NOT NULL AND RTRIM(LTRIM(@ValCondition)) <> ''
         BEGIN
-            SET @ValTSQL = RTRIM(LTRIM(@ValTSQL));
-            IF RIGHT(@ValTSQL, 1) = ';'
-            BEGIN
-                SET @ValTSQL = SUBSTRING(@ValTSQL, 1, LEN(@ValTSQL) - 1);
-            END
+            DECLARE @ValStatement NVARCHAR(MAX);
 
-            DECLARE @OrderByPos INT = -1;
-            DECLARE @TempTSQL NVARCHAR(MAX) = UPPER(@ValTSQL);
-            DECLARE @SearchPos INT = CHARINDEX('ORDER BY', @TempTSQL);
-            
-            WHILE @SearchPos > 0
+            IF CHARINDEX('{FILTER}', @ValTSQL) > 0
             BEGIN
-                SET @OrderByPos = @SearchPos;
-                SET @SearchPos = CHARINDEX('ORDER BY', @TempTSQL, @SearchPos + 1);
+                -- Mirror exactly how GetGridData / the Lookup engine substitute the
+                -- condition at runtime (inline into the query's own WHERE clause),
+                -- so validation sees the same column scope (full FROM/JOIN, not just
+                -- the outer SELECT list) that will actually be used when this filter
+                -- runs for real -- otherwise a condition on a real but unprojected
+                -- column (e.g. ItemType on the Item Master lookup) is wrongly flagged
+                -- as an invalid column here even though it works at runtime.
+                SET @ValStatement = REPLACE(@ValTSQL, '{FILTER}', N' AND (' + @ValCondition + N')');
             END
-            
-            IF @OrderByPos > 0
+            ELSE
             BEGIN
-                DECLARE @AfterOrderBy NVARCHAR(MAX) = SUBSTRING(@ValTSQL, @OrderByPos + 8, LEN(@ValTSQL));
-                IF CHARINDEX(')', @AfterOrderBy) = 0
+                SET @ValTSQL = RTRIM(LTRIM(@ValTSQL));
+                IF RIGHT(@ValTSQL, 1) = ';'
                 BEGIN
-                    SET @ValTSQL = SUBSTRING(@ValTSQL, 1, @OrderByPos - 1);
+                    SET @ValTSQL = SUBSTRING(@ValTSQL, 1, LEN(@ValTSQL) - 1);
                 END
+
+                DECLARE @OrderByPos INT = -1;
+                DECLARE @TempTSQL NVARCHAR(MAX) = UPPER(@ValTSQL);
+                DECLARE @SearchPos INT = CHARINDEX('ORDER BY', @TempTSQL);
+
+                WHILE @SearchPos > 0
+                BEGIN
+                    SET @OrderByPos = @SearchPos;
+                    SET @SearchPos = CHARINDEX('ORDER BY', @TempTSQL, @SearchPos + 1);
+                END
+
+                IF @OrderByPos > 0
+                BEGIN
+                    DECLARE @AfterOrderBy NVARCHAR(MAX) = SUBSTRING(@ValTSQL, @OrderByPos + 8, LEN(@ValTSQL));
+                    IF CHARINDEX(')', @AfterOrderBy) = 0
+                    BEGIN
+                        SET @ValTSQL = SUBSTRING(@ValTSQL, 1, @OrderByPos - 1);
+                    END
+                END
+
+                SET @ValStatement = N'SELECT * FROM (' + @ValTSQL + N') AS __t WHERE ' + @ValCondition;
             END
 
-            DECLARE @ValStatement NVARCHAR(MAX) = N'SELECT * FROM (' + @ValTSQL + N') AS __t WHERE ' + @ValCondition;
             DECLARE @ValParams NVARCHAR(MAX) = N'@FromDate datetime, @ToDate datetime, @PONumber varchar(100), @ItemCode varchar(100), @ItemID int, @SaftyStock decimal(18,5), @LeadTime int, @PermUser varchar(100), @PermPageGroupID varchar(100), @PermCanView bit, @View_ModelID int, @Get_FunctionPrefix varchar(100), @SelectedTable varchar(100), @Get_MacroID int, @Get_EventID int, @Get_CashID int, @jNo varchar(100), @eNo int, @jeFrom datetime, @jeTo datetime, @sjeFrom datetime, @sjeTo datetime';
             
             DECLARE @ErrorNumber INT = NULL;
@@ -959,13 +1030,9 @@ BEGIN
 
         DECLARE @QMQueryID INT = NULLIF(JSON_VALUE(@LineData, '$.QueryID'), '');
         DECLARE @QMQueryName NVARCHAR(150) = JSON_VALUE(@LineData, '$.QueryName');
-        DECLARE @QMSPName NVARCHAR(250) = JSON_VALUE(@LineData, '$.SPName');
         DECLARE @QMQueryOperation VARCHAR(100) = JSON_VALUE(@LineData, '$.Operation');
         DECLARE @QMDescription NVARCHAR(500) = JSON_VALUE(@LineData, '$.Description');
         DECLARE @QMQuerySQL NVARCHAR(MAX) = JSON_VALUE(@LineData, '$.QuerySQL');
-        DECLARE @QMDatabaseName VARCHAR(100) = JSON_VALUE(@LineData, '$.DatabaseName');
-        DECLARE @QMSchemaName VARCHAR(100) = JSON_VALUE(@LineData, '$.SchemaName');
-        DECLARE @QMTableOrViewName VARCHAR(150) = JSON_VALUE(@LineData, '$.TableOrViewName');
         DECLARE @QMQueryType VARCHAR(50) = JSON_VALUE(@LineData, '$.QueryType');
         DECLARE @QMApiUrl VARCHAR(500) = JSON_VALUE(@LineData, '$.ApiUrl');
 
@@ -973,24 +1040,56 @@ BEGIN
         BEGIN
             UPDATE [PLS].[QueryMaster]
             SET QueryName = @QMQueryName,
-                SPName = @QMSPName,
                 Operation = @QMQueryOperation,
                 Description = @QMDescription,
                 QuerySQL = @QMQuerySQL,
-                DatabaseName = @QMDatabaseName,
-                SchemaName = @QMSchemaName,
-                TableOrViewName = @QMTableOrViewName,
                 QueryType = @QMQueryType,
                 ApiUrl = @QMApiUrl
             WHERE QueryID = @QMQueryID;
         END
         ELSE
         BEGIN
-            INSERT INTO [PLS].[QueryMaster] (QueryName, SPName, Operation, Description, QuerySQL, DatabaseName, SchemaName, TableOrViewName, QueryType, ApiUrl, CreatedBy)
-            VALUES (@QMQueryName, @QMSPName, @QMQueryOperation, @QMDescription, @QMQuerySQL, @QMDatabaseName, @QMSchemaName, @QMTableOrViewName, @QMQueryType, @QMApiUrl, @User);
-            
+            INSERT INTO [PLS].[QueryMaster] (QueryName, Operation, Description, QuerySQL, QueryType, ApiUrl, CreatedBy)
+            VALUES (@QMQueryName, @QMQueryOperation, @QMDescription, @QMQuerySQL, @QMQueryType, @QMApiUrl, @User);
+
             SET @QMQueryID = SCOPE_IDENTITY();
         END
+
+        -- Standing rule: every QueryMaster row must have its columns registered
+        -- in PLS.QueryFields. Re-discover them via the same DMV GetQueryFields
+        -- uses and rewrite this query's rows every time it's saved -- Label/
+        -- Format/Width/ColorRules are hand-edited afterwards, never touched here.
+        BEGIN TRY
+            DECLARE @QMFieldSQL NVARCHAR(MAX) = @QMQuerySQL;
+            IF @QMFieldSQL IS NOT NULL AND CHARINDEX('{FILTER}', @QMFieldSQL) > 0
+                SET @QMFieldSQL = REPLACE(@QMFieldSQL, '{FILTER}', N'');
+
+            IF @QMFieldSQL IS NOT NULL AND LTRIM(RTRIM(@QMFieldSQL)) <> ''
+            BEGIN
+                DECLARE @QMFieldParams NVARCHAR(MAX) = N'@FromDate datetime, @ToDate datetime, @PONumber varchar(100), @ItemCode varchar(100), @ItemID int, @SaftyStock decimal(18,5), @LeadTime int, @PermUser varchar(100), @PermPageGroupID varchar(100), @PermCanView bit, @View_ModelID int, @Get_FunctionPrefix varchar(100), @SelectedTable varchar(100), @Get_MacroID int, @Get_EventID int, @Get_CashID int, @jNo varchar(100), @eNo int, @jeFrom datetime, @jeTo datetime, @sjeFrom datetime, @sjeTo datetime';
+                -- MERGE, not delete+reinsert: preserves hand-edited Label/Format/
+                -- Width/ColorRules on columns that still exist, only touching
+                -- FieldName/DataType/Length (and adding/removing rows for columns
+                -- that were added/removed from the query itself).
+                DECLARE @QMFieldExecSQL NVARCHAR(MAX) = N'
+                    MERGE INTO [PLS].[QueryFields] AS target
+                    USING (
+                        SELECT name AS FieldName, system_type_name AS DataType, CASE WHEN max_length = -1 THEN NULL ELSE max_length END AS Length
+                        FROM sys.dm_exec_describe_first_result_set(@QMFieldSQL, @QMFieldParams, 0)
+                        WHERE name IS NOT NULL
+                    ) AS src
+                    ON target.QueryID = ' + CAST(@QMQueryID AS NVARCHAR(20)) + N' AND target.FieldName = src.FieldName
+                    WHEN MATCHED THEN UPDATE SET DataType = src.DataType, Length = src.Length
+                    WHEN NOT MATCHED BY TARGET THEN INSERT (QueryID, FieldName, DataType, Length) VALUES (' + CAST(@QMQueryID AS NVARCHAR(20)) + N', src.FieldName, src.DataType, src.Length)
+                    WHEN NOT MATCHED BY SOURCE AND target.QueryID = ' + CAST(@QMQueryID AS NVARCHAR(20)) + N' THEN DELETE;
+                ';
+                EXEC sys.sp_executesql @QMFieldExecSQL, N'@QMFieldSQL NVARCHAR(MAX), @QMFieldParams NVARCHAR(MAX)', @QMFieldSQL = @QMFieldSQL, @QMFieldParams = @QMFieldParams;
+            END
+        END TRY
+        BEGIN CATCH
+            -- Field discovery failing (e.g. a query needing params this pool doesn't
+            -- cover) must never block the query itself from being saved.
+        END CATCH
 
         SELECT @State AS State, @Message AS Message, @QMQueryID AS QueryID;
         RETURN;
@@ -1003,6 +1102,7 @@ BEGIN
 
         DECLARE @DelQueryID INT = JSON_VALUE(@LineData, '$.QueryID');
 
+        DELETE FROM [PLS].[QueryFields] WHERE QueryID = @DelQueryID;
         DELETE FROM [PLS].[QueryMaster] WHERE QueryID = @DelQueryID;
 
         SELECT @State AS State, @Message AS Message;
@@ -1031,13 +1131,9 @@ BEGIN
             BEGIN
                 DECLARE @PageGroupID VARCHAR(50) = JSON_VALUE(@LineData, '$.PageGroupID');
                 DECLARE @QueryName NVARCHAR(150) = JSON_VALUE(@LineData, '$.QueryName');
-                DECLARE @SPName NVARCHAR(250) = JSON_VALUE(@LineData, '$.SPName');
                 DECLARE @QueryOperation VARCHAR(100) = JSON_VALUE(@LineData, '$.QueryOperation');
                 DECLARE @Description NVARCHAR(500) = JSON_VALUE(@LineData, '$.Description');
                 DECLARE @QuerySQL NVARCHAR(MAX) = JSON_VALUE(@LineData, '$.QuerySQL');
-                DECLARE @DatabaseName VARCHAR(100) = JSON_VALUE(@LineData, '$.DatabaseName');
-                DECLARE @SchemaName VARCHAR(100) = JSON_VALUE(@LineData, '$.SchemaName');
-                DECLARE @TableOrViewName VARCHAR(150) = JSON_VALUE(@LineData, '$.TableOrViewName');
                 DECLARE @QueryType VARCHAR(50) = JSON_VALUE(@LineData, '$.QueryType');
 
                 IF @PageGroupID IS NOT NULL AND @QueryOperation IS NOT NULL
@@ -1049,12 +1145,8 @@ BEGIN
                     BEGIN
                         UPDATE [PLS].[QueryMaster]
                         SET QueryName = COALESCE(@QueryName, QueryName),
-                            SPName = COALESCE(@SPName, SPName),
                             Description = COALESCE(@Description, Description),
                             QuerySQL = COALESCE(@QuerySQL, QuerySQL),
-                            DatabaseName = COALESCE(@DatabaseName, DatabaseName),
-                            SchemaName = COALESCE(@SchemaName, SchemaName),
-                            TableOrViewName = COALESCE(@TableOrViewName, TableOrViewName),
                             QueryType = COALESCE(@QueryType, QueryType)
                         WHERE QueryID = @ExistingQueryID;
 
@@ -1067,14 +1159,47 @@ BEGIN
                     END
                     ELSE
                     BEGIN
-                        INSERT INTO [PLS].[QueryMaster] (QueryName, SPName, Operation, Description, QuerySQL, DatabaseName, SchemaName, TableOrViewName, QueryType, CreatedBy)
-                        VALUES (COALESCE(@QueryName, @QueryOperation), COALESCE(@SPName, N'[PLS].[APIPlusOperation]'), @QueryOperation, @Description, @QuerySQL, @DatabaseName, @SchemaName, @TableOrViewName, COALESCE(@QueryType, 'Grid'), @User);
+                        INSERT INTO [PLS].[QueryMaster] (QueryName, Operation, Description, QuerySQL, QueryType, CreatedBy)
+                        VALUES (COALESCE(@QueryName, @QueryOperation), @QueryOperation, @Description, @QuerySQL, COALESCE(@QueryType, 'Grid'), @User);
 
                         SET @ExistingQueryID = SCOPE_IDENTITY();
                         INSERT INTO [PLS].[PageQueries] (PageGroupID, QueryID) VALUES (@PageGroupID, @ExistingQueryID);
 
                         SET @Message = 'View compiled and QueryMaster registered successfully';
                     END
+
+                    -- Standing rule: every QueryMaster row must have its columns
+                    -- registered in PLS.QueryFields -- same auto-population as
+                    -- SaveQueryMaster, re-reading the final QuerySQL from the
+                    -- table since an update may have COALESCE'd it unchanged.
+                    BEGIN TRY
+                        DECLARE @CQVFieldSQL NVARCHAR(MAX);
+                        SELECT @CQVFieldSQL = QuerySQL FROM [PLS].[QueryMaster] WHERE QueryID = @ExistingQueryID;
+                        IF @CQVFieldSQL IS NOT NULL AND CHARINDEX('{FILTER}', @CQVFieldSQL) > 0
+                            SET @CQVFieldSQL = REPLACE(@CQVFieldSQL, '{FILTER}', N'');
+
+                        IF @CQVFieldSQL IS NOT NULL AND LTRIM(RTRIM(@CQVFieldSQL)) <> ''
+                        BEGIN
+                            DECLARE @CQVFieldParams NVARCHAR(MAX) = N'@FromDate datetime, @ToDate datetime, @PONumber varchar(100), @ItemCode varchar(100), @ItemID int, @SaftyStock decimal(18,5), @LeadTime int, @PermUser varchar(100), @PermPageGroupID varchar(100), @PermCanView bit, @View_ModelID int, @Get_FunctionPrefix varchar(100), @SelectedTable varchar(100), @Get_MacroID int, @Get_EventID int, @Get_CashID int, @jNo varchar(100), @eNo int, @jeFrom datetime, @jeTo datetime, @sjeFrom datetime, @sjeTo datetime';
+                            -- MERGE, not delete+reinsert -- see the matching comment in SaveQueryMaster above.
+                            DECLARE @CQVFieldExecSQL NVARCHAR(MAX) = N'
+                                MERGE INTO [PLS].[QueryFields] AS target
+                                USING (
+                                    SELECT name AS FieldName, system_type_name AS DataType, CASE WHEN max_length = -1 THEN NULL ELSE max_length END AS Length
+                                    FROM sys.dm_exec_describe_first_result_set(@CQVFieldSQL, @CQVFieldParams, 0)
+                                    WHERE name IS NOT NULL
+                                ) AS src
+                                ON target.QueryID = ' + CAST(@ExistingQueryID AS NVARCHAR(20)) + N' AND target.FieldName = src.FieldName
+                                WHEN MATCHED THEN UPDATE SET DataType = src.DataType, Length = src.Length
+                                WHEN NOT MATCHED BY TARGET THEN INSERT (QueryID, FieldName, DataType, Length) VALUES (' + CAST(@ExistingQueryID AS NVARCHAR(20)) + N', src.FieldName, src.DataType, src.Length)
+                                WHEN NOT MATCHED BY SOURCE AND target.QueryID = ' + CAST(@ExistingQueryID AS NVARCHAR(20)) + N' THEN DELETE;
+                            ';
+                            EXEC sys.sp_executesql @CQVFieldExecSQL, N'@CQVFieldSQL NVARCHAR(MAX), @CQVFieldParams NVARCHAR(MAX)', @CQVFieldSQL = @CQVFieldSQL, @CQVFieldParams = @CQVFieldParams;
+                        END
+                    END TRY
+                    BEGIN CATCH
+                        -- Field discovery failing must never block the view/query itself from being saved.
+                    END CATCH
                 END
                 ELSE
                 BEGIN
