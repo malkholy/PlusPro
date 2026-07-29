@@ -873,7 +873,7 @@ BEGIN
         DECLARE @QFM_ID INT = TRY_CAST(JSON_VALUE(@LineData, '$.ID') AS INT);
         DECLARE @QFM_Label NVARCHAR(150) = JSON_VALUE(@LineData, '$.Label');
         DECLARE @QFM_Format NVARCHAR(100) = JSON_VALUE(@LineData, '$.Format');
-        DECLARE @QFM_Width INT = TRY_CAST(JSON_VALUE(@LineData, '$.Width') AS INT);
+        DECLARE @QFM_Width INT = TRY_CAST(NULLIF(JSON_VALUE(@LineData, '$.Width'), '') AS INT);
         DECLARE @QFM_ColorRules NVARCHAR(MAX) = JSON_VALUE(@LineData, '$.ColorRules');
 
         IF @QFM_ID IS NULL
@@ -1826,6 +1826,46 @@ BEGIN
             FROM [PLS].[UserOperationPermissions]
             WHERE Username = @User AND CanPerform = 1;
         END
+        RETURN;
+    END
+
+    -- ====================================================================
+    -- Item Customer Sales -- a custom (non-GetGridData) report page.
+    -- Monthly/Quarterly/Yearly period logic (same pattern as the Express/
+    -- Sales Detail pages' client-side buildLineData: Months is a comma-
+    -- separated list, empty for 'yearly') doesn't fit the QueryFilterMappings
+    -- model, so this is its own named operation with its own param parsing,
+    -- fed by ItemCustomerSales.jsx directly.
+    -- ====================================================================
+    IF @Operation = 'GetItemCustomerMonthlySales'
+    BEGIN
+        SET @State = 0;
+        SET @Message = 'Success';
+
+        DECLARE @ICMMonths NVARCHAR(100) = JSON_VALUE(@LineData, '$.Months');
+        -- NULLIF before TRY_CAST is required here: TRY_CAST('' AS INT) returns
+        -- 0 (not NULL) in this environment, which would silently turn "no
+        -- filter" into "= 0" and match zero rows -- confirmed empirically
+        -- while debugging empty ItemCustomerSales results.
+        DECLARE @ICMYear INT = TRY_CAST(NULLIF(JSON_VALUE(@LineData, '$.Year'), '') AS INT);
+        DECLARE @ICMCustomer NVARCHAR(50) = NULLIF(JSON_VALUE(@LineData, '$.Customer'), '');
+        DECLARE @ICMItemID INT = TRY_CAST(NULLIF(JSON_VALUE(@LineData, '$.ItemID'), '') AS INT);
+        DECLARE @ICMSalesPerson INT = TRY_CAST(NULLIF(JSON_VALUE(@LineData, '$.SalesPerson'), '') AS INT);
+
+        SELECT a.SalesYear, a.SalesMonth, c.ItemID, c.ItemCode, c.ItemDescription, c.SellingConversion,
+               a.Customer, b.CustomerName, b.CustomerSalesPerson, sm.SalesName AS SalesPersonName, a.Qty, a.Amount
+        FROM Sales.ItemCustomerMonthly a
+        LEFT OUTER JOIN ACR.CustomerMaster b ON a.Customer = b.CustomerNo
+        LEFT OUTER JOIN inv.ItemMaster c ON c.ItemID = a.Item
+        LEFT OUTER JOIN ACR.SalesMaster sm ON sm.SalesID = b.CustomerSalesPerson
+        WHERE a.Customer <> 60002
+          AND a.SalesYear <> 2022
+          AND (@ICMYear IS NULL OR a.SalesYear = @ICMYear)
+          AND (@ICMMonths IS NULL OR LTRIM(RTRIM(@ICMMonths)) = '' OR a.SalesMonth IN (SELECT CAST(value AS INT) FROM STRING_SPLIT(@ICMMonths, ',')))
+          AND (@ICMCustomer IS NULL OR a.Customer = @ICMCustomer)
+          AND (@ICMItemID IS NULL OR c.ItemID = @ICMItemID)
+          AND (@ICMSalesPerson IS NULL OR b.CustomerSalesPerson = @ICMSalesPerson)
+        ORDER BY a.SalesYear DESC, a.SalesMonth DESC, c.ItemCode;
         RETURN;
     END
 
