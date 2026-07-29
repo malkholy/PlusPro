@@ -51,6 +51,7 @@ import JournalModel from './pages/JournalModel.jsx';
 import SmartJournal from './pages/SmartJournal.jsx';
 import UserPermissions from './pages/UserPermissions.jsx';
 import LookupPermissions from './pages/LookupPermissions.jsx';
+import ItemCustomerSales from './pages/ItemCustomerSales.jsx';
 import QueryMaster from './pages/QueryMaster.jsx';
 import LookupQueries from './pages/LookupQueries.jsx';
 import AccountingFunctions from './pages/AccountingFunctions.jsx';
@@ -282,6 +283,7 @@ const PAGE_COMPONENTS = {
   smart_journal: SmartJournal,
   user_permissions: UserPermissions,
   lookup_permissions: LookupPermissions,
+  item_customer_sales: ItemCustomerSales,
   query_master: QueryMaster,
   lookup_queries: LookupQueries,
   accounting_functions: AccountingFunctions,
