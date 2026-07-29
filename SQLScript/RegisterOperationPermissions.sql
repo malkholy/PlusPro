@@ -59,9 +59,65 @@ BEGIN
 END
 GO
 
+-- NOTE: despite the 'edit_order' prefix (kept for historical/key-stability
+-- reasons -- renaming would orphan any grants already made), each of these
+-- 7 sub-operations gates its field in BOTH New Order and Edit Order. There
+-- is deliberately no separate New-Order-only variant: one grant per field
+-- covers a user for both flows.
 IF NOT EXISTS (SELECT 1 FROM PLS.OperationMaster WHERE OperationKey = 'customer_order.edit_order.change_warehouse')
 BEGIN
     INSERT INTO PLS.OperationMaster (OperationKey, ParentOperationKey, PageGroupID, Label, Description, SortOrder)
-    VALUES ('customer_order.edit_order.change_warehouse', 'customer_order.edit_order', 'customer_order', 'Change Warehouse', 'Allows changing the Warehouse field while editing an existing Customer Order', 21);
+    VALUES ('customer_order.edit_order.change_warehouse', 'customer_order.edit_order', 'customer_order', 'Change Warehouse', 'Allows changing the Warehouse field when creating or editing a Customer Order', 21);
 END
+GO
+
+IF NOT EXISTS (SELECT 1 FROM PLS.OperationMaster WHERE OperationKey = 'customer_order.edit_order.change_price_type')
+BEGIN
+    INSERT INTO PLS.OperationMaster (OperationKey, ParentOperationKey, PageGroupID, Label, Description, SortOrder)
+    VALUES ('customer_order.edit_order.change_price_type', 'customer_order.edit_order', 'customer_order', 'Change Price Type', 'Allows changing the Price Type field when creating or editing a Customer Order', 22);
+END
+GO
+
+IF NOT EXISTS (SELECT 1 FROM PLS.OperationMaster WHERE OperationKey = 'customer_order.edit_order.change_payment_term')
+BEGIN
+    INSERT INTO PLS.OperationMaster (OperationKey, ParentOperationKey, PageGroupID, Label, Description, SortOrder)
+    VALUES ('customer_order.edit_order.change_payment_term', 'customer_order.edit_order', 'customer_order', 'Change Payment Term', 'Allows changing the Payment Term field when creating or editing a Customer Order', 23);
+END
+GO
+
+IF NOT EXISTS (SELECT 1 FROM PLS.OperationMaster WHERE OperationKey = 'customer_order.edit_order.change_tax_code')
+BEGIN
+    INSERT INTO PLS.OperationMaster (OperationKey, ParentOperationKey, PageGroupID, Label, Description, SortOrder)
+    VALUES ('customer_order.edit_order.change_tax_code', 'customer_order.edit_order', 'customer_order', 'Change Tax Code', 'Allows changing the Tax Code field when creating or editing a Customer Order', 24);
+END
+GO
+
+IF NOT EXISTS (SELECT 1 FROM PLS.OperationMaster WHERE OperationKey = 'customer_order.edit_order.change_facility')
+BEGIN
+    INSERT INTO PLS.OperationMaster (OperationKey, ParentOperationKey, PageGroupID, Label, Description, SortOrder)
+    VALUES ('customer_order.edit_order.change_facility', 'customer_order.edit_order', 'customer_order', 'Change Facility', 'Allows changing the Facility field when creating or editing a Customer Order', 25);
+END
+GO
+
+IF NOT EXISTS (SELECT 1 FROM PLS.OperationMaster WHERE OperationKey = 'customer_order.edit_order.change_currency')
+BEGIN
+    INSERT INTO PLS.OperationMaster (OperationKey, ParentOperationKey, PageGroupID, Label, Description, SortOrder)
+    VALUES ('customer_order.edit_order.change_currency', 'customer_order.edit_order', 'customer_order', 'Change Currency', 'Allows changing the Currency field when creating or editing a Customer Order', 26);
+END
+GO
+
+IF NOT EXISTS (SELECT 1 FROM PLS.OperationMaster WHERE OperationKey = 'customer_order.edit_order.change_rate')
+BEGIN
+    INSERT INTO PLS.OperationMaster (OperationKey, ParentOperationKey, PageGroupID, Label, Description, SortOrder)
+    VALUES ('customer_order.edit_order.change_rate', 'customer_order.edit_order', 'customer_order', 'Change Rate', 'Allows changing the exchange Rate field when creating or editing a Customer Order', 27);
+END
+GO
+
+-- If these rows were already deployed with the old "...while editing..."
+-- wording before this change, refresh the Description text in place
+-- (idempotent -- a no-op once already updated).
+UPDATE PLS.OperationMaster
+SET Description = REPLACE(Description, 'while editing an existing Customer Order', 'when creating or editing a Customer Order')
+WHERE ParentOperationKey = 'customer_order.edit_order'
+  AND Description LIKE '%while editing an existing Customer Order%';
 GO

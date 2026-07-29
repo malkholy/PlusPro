@@ -756,7 +756,7 @@ SELECT @State AS [State], @Message AS [Message];`;
               </div>
               <div>
                 <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: 'var(--muted)', marginBottom: 4, textTransform: 'uppercase' }}>Warehouse</label>
-                <SearchableSelect value={warehouse} onChange={setWarehouse} options={warehouseOptions} placeholder="Select warehouse" disabled={saved || (!!editOrderNumber && !hasOperation(user, 'customer_order.edit_order.change_warehouse'))} />
+                <SearchableSelect value={warehouse} onChange={setWarehouse} options={warehouseOptions} placeholder="Select warehouse" disabled={saved || !hasOperation(user, 'customer_order.edit_order.change_warehouse')} />
               </div>
               <div>
                 <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: 'var(--muted)', marginBottom: 4, textTransform: 'uppercase' }}>Order Type</label>
@@ -764,27 +764,27 @@ SELECT @State AS [State], @Message AS [Message];`;
               </div>
               <div>
                 <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: 'var(--muted)', marginBottom: 4, textTransform: 'uppercase' }}>Price Type</label>
-                <SearchableSelect value={priceType} onChange={setPriceType} options={priceTypeOptions} placeholder="Select price type" disabled={saved} />
+                <SearchableSelect value={priceType} onChange={setPriceType} options={priceTypeOptions} placeholder="Select price type" disabled={saved || !hasOperation(user, 'customer_order.edit_order.change_price_type')} />
               </div>
               <div>
                 <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: 'var(--muted)', marginBottom: 4, textTransform: 'uppercase' }}>Payment Term</label>
-                <SearchableSelect value={paymentTerm} onChange={setPaymentTerm} options={paymentTermOptions} placeholder="Select term" disabled={saved} />
+                <SearchableSelect value={paymentTerm} onChange={setPaymentTerm} options={paymentTermOptions} placeholder="Select term" disabled={saved || !hasOperation(user, 'customer_order.edit_order.change_payment_term')} />
               </div>
               <div>
                 <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: 'var(--muted)', marginBottom: 4, textTransform: 'uppercase' }}>Tax Code</label>
-                <SearchableSelect value={taxCode} onChange={setTaxCode} options={taxCodeOptions} placeholder="Select tax code" disabled={saved} />
+                <SearchableSelect value={taxCode} onChange={setTaxCode} options={taxCodeOptions} placeholder="Select tax code" disabled={saved || !hasOperation(user, 'customer_order.edit_order.change_tax_code')} />
               </div>
               <div>
                 <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: 'var(--muted)', marginBottom: 4, textTransform: 'uppercase' }}>Facility</label>
-                <SearchableSelect value={facility} onChange={setFacility} options={facilityOptions} placeholder="Select facility" disabled={saved} />
+                <SearchableSelect value={facility} onChange={setFacility} options={facilityOptions} placeholder="Select facility" disabled={saved || !hasOperation(user, 'customer_order.edit_order.change_facility')} />
               </div>
               <div>
                 <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: 'var(--muted)', marginBottom: 4, textTransform: 'uppercase' }}>Currency</label>
-                <SearchableSelect value={currency} onChange={setCurrency} options={currencyOptions} placeholder="Select currency" disabled={saved} />
+                <SearchableSelect value={currency} onChange={setCurrency} options={currencyOptions} placeholder="Select currency" disabled={saved || !hasOperation(user, 'customer_order.edit_order.change_currency')} />
               </div>
               <div>
                 <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: 'var(--muted)', marginBottom: 4, textTransform: 'uppercase' }}>Rate</label>
-                <input type="text" inputMode="decimal" value={rate} onChange={e => setRate(e.target.value)} disabled={saved}
+                <input type="text" inputMode="decimal" value={rate} onChange={e => setRate(e.target.value)} disabled={saved || !hasOperation(user, 'customer_order.edit_order.change_rate')}
                   style={{ width: '100%', height: 32, padding: '0 12px', border: '1.5px solid var(--border)', borderRadius: 8, fontSize: 12, color: 'var(--text)', background: 'var(--surface)', outline: 'none', boxSizing: 'border-box' }} />
               </div>
               <div>
