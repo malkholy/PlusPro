@@ -66,16 +66,22 @@ export default function CustomerOrderDrawer({ user, order, onClose, onEdit }) {
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             {onEdit && hasOperation(user, 'customer_order.edit_order') && (
-              <button
-                onClick={() => onEdit(order)}
-                style={{
-                  height: 36, padding: '0 20px', background: 'linear-gradient(135deg, var(--orange), var(--orange2))',
-                  color: '#fff', border: 'none', borderRadius: 8, fontSize: 12.5, fontWeight: 700, cursor: 'pointer',
-                  boxShadow: '0 4px 12px var(--orange-glow)'
-                }}
-              >
-                Edit
-              </button>
+              Number(order.OrderState) < 60 ? (
+                <button
+                  onClick={() => onEdit(order)}
+                  style={{
+                    height: 36, padding: '0 20px', background: 'linear-gradient(135deg, var(--orange), var(--orange2))',
+                    color: '#fff', border: 'none', borderRadius: 8, fontSize: 12.5, fontWeight: 700, cursor: 'pointer',
+                    boxShadow: '0 4px 12px var(--orange-glow)'
+                  }}
+                >
+                  Edit
+                </button>
+              ) : (
+                <span style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--muted)' }} title={`Order state (${order.OrderState}) no longer allows editing`}>
+                  🔒 Locked at this status
+                </span>
+              )
             )}
             <button
               onClick={onClose}
