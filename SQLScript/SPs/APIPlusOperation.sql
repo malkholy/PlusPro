@@ -75,6 +75,19 @@ BEGIN
 
 	if @operation='BOM L1 Header'
 	begin
+		-- Defensive cleanup: this cursor was previously never CLOSEd/
+		-- DEALLOCATEd below, so on a pooled connection that got reused
+		-- across requests, the DECLARE two lines down would fail with
+		-- "A cursor with the name 'fff' already exists" -- surfaced to the
+		-- frontend as a generic "An error has occurred." Guard against both
+		-- a leftover cursor from before this fix and any mid-loop failure.
+		IF CURSOR_STATUS('local','fff') > -3
+		BEGIN
+			IF CURSOR_STATUS('local','fff') >= 0
+				CLOSE fff;
+			DEALLOCATE fff;
+		END
+
 		declare fff cursor for  select distinct ItemCode from acr.CustomerInvoiceLine  where year(invoiceDate )=2026
 
 
@@ -87,7 +100,11 @@ BEGIN
 
 			fetch next from fff into @ITemCode
 		end;
-		select 
+
+		close fff;
+		deallocate fff;
+
+		select
 			x.ParentItemID , 
 			x.ParentItemCode , 
 			y.ItemType , 
