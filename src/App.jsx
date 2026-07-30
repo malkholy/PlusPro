@@ -68,8 +68,75 @@ import ItemMaster from './pages/ItemMaster.jsx';
 import Orders from './pages/Orders.jsx';
 import RMA from './pages/RMA.jsx';
 import CustomerOrder from './pages/CustomerOrder.jsx';
+import {
+  Calculator, Layers, Coins, Settings, Truck, Package2, FolderTree, FileText, Scale, ListTree,
+  BookOpen, FileStack, Sparkles, CalendarClock, Banknote, Link2, Zap, ClipboardList, KeyRound,
+  Settings2, Wand2, LayoutGrid, Printer, Package, Tag, ArrowLeftRight, BarChart3, DollarSign,
+  Search, Wallet, FolderKanban, Users, Boxes, ShieldCheck, TrendingUp, RotateCcw, ShoppingBag,
+  Building2, Mail, ChevronDown, PanelLeftClose, PanelLeftOpen, Moon, Sun, LogOut,
+} from 'lucide-react';
 
+// ─── Sidebar icon set ────────────────────────────────────────────────────────
+// Pages/groups are registered in PLS.PagesAndGroups with a free-text emoji
+// Icon column (for legacy/placeholder purposes). The sidebar ignores that
+// column entirely and resolves a proper icon by PageGroupID instead; anything
+// not in this map (e.g. a brand-new PageBuilder page) falls back to a
+// monogram chip built from the label, so nothing ever renders blank/broken.
+const ICON_MAP = {
+  accounting_group: Calculator,
+  bom_group: Layers,
+  costing_group: Coins,
+  system_admin_group: Settings,
+  loading_orders_group: Truck,
+  inventory_group: Package2,
+  accounts_master: FolderTree,
+  account_statement: FileText,
+  trial_balance: Scale,
+  segment_definition: ListTree,
+  journal_entry: BookOpen,
+  journal_model: FileStack,
+  smart_journal: Sparkles,
+  accounting_events: CalendarClock,
+  cash_receive: Banknote,
+  accounting_functions: Link2,
+  accounting_macros: Zap,
+  bom_header: ClipboardList,
+  price_list_cost: BarChart3,
+  item_cost_summary: DollarSign,
+  user_permissions: KeyRound,
+  lookup_permissions: ShieldCheck,
+  query_master: Settings2,
+  lookup_queries: Search,
+  page_builder: Wand2,
+  page_master: LayoutGrid,
+  reports_master: Printer,
+  orders: Package,
+  item_balance: ClipboardList,
+  item_master: Tag,
+  warehouse_transfer: ArrowLeftRight,
+  item_customer_sales: TrendingUp,
+  expenses: Wallet,
+  projects: FolderKanban,
+  hr: Users,
+  cash: Banknote,
+  rawpacking: Boxes,
+  express: Zap,
+  rma: RotateCcw,
+  customer_order: ShoppingBag,
+  client_master: Building2,
+  client_request: Mail,
+};
 
+function accentForGroup(index) {
+  return GROUP_ACCENTS[index % GROUP_ACCENTS.length];
+}
+
+function NavIcon({ pageId, label, size = 14 }) {
+  const Icon = ICON_MAP[pageId];
+  if (Icon) return <Icon size={size} strokeWidth={2} />;
+  const mono = (label || '?').trim().slice(0, 2).toUpperCase();
+  return <span style={{ fontSize: size * 0.6, fontWeight: 800, lineHeight: 1 }}>{mono}</span>;
+}
 
 // ─── Styles ──────────────────────────────────────────────────────────────────
 
@@ -78,16 +145,16 @@ const css = `
     --bg: #f1f5f9;
     --surface: #ffffff;
     --soft: #f8fafc;
-    --sidebar: #121b2b;
-    --sidebar-surface: #1b2638;
-    --sidebar-surface-hover: #243146;
-    --sidebar-border: rgba(255, 255, 255, 0.10);
-    --sidebar-text-primary: #f7f8fa;
-    --sidebar-text-secondary: #aeb7c6;
-    --sidebar-text-muted: #747f91;
-    --brand-orange: #ff650f;
-    --brand-orange-hover: #ff7a28;
-    --brand-orange-soft: rgba(255, 101, 15, 0.14);
+    --sb-bg: #0F172A;
+    --sb-surface: #162033;
+    --sb-card: #1E293B;
+    --sb-border: #334155;
+    --sb-text: #F8FAFC;
+    --sb-text-muted: #94A3B8;
+    --sb-orange: #ff650f;
+    --sb-orange-hover: #ff7a28;
+    --sb-orange-soft: rgba(255, 101, 15, 0.14);
+    --sb-hover-bg: rgba(148, 163, 184, 0.10);
     --text: #0f172a;
     --muted: #64748b;
     --hint: #94a3b8;
@@ -154,77 +221,87 @@ const css = `
 
   /* ── LAYOUT ── */
   .app { display: flex; min-height: 100vh; }
-  .sidebar { width: 256px; min-width: 256px; background: var(--sidebar); display: flex; flex-direction: column; position: fixed; inset: 0 auto 0 0; overflow: hidden; font-family: var(--font); }
-  .sb-head { flex-shrink: 0; padding: 16px 14px 14px; border-bottom: 1px solid var(--sidebar-border); }
-  .sb-brand { display: flex; align-items: center; gap: 11px; cursor: pointer; user-select: none; }
-  .sb-logo { width: 38px; height: 38px; border-radius: 11px; background: linear-gradient(135deg, var(--brand-orange), var(--brand-orange-hover)); color: #fff; font-size: 14px; font-weight: 800; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
-  .sb-name { font-size: 15.5px; font-weight: 800; color: var(--sidebar-text-primary); letter-spacing: -.01em; line-height: 1.25; }
-  .sb-ver { font-size: 10px; font-weight: 500; color: var(--sidebar-text-muted); font-family: var(--mono); margin-top: 1px; }
-  .sb-collapse-btn { background: var(--sidebar-surface); border: 1px solid var(--sidebar-border); color: var(--sidebar-text-secondary); cursor: pointer; font-size: 11px; width: 28px; height: 28px; border-radius: 10px; display: flex; align-items: center; justify-content: center; transition: all .18s; flex-shrink: 0; }
-  .sb-collapse-btn:hover { background: var(--sidebar-surface-hover); color: var(--brand-orange-hover); border-color: rgba(255,101,15,.3); }
-  .sb-collapse-btn:focus-visible { outline: 2px solid var(--brand-orange); outline-offset: 2px; }
+  .sidebar { width: 264px; min-width: 264px; background: var(--sb-bg); display: flex; flex-direction: column; position: fixed; inset: 0 auto 0 0; overflow: hidden; border-right: 1px solid var(--sb-border); z-index: 20; transition: width .18s ease; }
+  .sb-head { padding: 16px 14px 12px; background: var(--sb-surface); border-bottom: 1px solid var(--sb-border); }
+  .sb-brand { display: flex; align-items: center; gap: 12px; cursor: pointer; user-select: none; min-width: 0; }
+  .sb-logo { position: relative; width: 40px; height: 40px; border-radius: 11px; background: linear-gradient(135deg, var(--sb-orange), var(--sb-orange-hover)); color: #fff; font-size: 15px; font-weight: 800; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  .sb-status-dot { position: absolute; bottom: -2px; right: -2px; width: 9px; height: 9px; border-radius: 50%; background: #22c55e; box-shadow: 0 0 0 2px var(--sb-surface), 0 0 6px 2px rgba(34,197,94,.55); }
+  .sb-name { font-size: 15px; font-weight: 800; color: var(--sb-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .sb-ver { font-size: 10px; color: var(--sb-text-muted); font-family: var(--mono); white-space: nowrap; }
+  .sb-collapse-btn { flex-shrink: 0; width: 24px; height: 24px; border-radius: 50%; background: var(--sb-card); border: 1px solid var(--sb-border); color: var(--sb-text-muted); cursor: pointer; display: flex; align-items: center; justify-content: center; transition: background .18s ease, color .18s ease, border-color .18s ease; }
+  .sb-collapse-btn:hover { background: var(--sb-orange); color: #fff; border-color: var(--sb-orange); }
+  .sb-collapse-btn:focus-visible { outline: 2px solid var(--sb-orange); outline-offset: 2px; }
 
-  .sb-nav { flex: 1; overflow-y: auto; overflow-x: hidden; padding: 12px 10px; display: flex; flex-direction: column; scrollbar-width: thin; scrollbar-color: var(--sidebar-surface-hover) transparent; }
-  .sb-nav::-webkit-scrollbar { width: 6px; }
-  .sb-nav::-webkit-scrollbar-track { background: transparent; }
-  .sb-nav::-webkit-scrollbar-thumb { background: var(--sidebar-surface-hover); border-radius: 999px; }
-  .sb-nav::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,.18); }
+  .sb-search { position: relative; display: flex; align-items: center; margin: 10px 12px 4px; }
+  .sb-search-icon { position: absolute; left: 10px; color: var(--sb-text-muted); pointer-events: none; }
+  .sb-search-input { width: 100%; height: 32px; padding: 0 40px 0 30px; border-radius: 9px; border: 1px solid var(--sb-border); background: var(--sb-card); color: var(--sb-text); font-family: var(--font); font-size: 12px; outline: none; transition: border-color .18s ease; }
+  .sb-search-input::placeholder { color: var(--sb-text-muted); }
+  .sb-search-input:focus { border-color: var(--sb-orange); }
+  .sb-search-kbd { position: absolute; right: 8px; padding: 1px 6px; font-size: 9.5px; font-weight: 700; letter-spacing: .02em; color: var(--sb-text-muted); background: var(--sb-bg); border: 1px solid var(--sb-border); border-radius: 5px; pointer-events: none; }
 
-  .sb-item, .sb-sub-item { position: relative; display: flex; align-items: center; gap: 11px; min-height: 48px; padding: 8px 12px; border-radius: 12px; cursor: pointer; color: var(--sidebar-text-secondary); font-size: 13.5px; font-weight: 600; letter-spacing: .01em; transition: background .18s, color .18s; margin-bottom: 3px; border: none; background: none; width: 100%; text-align: left; font-family: var(--font); }
-  .sb-sub-item { padding-left: 20px; }
-  .sb-item:hover, .sb-sub-item:hover { background: var(--sidebar-surface-hover); color: var(--sidebar-text-primary); }
-  .sb-item:hover .sb-icon, .sb-sub-item:hover .sb-icon { color: var(--brand-orange-hover); border-color: rgba(255,101,15,.28); }
-  .sb-item:focus-visible, .sb-sub-item:focus-visible, .sb-group-title:focus-visible { outline: 2px solid var(--brand-orange); outline-offset: -2px; }
-  .sb-item.active, .sb-sub-item.active { background: var(--brand-orange); color: #fff; font-weight: 700; box-shadow: 0 3px 10px var(--brand-orange-soft); }
-  .sb-item.active::before, .sb-sub-item.active::before { content: ''; position: absolute; left: 0; top: 8px; bottom: 8px; width: 3px; border-radius: 999px; background: rgba(255,255,255,.85); }
-  .sb-item.active .sb-icon, .sb-sub-item.active .sb-icon { background: rgba(255,255,255,.22); border-color: rgba(255,255,255,.35); color: #fff; }
+  .sb-nav { flex: 1; overflow-y: auto; overflow-x: hidden; padding: 8px 10px 12px; display: flex; flex-direction: column; }
+  .sb-item { display: flex; align-items: center; gap: 12px; height: 46px; padding: 0 14px; border-radius: 11px; cursor: pointer; color: var(--sb-text-muted); font-size: 13px; font-weight: 500; transition: background .18s ease, color .18s ease, border-color .18s ease; margin-bottom: 3px; border: none; border-left: 3px solid transparent; background: transparent; width: 100%; text-align: left; font-family: var(--font); }
+  .sb-item:hover { background: var(--sb-hover-bg); color: var(--sb-text); }
+  .sb-item:focus-visible, .sb-sub-item:focus-visible, .sb-group-title:focus-visible { outline: 2px solid var(--sb-orange); outline-offset: -2px; }
+  .sb-item.active { background: color-mix(in srgb, var(--group-accent, var(--sb-orange)) 14%, transparent); color: var(--group-accent, var(--sb-orange)); font-weight: 700; border-left: 3px solid var(--group-accent, var(--sb-orange)); }
+  .sb-icon { width: 26px; height: 26px; border-radius: 7px; background: color-mix(in srgb, var(--group-accent, var(--sb-orange)) 16%, transparent); display: flex; align-items: center; justify-content: center; flex-shrink: 0; color: var(--group-accent, var(--sb-orange)); transition: background .18s ease, color .18s ease; }
+  .sb-item.active .sb-icon { background: color-mix(in srgb, var(--group-accent, var(--sb-orange)) 28%, transparent); }
 
-  .sb-icon { width: 30px; height: 30px; border-radius: 9px; background: var(--sidebar-surface); border: 1px solid var(--sidebar-border); display: flex; align-items: center; justify-content: center; font-size: 15px; flex-shrink: 0; color: var(--sidebar-text-secondary); transition: all .18s; }
+  .sb-group { position: relative; margin-bottom: 4px; padding-left: 8px; }
+  .sb-group-bar { position: absolute; left: 0; top: 2px; bottom: 2px; width: 3px; border-radius: 3px; background: var(--group-accent, var(--sb-orange)); opacity: .5; }
+  .sb-group-title { display: flex; align-items: center; justify-content: space-between; padding: 8px 10px; margin-bottom: 2px; color: var(--sb-text); font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .09em; user-select: none; cursor: pointer; border: none; background: transparent; width: 100%; text-align: left; font-family: var(--font); border-radius: 8px; transition: background .18s ease; }
+  .sb-group-title:hover { background: var(--sb-hover-bg); }
+  .sb-group-chevron { color: var(--sb-text-muted); transition: transform .18s ease; flex-shrink: 0; }
+  .sb-group-items-wrap { display: grid; grid-template-rows: 1fr; transition: grid-template-rows .18s ease; }
+  .sb-group-items-wrap.collapsed { grid-template-rows: 0fr; }
+  .sb-group-items-wrap > .sb-group-items { overflow: hidden; min-height: 0; }
+  .sb-sub-item { display: flex; align-items: center; gap: 12px; height: 44px; padding: 0 14px 0 22px; border-radius: 11px; cursor: pointer; color: var(--sb-text-muted); font-size: 13px; font-weight: 500; transition: background .18s ease, color .18s ease, border-color .18s ease; margin-bottom: 3px; border: none; border-left: 3px solid transparent; background: transparent; width: 100%; text-align: left; font-family: var(--font); }
+  .sb-sub-item:hover { background: var(--sb-hover-bg); color: var(--sb-text); }
+  .sb-sub-item.active { background: color-mix(in srgb, var(--group-accent, var(--sb-orange)) 14%, transparent); color: var(--group-accent, var(--sb-orange)); font-weight: 700; border-left: 3px solid var(--group-accent, var(--sb-orange)); }
+  .sb-sub-item.active .sb-icon { background: color-mix(in srgb, var(--group-accent, var(--sb-orange)) 28%, transparent); }
 
-  .sb-group { margin-bottom: 10px; }
-  .sb-group-title { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 10px; margin-bottom: 4px; background: var(--sidebar-surface); border: 1px solid var(--sidebar-border); border-left: 3px solid transparent; color: var(--sidebar-text-muted); font-size: 10.5px; font-weight: 800; text-transform: uppercase; letter-spacing: .07em; user-select: none; cursor: pointer; border-radius: 10px; width: 100%; font-family: var(--font); transition: background .18s, color .18s; }
-  .sb-group-title:hover { background: var(--sidebar-surface-hover); color: var(--sidebar-text-secondary); }
-  .sb-group-chevron { font-size: 9px; color: inherit; transition: transform .18s; flex-shrink: 0; }
-
-  .sb-foot { flex-shrink: 0; padding: 12px 10px; border-top: 1px solid var(--sidebar-border); }
-  .sb-profile { display: flex; align-items: center; gap: 10px; padding: 10px; margin-bottom: 10px; background: var(--sidebar-surface); border: 1px solid var(--sidebar-border); border-radius: 12px; }
-  .sb-avatar { width: 34px; height: 34px; border-radius: 50%; background: linear-gradient(135deg, var(--brand-orange), var(--brand-orange-hover)); color: #fff; font-size: 12px; font-weight: 800; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
-  .sb-uname { font-size: 13px; font-weight: 700; color: var(--sidebar-text-primary); }
-  .sb-urole { font-size: 11px; color: var(--sidebar-text-muted); margin-top: 1px; }
+  .sb-foot { padding: 14px 10px; background: var(--sb-surface); border-top: 1px solid var(--sb-border); }
+  .sb-profile { display: flex; align-items: center; gap: 12px; padding: 8px 10px; margin-bottom: 10px; }
+  .sb-avatar { width: 34px; height: 34px; border-radius: 50%; background: linear-gradient(135deg, var(--sb-orange), var(--sb-orange-hover)); color: #fff; font-size: 12px; font-weight: 800; display: flex; align-items: center; justify-content: center; flex-shrink: 0; box-shadow: 0 0 0 2px var(--sb-surface), 0 0 0 4px var(--sb-orange); }
+  .sb-uname { font-size: 13px; font-weight: 700; color: var(--sb-text); }
+  .sb-urole-pill { display: inline-block; margin-top: 3px; padding: 1px 8px; border-radius: 999px; font-size: 9.5px; font-weight: 700; letter-spacing: .03em; background: color-mix(in srgb, var(--sb-orange) 18%, transparent); color: var(--sb-orange); }
   .sb-actions { display: flex; gap: 8px; }
-  .sb-btn { flex: 1; height: 36px; border: 1px solid var(--sidebar-border); border-radius: 10px; background: var(--sidebar-surface); color: var(--sidebar-text-secondary); font-family: var(--font); font-size: 11.5px; font-weight: 600; cursor: pointer; transition: all .18s; display: flex; align-items: center; justify-content: center; gap: 5px; }
-  .sb-btn:hover { background: var(--sidebar-surface-hover); color: var(--sidebar-text-primary); }
-  .sb-btn:focus-visible { outline: 2px solid var(--brand-orange); outline-offset: 2px; }
-  .sb-btn.danger { border-color: rgba(255,101,15,.35); background: transparent; color: var(--brand-orange-hover); }
-  .sb-btn.danger:hover { background: var(--brand-orange-soft); color: var(--brand-orange-hover); border-color: var(--brand-orange); }
+  .sb-btn { flex: 1; height: 36px; border: 1px solid var(--sb-border); border-radius: 10px; background: var(--sb-card); color: var(--sb-text-muted); font-family: var(--font); font-size: 11.5px; font-weight: 600; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; transition: background .18s ease, color .18s ease, border-color .18s ease; }
+  .sb-btn:hover { background: var(--sb-border); color: var(--sb-text); }
+  .sb-btn:focus-visible { outline: 2px solid var(--sb-orange); outline-offset: 2px; }
+  .sb-btn.danger { border-color: var(--sb-orange); background: transparent; color: var(--sb-orange); }
+  .sb-btn.danger:hover { background: var(--sb-orange); color: #fff; }
 
   /* ── COLLAPSIBLE SIDEBAR ── */
-  .sidebar { transition: width 0.2s cubic-bezier(0.4, 0, 0.2, 1); }
   .main { transition: margin-left 0.2s cubic-bezier(0.4, 0, 0.2, 1); }
 
-  .sidebar.collapsed { width: 68px; min-width: 68px; }
-  .sidebar.collapsed:hover { width: 256px; min-width: 256px; z-index: 50; box-shadow: 4px 0 24px rgba(0,0,0,.28); }
+  .sidebar.collapsed { width: 72px; min-width: 72px; }
+  .sidebar.collapsed:hover { width: 264px; box-shadow: 10px 0 32px rgba(0,0,0,.4); z-index: 30; }
   .sidebar.collapsed:not(:hover) .sb-logo { margin: 0 auto; }
   .sidebar.collapsed:not(:hover) .sb-name,
   .sidebar.collapsed:not(:hover) .sb-ver,
   .sidebar.collapsed:not(:hover) .sb-uname,
-  .sidebar.collapsed:not(:hover) .sb-urole,
+  .sidebar.collapsed:not(:hover) .sb-urole-pill,
   .sidebar.collapsed:not(:hover) .sb-actions,
   .sidebar.collapsed:not(:hover) .sb-brand-text,
+  .sidebar.collapsed:not(:hover) .sb-search,
+  .sidebar.collapsed:not(:hover) .sb-group-bar,
   .sidebar.collapsed:not(:hover) .sb-group-title span span:last-child,
   .sidebar.collapsed:not(:hover) .sb-group-chevron,
   .sidebar.collapsed:not(:hover) .sb-item span:last-child,
   .sidebar.collapsed:not(:hover) .sb-sub-item span:last-child { display: none; }
 
-  .sidebar.collapsed:not(:hover) .sb-sub-item { padding: 8px 0; justify-content: center; }
-  .sidebar.collapsed:not(:hover) .sb-item { padding: 8px 0; justify-content: center; }
-  .sidebar.collapsed:not(:hover) .sb-group-title { justify-content: center; padding: 8px 0; border-left-width: 0; }
+  .sidebar.collapsed:not(:hover) .sb-group { padding-left: 0; }
+  .sidebar.collapsed:not(:hover) .sb-group-items-wrap { grid-template-rows: 1fr !important; }
+  .sidebar.collapsed:not(:hover) .sb-sub-item { padding: 0; justify-content: center; border-left: none; }
+  .sidebar.collapsed:not(:hover) .sb-item { padding: 0; justify-content: center; border-left: none; }
+  .sidebar.collapsed:not(:hover) .sb-group-title { justify-content: center; padding: 6px 0; }
   .sidebar.collapsed:not(:hover) .sb-foot { display: flex; flex-direction: column; align-items: center; justify-content: center; }
 
-  .main.collapsed { margin-left: 68px; }
+  .main.collapsed { margin-left: 72px; }
 
   /* ── MAIN ── */
-  .main { margin-left: 256px; flex: 1; display: flex; flex-direction: column; height: 100vh; background: var(--bg); overflow: hidden; }
+  .main { margin-left: 264px; flex: 1; display: flex; flex-direction: column; height: 100vh; background: var(--bg); overflow: hidden; }
   .topbar { height: 50px; background: var(--surface); border-bottom: 1px solid var(--border); display: flex; align-items: flex-end; padding: 0 22px; position: sticky; top: 0; z-index: 10; overflow-x: auto; }
   .tabs { display: flex; gap: 3px; align-items: flex-end; height: 100%; }
   .tab-item { height: 36px; display: flex; align-items: center; gap: 7px; padding: 0 12px; border: 1px solid var(--border); border-bottom: none; border-radius: 9px 9px 0 0; background: var(--soft); color: var(--muted); font-size: 12.5px; font-weight: 600; cursor: pointer; white-space: nowrap; flex-shrink: 0; position: relative; transition: all .15s; font-family: var(--font); }
@@ -345,9 +422,11 @@ export default function App() {
   const [openTabs, setOpenTabs] = useState([]);
   const [activeTab, setActiveTab] = useState(null);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
-  const [collapsedGroups, setCollapsedGroups] = useState({});
+  const [collapsedGroups, setCollapsedGroups] = useState(() => new Set());
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const settingsRef = useRef(null);
+  const [navFilter, setNavFilter] = useState('');
+  const searchInputRef = useRef(null);
 
   useEffect(() => {
     function handleClickOutside(event) {
@@ -358,12 +437,31 @@ export default function App() {
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
+
+  useEffect(() => {
+    function handleKeyDown(e) {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        searchInputRef.current?.focus();
+      }
+    }
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
+  const toggleGroup = (id) => {
+    setCollapsedGroups(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
   const [allowedPages, setAllowedPages] = useState([]);
   // Sidebar tree built live from PLS.PagesAndGroups at login (see buildNavTree above)
   const [nav, setNav] = useState([]);
   // PageGroupIDs with Simple CRUD metadata registered -- these route to GenericMasterPage
   const [crudPageIds, setCrudPageIds] = useState(new Set());
-  const sidebarGroups = useMemo(() => nav.filter(n => n.isGroup && !n.isSettings), [nav]);
 
   // login
   const [un, setUn] = useState('');
@@ -542,60 +640,85 @@ export default function App() {
     <div className={`app${dark ? ' dark' : ''}`}>
       {/* Sidebar */}
       <aside className={`sidebar${isSidebarCollapsed ? ' collapsed' : ''}`}>
-        <div className="sb-head" style={{ display: 'flex', flexDirection: isSidebarCollapsed ? 'column' : 'row', alignItems: 'center', justifyContent: 'space-between', gap: isSidebarCollapsed ? 8 : 0 }}>
-          <div className="sb-brand" onClick={() => openPage('client_master')} title="Plus Pro">
-            <div className="sb-logo">PP</div>
-            <div className="sb-brand-text">
-              <div className="sb-name">Plus Pro</div>
-              <div className="sb-ver">GLC Paints · v1.0.1</div>
+        <div className="sb-head">
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+            <div className="sb-brand" onClick={() => openPage('client_master')} title="Plus Pro">
+              <div className="sb-logo">
+                PP
+                <div className="sb-status-dot" />
+              </div>
+              <div className="sb-brand-text">
+                <div className="sb-name">Plus Pro</div>
+                <div className="sb-ver">GLC Paints · v1.0.1</div>
+              </div>
             </div>
+            <button
+              className="sb-collapse-btn"
+              onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
+              title={isSidebarCollapsed ? "Expand Sidebar" : "Collapse Sidebar"}
+            >
+              {isSidebarCollapsed ? <PanelLeftOpen size={13} /> : <PanelLeftClose size={13} />}
+            </button>
           </div>
-          <button
-            className="sb-collapse-btn"
-            onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
-            title={isSidebarCollapsed ? "Expand Sidebar" : "Collapse Sidebar"}
-            style={{ marginLeft: isSidebarCollapsed ? 0 : 8 }}
-          >
-            {isSidebarCollapsed ? '▶' : '◀'}
-          </button>
+        </div>
+        <div className="sb-search">
+          <Search size={13} className="sb-search-icon" />
+          <input
+            ref={searchInputRef}
+            className="sb-search-input"
+            placeholder="Quick jump..."
+            value={navFilter}
+            onChange={e => setNavFilter(e.target.value)}
+          />
+          {!navFilter && <span className="sb-search-kbd">⌘K</span>}
         </div>
         <nav className="sb-nav">
-          {nav.map(n => {
+          {nav.map((n, idx) => {
             const isAdmin = user.IsAdmin === 1 || user.IsAdmin === true || (user.Username || '').toLowerCase() === 'sysadmin';
             if (n.isSettings) return null; // rendered as the Settings button in the footer instead
+            const filterQuery = navFilter.trim().toLowerCase();
+            const matchesFilter = (label) => !filterQuery || (label || '').toLowerCase().includes(filterQuery);
             if (n.isGroup) {
               const allowedChildren = n.children.filter(c => {
                 return isAdmin || allowedPages.some(ap => ap.PageGroupID.toLowerCase() === c.id.toLowerCase());
               });
               if (allowedChildren.length === 0) return null;
-              const isGroupCollapsed = !!collapsedGroups[n.id];
-              const groupAccent = GROUP_ACCENTS[sidebarGroups.indexOf(n) % GROUP_ACCENTS.length];
+
+              let visibleChildren = allowedChildren;
+              if (filterQuery) {
+                const directMatches = allowedChildren.filter(c => matchesFilter(c.label));
+                visibleChildren = directMatches.length > 0 || !matchesFilter(n.label) ? directMatches : allowedChildren;
+                if (visibleChildren.length === 0) return null;
+              }
+
+              const accent = accentForGroup(idx);
+              const isGroupCollapsed = filterQuery ? false : collapsedGroups.has(n.id);
               return (
-                <div key={n.id} className="sb-group">
+                <div key={n.id} className="sb-group" style={{ '--group-accent': accent }}>
+                  <div className="sb-group-bar" />
                   <button
                     type="button"
                     className="sb-group-title"
-                    style={{ borderLeftColor: groupAccent }}
-                    onClick={() => setCollapsedGroups(prev => ({ ...prev, [n.id]: !prev[n.id] }))}
+                    onClick={() => toggleGroup(n.id)}
                     aria-expanded={!isGroupCollapsed}
                     title={n.label}
                   >
-                    <span style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-                      <span style={{ fontSize: 14 }}>{n.icon}</span>
+                    <span style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+                      <span className="sb-icon"><NavIcon pageId={n.id} label={n.label} size={13} /></span>
                       <span>{n.label}</span>
                     </span>
-                    <span className="sb-group-chevron" style={{ transform: isGroupCollapsed ? 'rotate(-90deg)' : 'rotate(0deg)' }}>▾</span>
+                    <ChevronDown size={13} className="sb-group-chevron" style={{ transform: isGroupCollapsed ? 'rotate(0deg)' : 'rotate(180deg)' }} />
                   </button>
-                  {!isGroupCollapsed && (
-                  <div className="sb-group-items">
-                    {allowedChildren.map(c => (
-                      <button key={c.id} className={`sb-sub-item${activeTab === c.id ? ' active' : ''}`} onClick={() => openPage(c.id)} title={c.label}>
-                        <span className="sb-icon">{c.icon}</span>
-                        <span>{c.label}</span>
-                      </button>
-                    ))}
+                  <div className={`sb-group-items-wrap${isGroupCollapsed ? ' collapsed' : ''}`}>
+                    <div className="sb-group-items">
+                      {visibleChildren.map(c => (
+                        <button key={c.id} className={`sb-sub-item${activeTab === c.id ? ' active' : ''}`} onClick={() => openPage(c.id)} title={c.label}>
+                          <span className="sb-icon"><NavIcon pageId={c.id} label={c.label} size={13} /></span>
+                          <span>{c.label}</span>
+                        </button>
+                      ))}
+                    </div>
                   </div>
-                  )}
                 </div>
               );
             }
@@ -606,9 +729,10 @@ export default function App() {
             }
             const isItemAllowed = isAdmin || allowedPages.some(ap => ap.PageGroupID.toLowerCase() === n.id.toLowerCase());
             if (!isItemAllowed) return null;
+            if (filterQuery && !matchesFilter(n.label)) return null;
             return (
               <button key={n.id} className={`sb-item${activeTab === n.id ? ' active' : ''}`} onClick={() => openPage(n.id)} title={n.label}>
-                <span className="sb-icon">{n.icon}</span>
+                <span className="sb-icon"><NavIcon pageId={n.id} label={n.label} size={14} /></span>
                 <span>{n.label}</span>
               </button>
             );
@@ -617,11 +741,9 @@ export default function App() {
         <div className="sb-foot">
           <div className="sb-profile">
             <div className="sb-avatar">{initials}</div>
-            <div>
+            <div style={{ minWidth: 0 }}>
               <div className="sb-uname">{user.Name || user.Username}</div>
-              <div className="sb-urole">
-                {isUserAdmin ? 'System Admin' : 'System User'}
-              </div>
+              <span className="sb-urole-pill">{isUserAdmin ? 'System Admin' : 'System User'}</span>
             </div>
           </div>
           {allowedSettingsChildren.length > 0 && (
@@ -629,7 +751,7 @@ export default function App() {
               {isSettingsOpen && (
                 <div style={{
                   position: 'absolute', bottom: '100%', left: 0, right: 0, marginBottom: 6,
-                  background: 'var(--sidebar-surface)', border: '1px solid var(--sidebar-border)', borderRadius: 10,
+                  background: 'var(--sb-card)', border: '1px solid var(--sb-border)', borderRadius: 12,
                   boxShadow: '0 8px 24px rgba(0,0,0,.35)', overflow: 'hidden', zIndex: 20
                 }}>
                   {allowedSettingsChildren.map(c => (
@@ -637,28 +759,29 @@ export default function App() {
                       key={c.id}
                       onClick={() => { openPage(c.id); setIsSettingsOpen(false); }}
                       style={{
-                        width: '100%', display: 'flex', alignItems: 'center', gap: 8,
-                        padding: '9px 12px', border: 'none', background: activeTab === c.id ? 'var(--brand-orange-soft)' : 'transparent',
-                        color: activeTab === c.id ? 'var(--brand-orange-hover)' : 'var(--sidebar-text-secondary)', fontFamily: 'var(--font)', fontSize: 12.5, fontWeight: 600,
-                        cursor: 'pointer', textAlign: 'left'
+                        width: '100%', display: 'flex', alignItems: 'center', gap: 10,
+                        padding: '10px 14px', border: 'none', background: activeTab === c.id ? 'var(--sb-orange-soft)' : 'transparent',
+                        color: activeTab === c.id ? 'var(--sb-orange)' : 'var(--sb-text-muted)', fontFamily: 'var(--font)', fontSize: 12.5, fontWeight: 600,
+                        cursor: 'pointer', textAlign: 'left', transition: 'background .2s ease, color .2s ease'
                       }}
-                      onMouseEnter={e => e.currentTarget.style.background = activeTab === c.id ? 'var(--brand-orange-soft)' : 'var(--sidebar-surface-hover)'}
-                      onMouseLeave={e => e.currentTarget.style.background = activeTab === c.id ? 'var(--brand-orange-soft)' : 'transparent'}
+                      onMouseEnter={e => { e.currentTarget.style.background = 'var(--sb-orange-soft)'; e.currentTarget.style.color = activeTab === c.id ? 'var(--sb-orange)' : 'var(--sb-text)'; }}
+                      onMouseLeave={e => { e.currentTarget.style.background = activeTab === c.id ? 'var(--sb-orange-soft)' : 'transparent'; e.currentTarget.style.color = activeTab === c.id ? 'var(--sb-orange)' : 'var(--sb-text-muted)'; }}
                     >
-                      <span>{c.icon}</span>
+                      <span className="sb-icon" style={{ width: 22, height: 22 }}><NavIcon pageId={c.id} label={c.label} size={12} /></span>
                       <span>{c.label}</span>
                     </button>
                   ))}
                 </div>
               )}
               <button className="sb-btn" style={{ width: '100%' }} onClick={() => setIsSettingsOpen(o => !o)} aria-expanded={isSettingsOpen} title={settingsGroup.label}>
-                {settingsGroup.icon} {settingsGroup.label}
+                <NavIcon pageId={settingsGroup.id} label={settingsGroup.label} size={13} />
+                <span>{settingsGroup.label}</span>
               </button>
             </div>
           )}
           <div className="sb-actions">
-            <button className="sb-btn" onClick={toggleDark}>{dark ? '☀️' : '🌙'} Theme</button>
-            <button className="sb-btn danger" onClick={handleLogout}>↩ Logout</button>
+            <button className="sb-btn" onClick={toggleDark}>{dark ? <Sun size={14} /> : <Moon size={14} />}<span>Theme</span></button>
+            <button className="sb-btn danger" onClick={handleLogout}><LogOut size={14} /><span>Logout</span></button>
           </div>
         </div>
       </aside>
