@@ -65,7 +65,8 @@ export default function VendorInvoicePayment({ user }) {
         return;
       }
       setShowNew(false);
-      if (hasSearched) loadData(filters, searchTerm);
+      setHasSearched(true);
+      loadData(filters, searchTerm);
     } catch (err) {
       setNewError(err.message || 'Connection error.');
     } finally {
