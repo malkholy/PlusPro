@@ -24,6 +24,11 @@ export default function VendorInvoicePaymentDrawer({ header, onClose }) {
   const [availableCredit, setAvailableCredit] = useState(null);
   const [creditLoading, setCreditLoading] = useState(false);
 
+  // Auto Pay is a client-side preview only -- distributes Available Credit
+  // across the loaded invoices (oldest due date first) and overrides the
+  // displayed Paid/Unpaid Amount columns. Nothing is written to the backend.
+  const [autoPayAllocations, setAutoPayAllocations] = useState(null);
+
   useEffect(() => {
     fetchInvoices();
     fetchAvailableCredit();
@@ -66,12 +71,35 @@ export default function VendorInvoicePaymentDrawer({ header, onClose }) {
     setLoading(false);
   }
 
-  const totals = useMemo(() => invoices.reduce((acc, r) => {
+  function handleAutoPay() {
+    const sorted = [...invoices].sort((a, b) => new Date(a.InvoiceDueDate) - new Date(b.InvoiceDueDate));
+    let remaining = Number(availableCredit) || 0;
+    const allocations = {};
+    for (const inv of sorted) {
+      const existingPaid = Number(inv.PaidAmount) || 0;
+      const unpaid = Number(inv.UnPaidAmount) || 0;
+      const pay = remaining > 0 ? Math.min(unpaid, remaining) : 0;
+      allocations[inv.InternalID] = existingPaid + pay;
+      remaining -= pay;
+    }
+    setAutoPayAllocations(allocations);
+  }
+
+  const displayInvoices = useMemo(() => {
+    if (!autoPayAllocations) return invoices;
+    return invoices.map(inv => {
+      const paid = autoPayAllocations[inv.InternalID];
+      if (paid == null) return inv;
+      return { ...inv, PaidAmount: paid, UnPaidAmount: (Number(inv.TotalFinalAmount) || 0) - paid };
+    });
+  }, [invoices, autoPayAllocations]);
+
+  const totals = useMemo(() => displayInvoices.reduce((acc, r) => {
     acc.TotalFinalAmount += Number(r.TotalFinalAmount) || 0;
     acc.PaidAmount += Number(r.PaidAmount) || 0;
     acc.UnPaidAmount += Number(r.UnPaidAmount) || 0;
     return acc;
-  }, { TotalFinalAmount: 0, PaidAmount: 0, UnPaidAmount: 0 }), [invoices]);
+  }, { TotalFinalAmount: 0, PaidAmount: 0, UnPaidAmount: 0 }), [displayInvoices]);
 
   const columns = [
     { key: 'InternalID', label: 'ID', width: 90, numeric: true, render: v => String(Number(v) || 0) },
@@ -133,9 +161,25 @@ export default function VendorInvoicePaymentDrawer({ header, onClose }) {
             </div>
           </div>
 
+          <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+            <button
+              onClick={handleAutoPay}
+              disabled={creditLoading || !availableCredit || invoices.length === 0}
+              style={{
+                height: 34, padding: '0 20px', background: 'linear-gradient(135deg, var(--orange), var(--orange2))',
+                color: '#fff', border: 'none', borderRadius: 8, fontSize: 12.5, fontWeight: 700,
+                cursor: (creditLoading || !availableCredit || invoices.length === 0) ? 'default' : 'pointer',
+                opacity: (creditLoading || !availableCredit || invoices.length === 0) ? 0.6 : 1,
+                boxShadow: '0 4px 12px var(--orange-glow)'
+              }}
+            >
+              ⚡ Auto Pay
+            </button>
+          </div>
+
           <div style={{ flex: 1, minHeight: 0 }}>
             <DataGrid
-              rows={invoices}
+              rows={displayInvoices}
               columns={columns}
               loading={loading}
               hideSearch
