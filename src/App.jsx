@@ -68,6 +68,7 @@ import ItemMaster from './pages/ItemMaster.jsx';
 import Orders from './pages/Orders.jsx';
 import RMA from './pages/RMA.jsx';
 import CustomerOrder from './pages/CustomerOrder.jsx';
+import VendorInvoicePayment from './pages/VendorInvoicePayment.jsx';
 import {
   Calculator, Layers, Coins, Settings, Truck, Package2, FolderTree, FileText, Scale, ListTree,
   BookOpen, FileStack, Sparkles, CalendarClock, Banknote, Link2, Zap, ClipboardList, KeyRound,
@@ -374,7 +375,8 @@ const PAGE_COMPONENTS = {
   item_master: ItemMaster,
   orders: Orders,
   rma: RMA,
-  customer_order: CustomerOrder
+  customer_order: CustomerOrder,
+  vendor_invoice_payment: VendorInvoicePayment
 };
 
 // The sidebar is built live from PLS.PagesAndGroups at login instead of a
