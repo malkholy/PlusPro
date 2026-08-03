@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import DataGrid from '../shared/DataGrid';
 import FilterPanel from '../shared/FilterPanel';
 import SearchableSelect from '../shared/SearchableSelect.jsx';
+import VendorInvoicePaymentDrawer from './VendorInvoicePaymentDrawer.jsx';
 import { apiCall } from '../shared/api.js';
 
 const monthStart = (() => {
@@ -33,6 +34,7 @@ export default function VendorInvoicePayment({ user }) {
   const [newYear, setNewYear] = useState('');
   const [newSaving, setNewSaving] = useState(false);
   const [newError, setNewError] = useState(null);
+  const [selectedHeader, setSelectedHeader] = useState(null);
 
   useEffect(() => {
     apiCall('Vendor Master All', null, { User: user?.Username }, 'plus').then(d => {
@@ -187,10 +189,15 @@ export default function VendorInvoicePayment({ user }) {
               columns={columns}
               loading={loading}
               hideSearch
+              onEdit={(row) => setSelectedHeader(row)}
             />
           </div>
         )}
       </div>
+
+      {selectedHeader && (
+        <VendorInvoicePaymentDrawer header={selectedHeader} onClose={() => setSelectedHeader(null)} />
+      )}
 
       {showNew && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.45)', zIndex: 1200, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
