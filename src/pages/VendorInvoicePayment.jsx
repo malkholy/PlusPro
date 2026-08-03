@@ -18,6 +18,11 @@ function fmtDate(v) {
   return d.toLocaleDateString('en-GB');
 }
 
+function fmtMoney(v) {
+  const n = Number(v) || 0;
+  return n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
 export default function VendorInvoicePayment({ user }) {
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -116,6 +121,9 @@ export default function VendorInvoicePayment({ user }) {
     { key: 'VendorName', label: 'Vendor Name', width: 220 },
     { key: 'VendorExtraName', label: 'Vendor Extra Name', width: 220 },
     { key: 'InvoiceYear', label: 'Year', width: 80, numeric: true, render: v => String(v) },
+    { key: 'TotalAmount', label: 'Total Amount', width: 140, numeric: true, render: fmtMoney },
+    { key: 'TotalPaid', label: 'Total Paid', width: 140, numeric: true, render: fmtMoney },
+    { key: 'TotalDue', label: 'Total Due', width: 140, numeric: true, render: fmtMoney },
     { key: 'CreatedBy', label: 'Created By', width: 120 },
     { key: 'CreatedDate', label: 'Created Date', width: 130, render: fmtDate }
   ];
