@@ -30,6 +30,9 @@ export default function VendorInvoicePaymentDrawer({ header, onClose }) {
   const [paidOverrides, setPaidOverrides] = useState(null);
   const [validationMsg, setValidationMsg] = useState(null);
 
+  const [saving, setSaving] = useState(false);
+  const [successMsg, setSuccessMsg] = useState(null);
+
   useEffect(() => {
     fetchInvoices();
     fetchAvailableCredit();
@@ -142,6 +145,42 @@ export default function VendorInvoicePaymentDrawer({ header, onClose }) {
     setPaidOverrides(prev => ({ ...(prev || {}), [internalId]: value }));
   }
 
+  // Only invoices with a newly-allocated amount (Auto Pay or manual edit)
+  // above their already-recorded baseline get sent -- 'Pay Vendor Invoices'
+  // adds PaidAmount to the invoice's existing PaidAmount, so this must be the
+  // delta, not the absolute displayed value.
+  const pendingLines = useMemo(() =>
+    invoices
+      .map(inv => ({ inv, delta: currentPaid(inv) - originalPaid(inv) }))
+      .filter(({ delta }) => delta > 0)
+  , [invoices, paidOverrides]);
+
+  async function handleSavePayment() {
+    if (pendingLines.length === 0) return;
+    setSaving(true);
+    setError(null);
+    setSuccessMsg(null);
+    try {
+      const lines = pendingLines.map(({ inv, delta }) => ({
+        HeaderInternalID: header.InternalID,
+        InvoiceInternalID: inv.InternalID,
+        PaidAmount: delta,
+        Note: ''
+      }));
+      const res = await apiCall('Pay Vendor Invoices', lines, {}, 'acp');
+      if (res.State !== 0) {
+        setError(res.Message || 'Failed to save payment.');
+      } else {
+        setSuccessMsg('Payment saved.');
+        setPaidOverrides(null);
+        await Promise.all([fetchInvoices(), fetchAvailableCredit()]);
+      }
+    } catch (err) {
+      setError(err.message || 'Connection error.');
+    }
+    setSaving(false);
+  }
+
   const totals = useMemo(() => displayInvoices.reduce((acc, r) => {
     acc.TotalFinalAmount += Number(r.TotalFinalAmount) || 0;
     acc.PaidAmount += Number(r.PaidAmount) || 0;
@@ -226,22 +265,36 @@ export default function VendorInvoicePaymentDrawer({ header, onClose }) {
           </div>
 
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--red)' }}>
-              {validationMsg && <>⚠ {validationMsg}</>}
+            <div style={{ fontSize: 12, fontWeight: 600, color: validationMsg ? 'var(--red)' : 'var(--green, #16a34a)' }}>
+              {validationMsg ? <>⚠ {validationMsg}</> : successMsg ? <>✓ {successMsg}</> : null}
             </div>
-            <button
-              onClick={handleAutoPay}
-              disabled={creditLoading || !availableCredit || invoices.length === 0}
-              style={{
-                height: 34, padding: '0 20px', background: 'linear-gradient(135deg, var(--orange), var(--orange2))',
-                color: '#fff', border: 'none', borderRadius: 8, fontSize: 12.5, fontWeight: 700,
-                cursor: (creditLoading || !availableCredit || invoices.length === 0) ? 'default' : 'pointer',
-                opacity: (creditLoading || !availableCredit || invoices.length === 0) ? 0.6 : 1,
-                boxShadow: '0 4px 12px var(--orange-glow)'
-              }}
-            >
-              ⚡ Auto Pay
-            </button>
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button
+                onClick={handleAutoPay}
+                disabled={creditLoading || !availableCredit || invoices.length === 0 || saving}
+                style={{
+                  height: 34, padding: '0 20px', background: 'var(--soft)', color: 'var(--text)',
+                  border: '1px solid var(--border)', borderRadius: 8, fontSize: 12.5, fontWeight: 700,
+                  cursor: (creditLoading || !availableCredit || invoices.length === 0 || saving) ? 'default' : 'pointer',
+                  opacity: (creditLoading || !availableCredit || invoices.length === 0 || saving) ? 0.6 : 1
+                }}
+              >
+                ⚡ Auto Pay
+              </button>
+              <button
+                onClick={handleSavePayment}
+                disabled={saving || pendingLines.length === 0}
+                style={{
+                  height: 34, padding: '0 20px', background: 'linear-gradient(135deg, var(--orange), var(--orange2))',
+                  color: '#fff', border: 'none', borderRadius: 8, fontSize: 12.5, fontWeight: 700,
+                  cursor: (saving || pendingLines.length === 0) ? 'default' : 'pointer',
+                  opacity: (saving || pendingLines.length === 0) ? 0.6 : 1,
+                  boxShadow: '0 4px 12px var(--orange-glow)'
+                }}
+              >
+                {saving ? 'Saving...' : '💾 Save Payment'}
+              </button>
+            </div>
           </div>
 
           <div style={{ flex: 1, minHeight: 0 }}>
