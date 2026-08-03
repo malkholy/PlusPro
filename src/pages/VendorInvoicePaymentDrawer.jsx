@@ -72,6 +72,21 @@ export default function VendorInvoicePaymentDrawer({ header, onClose }) {
     setLoading(false);
   }
 
+  function originalPaid(inv) { return Number(inv.PaidAmount) || 0; }
+  function currentPaid(inv) {
+    const override = paidOverrides && paidOverrides[inv.InternalID];
+    return override != null ? override : originalPaid(inv);
+  }
+
+  // Available Credit is only consumed by NEW allocation (the delta above each
+  // invoice's own already-recorded Paid Amount) -- not by the baseline itself,
+  // which the backend's Available Credit figure already accounts for.
+  const allocatedFromCredit = useMemo(() =>
+    invoices.reduce((sum, inv) => sum + (currentPaid(inv) - originalPaid(inv)), 0)
+  , [invoices, paidOverrides]);
+
+  const remainingCredit = (Number(availableCredit) || 0) - allocatedFromCredit;
+
   function handleAutoPay() {
     setValidationMsg(null);
     const sorted = [...invoices].sort((a, b) => new Date(a.InvoiceDueDate) - new Date(b.InvoiceDueDate));
@@ -113,11 +128,13 @@ export default function VendorInvoicePaymentDrawer({ header, onClose }) {
       msg = 'Paid amount cannot exceed the invoice amount.';
     }
 
-    const othersTotal = displayInvoices.reduce((sum, inv) =>
-      inv.InternalID === internalId ? sum : sum + (Number(inv.PaidAmount) || 0), 0);
+    const baseline = originalPaid(invoice);
+    const othersAllocated = invoices.reduce((sum, inv) =>
+      inv.InternalID === internalId ? sum : sum + (currentPaid(inv) - originalPaid(inv)), 0);
     const credit = Number(availableCredit) || 0;
-    if (othersTotal + value > credit) {
-      value = Math.max(0, credit - othersTotal);
+    const newDelta = value - baseline;
+    if (othersAllocated + newDelta > credit) {
+      value = baseline + Math.max(0, credit - othersAllocated);
       msg = 'Total paid amount cannot exceed available credit.';
     }
 
@@ -204,7 +221,7 @@ export default function VendorInvoicePaymentDrawer({ header, onClose }) {
             </div>
             <div>
               <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.4, opacity: 0.85 }}>Available Credit</div>
-              <div style={{ fontSize: 20, fontWeight: 800 }}>{creditLoading ? '…' : fmtMoney(availableCredit)}</div>
+              <div style={{ fontSize: 20, fontWeight: 800 }}>{creditLoading ? '…' : fmtMoney(remainingCredit)}</div>
             </div>
           </div>
 
