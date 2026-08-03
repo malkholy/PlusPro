@@ -124,6 +124,7 @@ export default function VendorInvoicePayment({ user }) {
     { key: 'TotalAmount', label: 'Total Amount', width: 140, numeric: true, render: fmtMoney },
     { key: 'TotalPaid', label: 'Total Paid', width: 140, numeric: true, render: fmtMoney },
     { key: 'TotalDue', label: 'Total Due', width: 140, numeric: true, render: fmtMoney },
+    { key: 'TotalUnpaid', label: 'Total Unpaid', width: 140, numeric: true, render: fmtMoney },
     { key: 'CreatedBy', label: 'Created By', width: 120 },
     { key: 'CreatedDate', label: 'Created Date', width: 130, render: fmtDate }
   ];
