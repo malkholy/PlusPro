@@ -24,10 +24,11 @@ export default function VendorInvoicePaymentDrawer({ header, onClose }) {
   const [availableCredit, setAvailableCredit] = useState(null);
   const [creditLoading, setCreditLoading] = useState(false);
 
-  // Auto Pay is a client-side preview only -- distributes Available Credit
-  // across the loaded invoices (oldest due date first) and overrides the
+  // Client-side preview only -- both Auto Pay and manual Paid Amount edits
+  // write into this same map (InternalID -> paid amount), overriding the
   // displayed Paid/Unpaid Amount columns. Nothing is written to the backend.
-  const [autoPayAllocations, setAutoPayAllocations] = useState(null);
+  const [paidOverrides, setPaidOverrides] = useState(null);
+  const [validationMsg, setValidationMsg] = useState(null);
 
   useEffect(() => {
     fetchInvoices();
@@ -72,6 +73,7 @@ export default function VendorInvoicePaymentDrawer({ header, onClose }) {
   }
 
   function handleAutoPay() {
+    setValidationMsg(null);
     const sorted = [...invoices].sort((a, b) => new Date(a.InvoiceDueDate) - new Date(b.InvoiceDueDate));
     let remaining = Number(availableCredit) || 0;
     const allocations = {};
@@ -82,17 +84,46 @@ export default function VendorInvoicePaymentDrawer({ header, onClose }) {
       allocations[inv.InternalID] = existingPaid + pay;
       remaining -= pay;
     }
-    setAutoPayAllocations(allocations);
+    setPaidOverrides(allocations);
   }
 
   const displayInvoices = useMemo(() => {
-    if (!autoPayAllocations) return invoices;
+    if (!paidOverrides) return invoices;
     return invoices.map(inv => {
-      const paid = autoPayAllocations[inv.InternalID];
+      const paid = paidOverrides[inv.InternalID];
       if (paid == null) return inv;
       return { ...inv, PaidAmount: paid, UnPaidAmount: (Number(inv.TotalFinalAmount) || 0) - paid };
     });
-  }, [invoices, autoPayAllocations]);
+  }, [invoices, paidOverrides]);
+
+  // Manual edit of a single invoice's Paid Amount -- clamped by both rules:
+  // cannot exceed that invoice's own Total Amount, and cannot push the sum of
+  // all Paid Amounts past Available Credit.
+  function handlePaidAmountChange(internalId, rawValue) {
+    const invoice = invoices.find(inv => inv.InternalID === internalId);
+    if (!invoice) return;
+
+    let value = Number(rawValue);
+    if (!isFinite(value) || value < 0) value = 0;
+
+    let msg = null;
+    const invoiceTotal = Number(invoice.TotalFinalAmount) || 0;
+    if (value > invoiceTotal) {
+      value = invoiceTotal;
+      msg = 'Paid amount cannot exceed the invoice amount.';
+    }
+
+    const othersTotal = displayInvoices.reduce((sum, inv) =>
+      inv.InternalID === internalId ? sum : sum + (Number(inv.PaidAmount) || 0), 0);
+    const credit = Number(availableCredit) || 0;
+    if (othersTotal + value > credit) {
+      value = Math.max(0, credit - othersTotal);
+      msg = 'Total paid amount cannot exceed available credit.';
+    }
+
+    setValidationMsg(msg);
+    setPaidOverrides(prev => ({ ...(prev || {}), [internalId]: value }));
+  }
 
   const totals = useMemo(() => displayInvoices.reduce((acc, r) => {
     acc.TotalFinalAmount += Number(r.TotalFinalAmount) || 0;
@@ -106,7 +137,23 @@ export default function VendorInvoicePaymentDrawer({ header, onClose }) {
     { key: 'InvoiceDate', label: 'Invoice Date', width: 120, render: fmtDate },
     { key: 'InvoiceDueDate', label: 'Due Date', width: 120, render: fmtDate },
     { key: 'TotalFinalAmount', label: 'Total Amount', width: 140, numeric: true, render: fmtMoney },
-    { key: 'PaidAmount', label: 'Paid Amount', width: 140, numeric: true, render: fmtMoney },
+    {
+      key: 'PaidAmount', label: 'Paid Amount', width: 150, numeric: true,
+      render: (v, row) => (
+        <input
+          type="number"
+          min={0}
+          max={Number(row.TotalFinalAmount) || 0}
+          step="0.01"
+          value={v ?? 0}
+          onChange={e => handlePaidAmountChange(row.InternalID, e.target.value)}
+          style={{
+            width: '100%', height: 28, textAlign: 'right', border: '1px solid var(--border)',
+            borderRadius: 6, background: 'var(--surface)', color: 'var(--text)', fontSize: 12.5, padding: '0 8px'
+          }}
+        />
+      )
+    },
     { key: 'UnPaidAmount', label: 'Unpaid Amount', width: 140, numeric: true, render: fmtMoney }
   ];
 
@@ -161,7 +208,10 @@ export default function VendorInvoicePaymentDrawer({ header, onClose }) {
             </div>
           </div>
 
-          <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--red)' }}>
+              {validationMsg && <>⚠ {validationMsg}</>}
+            </div>
             <button
               onClick={handleAutoPay}
               disabled={creditLoading || !availableCredit || invoices.length === 0}
