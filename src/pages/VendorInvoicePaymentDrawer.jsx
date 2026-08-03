@@ -21,10 +21,30 @@ export default function VendorInvoicePaymentDrawer({ header, onClose }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
+  const [availableCredit, setAvailableCredit] = useState(null);
+  const [creditLoading, setCreditLoading] = useState(false);
+
   useEffect(() => {
     fetchInvoices();
+    fetchAvailableCredit();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  async function fetchAvailableCredit() {
+    setCreditLoading(true);
+    try {
+      const res = await apiCall('Available Credit', {
+        VendorNo: header.VendorNo,
+        InvoiceYear: header.InvoiceYear
+      }, {}, 'acp');
+      if (res.State === 0) {
+        setAvailableCredit((res.List0 || [])[0]?.AvaliableCredit ?? 0);
+      }
+    } catch {
+      // Non-critical -- header stat, drawer stays usable without it.
+    }
+    setCreditLoading(false);
+  }
 
   async function fetchInvoices() {
     setLoading(true);
@@ -106,6 +126,10 @@ export default function VendorInvoicePaymentDrawer({ header, onClose }) {
             <div>
               <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.4, opacity: 0.85 }}>Unpaid</div>
               <div style={{ fontSize: 20, fontWeight: 800 }}>{fmtMoney(totals.UnPaidAmount)}</div>
+            </div>
+            <div>
+              <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.4, opacity: 0.85 }}>Available Credit</div>
+              <div style={{ fontSize: 20, fontWeight: 800 }}>{creditLoading ? '…' : fmtMoney(availableCredit)}</div>
             </div>
           </div>
 
