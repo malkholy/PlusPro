@@ -50,6 +50,8 @@ export async function apiCall(operation, lineData = null, extraParams = {}, apiT
     target = 'customer_order';
   } else if (apiType === 'customer_order_price') {
     target = 'customer_order_price';
+  } else if (apiType === 'acp') {
+    target = 'acp';
   }
 
   let url = '';
@@ -101,6 +103,9 @@ export async function apiCall(operation, lineData = null, extraParams = {}, apiT
   } else if (target === 'customer_order_price') {
     url = IS_DEV ? '/customer-order-price-api/General/GeneralAPI/' : 'https://sila.silasystem.com:7103/General/GeneralAPI/';
     spName = 'COR.APIPlusCustomerOrderPricePromotionOperation';
+  } else if (target === 'acp') {
+    url = IS_DEV ? '/acp-api/General/GeneralAPI/' : 'https://sila.silasystem.com:7103/General/GeneralAPI/';
+    spName = 'APIPlusACPOperation';
   } else {
     url = IS_DEV ? '/api/General/GeneralAPI/' : 'https://sila.silasystem.com:7103/General/GeneralAPI/';
     spName = 'APIPlusOperation';

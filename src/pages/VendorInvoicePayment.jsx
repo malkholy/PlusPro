@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import DataGrid from '../shared/DataGrid';
 import FilterPanel from '../shared/FilterPanel';
+import SearchableSelect from '../shared/SearchableSelect.jsx';
 import { apiCall } from '../shared/api.js';
 
 const monthStart = (() => {
@@ -24,6 +25,53 @@ export default function VendorInvoicePayment({ user }) {
   const [searchTerm, setSearchTerm] = useState('');
   const [filters, setFilters] = useState({});
   const [hasSearched, setHasSearched] = useState(false);
+
+  const [vendorOptions, setVendorOptions] = useState([]);
+  const [yearOptions, setYearOptions] = useState([]);
+  const [showNew, setShowNew] = useState(false);
+  const [newVendor, setNewVendor] = useState('');
+  const [newYear, setNewYear] = useState('');
+  const [newSaving, setNewSaving] = useState(false);
+  const [newError, setNewError] = useState(null);
+
+  useEffect(() => {
+    apiCall('Vendor Master All', null, { User: user?.Username }, 'plus').then(d => {
+      if (d.State === 0) setVendorOptions((d.List0 || []).map(v => ({ label: `${v.VendorNumber} - ${v.VendorName}`, value: v.VendorNumber })));
+    });
+    apiCall('Year Master All', null, { User: user?.Username }, 'plus').then(d => {
+      if (d.State === 0) setYearOptions((d.List0 || []).map(y => ({ label: String(y.Year), value: y.Year })));
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  function openNew() {
+    setNewVendor('');
+    setNewYear('');
+    setNewError(null);
+    setShowNew(true);
+  }
+
+  async function handleSaveNew() {
+    if (!newVendor || !newYear) {
+      setNewError('Vendor and Year are required.');
+      return;
+    }
+    setNewSaving(true);
+    setNewError(null);
+    try {
+      const res = await apiCall('New Invoice Payment Header', { VendorNo: newVendor, InvoiceYear: newYear }, { User: user?.Username }, 'acp');
+      if (res.State !== 0) {
+        setNewError(res.Message || 'Failed to create.');
+        return;
+      }
+      setShowNew(false);
+      if (hasSearched) loadData(filters, searchTerm);
+    } catch (err) {
+      setNewError(err.message || 'Connection error.');
+    } finally {
+      setNewSaving(false);
+    }
+  }
 
   const loadData = async (currentFilters, currentSearch = '') => {
     try {
@@ -102,6 +150,16 @@ export default function VendorInvoicePayment({ user }) {
                 width: '250px'
               }}
             />
+            <button
+              onClick={openNew}
+              style={{
+                height: 38, padding: '0 20px', background: 'linear-gradient(135deg, var(--orange), var(--orange2))',
+                color: '#fff', border: 'none', borderRadius: 8, fontSize: 12.5, fontWeight: 700, cursor: 'pointer',
+                boxShadow: '0 4px 12px var(--orange-glow)'
+              }}
+            >
+              + New
+            </button>
           </div>
         </div>
 
@@ -132,6 +190,53 @@ export default function VendorInvoicePayment({ user }) {
           </div>
         )}
       </div>
+
+      {showNew && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.45)', zIndex: 1200, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ width: 420, maxWidth: '90vw', background: 'var(--bg)', borderRadius: 14, boxShadow: '0 10px 40px rgba(0,0,0,0.3)' }}>
+            <div style={{ padding: '20px 22px' }}>
+              <h3 style={{ margin: 0, fontSize: 16, fontWeight: 800, color: 'var(--text)' }}>+ New Invoice Payment Header</h3>
+
+              {newError && (
+                <div style={{ marginTop: 12, background: 'var(--error-bg, #ff4c4c22)', color: 'var(--error, #ff4c4c)', padding: '10px 12px', borderRadius: 8, fontSize: 12.5 }}>
+                  {newError}
+                </div>
+              )}
+
+              <div style={{ marginTop: 16 }}>
+                <label style={{ display: 'block', fontSize: 10.5, fontWeight: 700, color: 'var(--muted)', marginBottom: 5, textTransform: 'uppercase' }}>Vendor</label>
+                <SearchableSelect value={newVendor} onChange={setNewVendor} options={vendorOptions} placeholder="Select vendor" openOnFocus />
+              </div>
+
+              <div style={{ marginTop: 14 }}>
+                <label style={{ display: 'block', fontSize: 10.5, fontWeight: 700, color: 'var(--muted)', marginBottom: 5, textTransform: 'uppercase' }}>Year</label>
+                <SearchableSelect value={newYear} onChange={setNewYear} options={yearOptions} placeholder="Select year" openOnFocus />
+              </div>
+            </div>
+            <div style={{ padding: '14px 22px', borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'flex-end', gap: 12 }}>
+              <button
+                onClick={() => setShowNew(false)}
+                disabled={newSaving}
+                style={{ height: 36, padding: '0 20px', background: 'var(--soft)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 12.5, fontWeight: 700, cursor: 'pointer' }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSaveNew}
+                disabled={newSaving}
+                style={{
+                  height: 36, padding: '0 24px',
+                  background: 'linear-gradient(135deg, var(--orange), var(--orange2))',
+                  color: '#fff', border: 'none', borderRadius: 8, fontSize: 12.5, fontWeight: 700, cursor: newSaving ? 'default' : 'pointer',
+                  opacity: newSaving ? 0.7 : 1
+                }}
+              >
+                {newSaving ? 'Saving...' : 'Save'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
