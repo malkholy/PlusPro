@@ -1,0 +1,183 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Report ScriptLanguage="CSharp" ReportInfo.Created="2026-08-06T22:15:08.422Z" ReportInfo.Modified="2026-08-06T22:15:08.423Z" ReportInfo.CreatorVersion="2024.2.9.0">
+  <ScriptText>using System;
+using System.Collections;
+using System.Collections.Generic;
+using System.ComponentModel;
+using System.Windows.Forms;
+using System.Drawing;
+using System.Data;
+using FastReport;
+using FastReport.Data;
+using FastReport.Dialog;
+using FastReport.Barcode;
+using FastReport.Table;
+using FastReport.Utils;
+
+namespace FastReport
+{
+  public class ReportScript
+  {
+    public string GetMonthName(int m)
+    {
+      string[] names = { &quot;&quot;, &quot;January&quot;,&quot;February&quot;,&quot;March&quot;,&quot;April&quot;,&quot;May&quot;,&quot;June&quot;,&quot;July&quot;,&quot;August&quot;,&quot;September&quot;,&quot;October&quot;,&quot;November&quot;,&quot;December&quot; };
+      return (m &gt;= 1 &amp;&amp; m &lt;= 12) ? names[m] : m.ToString();
+    }
+
+    public string FormatPct(decimal v)
+    {
+      string sign = v &gt; 0 ? &quot;+&quot; : &quot;&quot;;
+      return sign + v.ToString(&quot;N2&quot;) + &quot;%&quot;;
+    }
+
+    public decimal SafeDivide(decimal a, decimal b)
+    {
+      return b == 0 ? 0 : a / b;
+    }
+  }
+}
+</ScriptText>
+  <Dictionary>
+    <TableDataSource Name="Table1" ReferenceName="Data.Table1" DataType="System.Int32" Enabled="true">
+      <Column Name="YearMonth" DataType="System.Int32"/>
+      <Column Name="Year" DataType="System.Int32"/>
+      <Column Name="Month" DataType="System.Int32"/>
+      <Column Name="TotalCashPayable" DataType="System.Decimal"/>
+      <Column Name="TotalTransferPayable" DataType="System.Decimal"/>
+      <Column Name="TotalCashReceivable" DataType="System.Decimal"/>
+      <Column Name="TotalTransferReceivable" DataType="System.Decimal"/>
+      <Column Name="TotalVendorsPayment" DataType="System.Decimal"/>
+      <Column Name="TotalCustomerPayment" DataType="System.Decimal"/>
+      <Column Name="TotalCustomerSales" DataType="System.Decimal"/>
+      <Column Name="CashState" DataType="System.Decimal"/>
+      <Column Name="Expenses" DataType="System.Decimal"/>
+      <Column Name="TotalCollection" DataType="System.Decimal"/>
+      <Column Name="ExpensesRatio" DataType="System.Decimal"/>
+      <Column Name="TotalVendorsInvoices" DataType="System.Decimal"/>
+      <Column Name="TreasuryCashEGP_Open" DataType="System.Decimal"/>
+      <Column Name="BankCashEGP_Open" DataType="System.Decimal"/>
+      <Column Name="VendorBalance" DataType="System.Decimal"/>
+      <Column Name="VendorOpenBalance" DataType="System.Decimal"/>
+      <Column Name="CustomerOpenBalance" DataType="System.Decimal"/>
+      <Column Name="CustomerBalance" DataType="System.Decimal"/>
+      <Column Name="BankCashEGP" DataType="System.Decimal"/>
+      <Column Name="TreasuryCashEGP" DataType="System.Decimal"/>
+      <Column Name="BankCashOpenYear" DataType="System.Decimal"/>
+      <Column Name="TreasuryCashOpenYear" DataType="System.Decimal"/>
+      <Column Name="TotalCheckCollection" DataType="System.Decimal"/>
+      <Column Name="TotalCheckPaid" DataType="System.Decimal"/>
+      <Column Name="TotalDueCheck" DataType="System.Decimal"/>
+      <Column Name="YTDSales2025" DataType="System.Decimal"/>
+      <Column Name="YTDSales2026" DataType="System.Decimal"/>
+      <Column Name="YTDSalesGrowthPct" DataType="System.Decimal"/>
+      <Column Name="VendorPaymentRatio" DataType="System.Decimal"/>
+      <Column Name="CustomerBalanceGrowth" DataType="System.Decimal"/>
+      <Column Name="VendorBalanceGrowth" DataType="System.Decimal"/>
+      <Column Name="CustomerModernSales" DataType="System.Decimal"/>
+      <Column Name="WholeSales" DataType="System.Decimal"/>
+      <Column Name="CustomerPaymentYearly" DataType="System.Decimal"/>
+      <Column Name="TotalYearExpenses" DataType="System.Decimal"/>
+      <Column Name="TotalCustomerExtraDiscount" DataType="System.Decimal"/>
+      <Column Name="TotalItemAmount" DataType="System.Decimal"/>
+      <Column Name="TotalInvoiceDiscount" DataType="System.Decimal"/>
+      <Column Name="TotalDueCustomerInvoices" DataType="System.Decimal"/>
+      <Column Name="TotalDueVendorInvoices" DataType="System.Decimal"/>
+    </TableDataSource>
+  </Dictionary>
+  <ReportPage Name="Page1">
+    <PageHeaderBand Name="PageHeader1" Width="700" Height="56">
+      <TextObject Name="Title" Left="0" Top="0" Width="700" Height="30" Fill.Color="27, 42, 74" Text="Cash Flow Report" Padding="10, 0, 10, 0" HorzAlign="Left" VertAlign="Center" Font="Arial, 16pt, style=Bold" TextFill.Color="White"/>
+      <TextObject Name="Subtitle" Left="0" Top="30" Width="700" Height="20" Text="[GetMonthName([Table1.Month])] [Table1.Year]" Padding="10, 0, 10, 0" HorzAlign="Left" VertAlign="Center" Font="Arial, 12pt, style=Bold" TextFill.Color="27, 42, 74"/>
+    </PageHeaderBand>
+    <DataBand Name="MasterData1" Top="60" Width="700" Height="576" DataSource="Table1">
+      <TextObject Name="SecHdr1" Left="0" Top="0" Width="700" Height="22" Fill.Color="27, 42, 74" Text="Cash Position" Padding="6, 0, 6, 0" HorzAlign="Left" VertAlign="Center" Font="Arial, 10pt, style=Bold" TextFill.Color="White"/>
+      <TextObject Name="Lbl2" Left="0" Top="22" Width="195" Height="16" Border.Lines="Bottom" Border.Color="221, 221, 221" Text="Treasury Cash" Padding="4, 0, 4, 0" HorzAlign="Left" VertAlign="Center" Font="Arial, 8pt" TextFill.Color="136, 136, 136"/>
+      <TextObject Name="Val3" Left="195" Top="22" Width="145" Height="16" Border.Lines="Bottom" Border.Color="221, 221, 221" Text="[Table1.TreasuryCashEGP]" Format="Number" Format.UseLocale="false" Format.DecimalDigits="2" Format.DecimalSeparator="." Format.GroupSeparator="," Format.NegativePattern="1" Padding="4, 0, 4, 0" HorzAlign="Right" VertAlign="Center" Font="Arial, 8pt, style=Bold" TextFill.Color="17, 17, 17"/>
+      <TextObject Name="Lbl4" Left="360" Top="22" Width="195" Height="16" Border.Lines="Bottom" Border.Color="221, 221, 221" Text="Bank Cash" Padding="4, 0, 4, 0" HorzAlign="Left" VertAlign="Center" Font="Arial, 8pt" TextFill.Color="136, 136, 136"/>
+      <TextObject Name="Val5" Left="555" Top="22" Width="145" Height="16" Border.Lines="Bottom" Border.Color="221, 221, 221" Text="[Table1.BankCashEGP]" Format="Number" Format.UseLocale="false" Format.DecimalDigits="2" Format.DecimalSeparator="." Format.GroupSeparator="," Format.NegativePattern="1" Padding="4, 0, 4, 0" HorzAlign="Right" VertAlign="Center" Font="Arial, 8pt, style=Bold" TextFill.Color="17, 17, 17"/>
+      <TextObject Name="Lbl6" Left="0" Top="38" Width="195" Height="16" Border.Lines="Bottom" Border.Color="221, 221, 221" Text="Treasury Cash (Open)" Padding="4, 0, 4, 0" HorzAlign="Left" VertAlign="Center" Font="Arial, 8pt" TextFill.Color="136, 136, 136"/>
+      <TextObject Name="Val7" Left="195" Top="38" Width="145" Height="16" Border.Lines="Bottom" Border.Color="221, 221, 221" Text="[Table1.TreasuryCashEGP_Open]" Format="Number" Format.UseLocale="false" Format.DecimalDigits="2" Format.DecimalSeparator="." Format.GroupSeparator="," Format.NegativePattern="1" Padding="4, 0, 4, 0" HorzAlign="Right" VertAlign="Center" Font="Arial, 8pt, style=Bold" TextFill.Color="17, 17, 17"/>
+      <TextObject Name="Lbl8" Left="360" Top="38" Width="195" Height="16" Border.Lines="Bottom" Border.Color="221, 221, 221" Text="Bank Cash (Open)" Padding="4, 0, 4, 0" HorzAlign="Left" VertAlign="Center" Font="Arial, 8pt" TextFill.Color="136, 136, 136"/>
+      <TextObject Name="Val9" Left="555" Top="38" Width="145" Height="16" Border.Lines="Bottom" Border.Color="221, 221, 221" Text="[Table1.BankCashEGP_Open]" Format="Number" Format.UseLocale="false" Format.DecimalDigits="2" Format.DecimalSeparator="." Format.GroupSeparator="," Format.NegativePattern="1" Padding="4, 0, 4, 0" HorzAlign="Right" VertAlign="Center" Font="Arial, 8pt, style=Bold" TextFill.Color="17, 17, 17"/>
+      <TextObject Name="Lbl10" Left="0" Top="54" Width="195" Height="16" Border.Lines="Bottom" Border.Color="221, 221, 221" Text="Cash State" Padding="4, 0, 4, 0" HorzAlign="Left" VertAlign="Center" Font="Arial, 8pt" TextFill.Color="136, 136, 136"/>
+      <TextObject Name="Val11" Left="195" Top="54" Width="145" Height="16" Border.Lines="Bottom" Border.Color="221, 221, 221" Text="[Table1.CashState]" Format="Number" Format.UseLocale="false" Format.DecimalDigits="2" Format.DecimalSeparator="." Format.GroupSeparator="," Format.NegativePattern="1" Padding="4, 0, 4, 0" HorzAlign="Right" VertAlign="Center" Font="Arial, 8pt, style=Bold" TextFill.Color="17, 17, 17"/>
+      <TextObject Name="SecHdr12" Left="0" Top="78" Width="700" Height="22" Fill.Color="27, 42, 74" Text="Payables &amp; Receivables" Padding="6, 0, 6, 0" HorzAlign="Left" VertAlign="Center" Font="Arial, 10pt, style=Bold" TextFill.Color="White"/>
+      <TextObject Name="Lbl13" Left="0" Top="100" Width="195" Height="16" Border.Lines="Bottom" Border.Color="221, 221, 221" Text="Total Payable" Padding="4, 0, 4, 0" HorzAlign="Left" VertAlign="Center" Font="Arial, 8pt" TextFill.Color="136, 136, 136"/>
+      <TextObject Name="Val14" Left="195" Top="100" Width="145" Height="16" Border.Lines="Bottom" Border.Color="221, 221, 221" Text="[Table1.TotalCashPayable]+[Table1.TotalTransferPayable]" Format="Number" Format.UseLocale="false" Format.DecimalDigits="2" Format.DecimalSeparator="." Format.GroupSeparator="," Format.NegativePattern="1" Padding="4, 0, 4, 0" HorzAlign="Right" VertAlign="Center" Font="Arial, 8pt, style=Bold" TextFill.Color="17, 17, 17"/>
+      <TextObject Name="Lbl15" Left="360" Top="100" Width="195" Height="16" Border.Lines="Bottom" Border.Color="221, 221, 221" Text="Total Receivable" Padding="4, 0, 4, 0" HorzAlign="Left" VertAlign="Center" Font="Arial, 8pt" TextFill.Color="136, 136, 136"/>
+      <TextObject Name="Val16" Left="555" Top="100" Width="145" Height="16" Border.Lines="Bottom" Border.Color="221, 221, 221" Text="[Table1.TotalCashReceivable]+[Table1.TotalTransferReceivable]" Format="Number" Format.UseLocale="false" Format.DecimalDigits="2" Format.DecimalSeparator="." Format.GroupSeparator="," Format.NegativePattern="1" Padding="4, 0, 4, 0" HorzAlign="Right" VertAlign="Center" Font="Arial, 8pt, style=Bold" TextFill.Color="17, 17, 17"/>
+      <TextObject Name="Lbl17" Left="0" Top="116" Width="195" Height="16" Border.Lines="Bottom" Border.Color="221, 221, 221" Text="Due Vendor Invoices" Padding="4, 0, 4, 0" HorzAlign="Left" VertAlign="Center" Font="Arial, 8pt" TextFill.Color="136, 136, 136"/>
+      <TextObject Name="Val18" Left="195" Top="116" Width="145" Height="16" Border.Lines="Bottom" Border.Color="221, 221, 221" Text="[Table1.TotalDueVendorInvoices]" Format="Number" Format.UseLocale="false" Format.DecimalDigits="2" Format.DecimalSeparator="." Format.GroupSeparator="," Format.NegativePattern="1" Padding="4, 0, 4, 0" HorzAlign="Right" VertAlign="Center" Font="Arial, 8pt, style=Bold" TextFill.Color="17, 17, 17"/>
+      <TextObject Name="Lbl19" Left="360" Top="116" Width="195" Height="16" Border.Lines="Bottom" Border.Color="221, 221, 221" Text="Due Customer Invoices" Padding="4, 0, 4, 0" HorzAlign="Left" VertAlign="Center" Font="Arial, 8pt" TextFill.Color="136, 136, 136"/>
+      <TextObject Name="Val20" Left="555" Top="116" Width="145" Height="16" Border.Lines="Bottom" Border.Color="221, 221, 221" Text="[Table1.TotalDueCustomerInvoices]" Format="Number" Format.UseLocale="false" Format.DecimalDigits="2" Format.DecimalSeparator="." Format.GroupSeparator="," Format.NegativePattern="1" Padding="4, 0, 4, 0" HorzAlign="Right" VertAlign="Center" Font="Arial, 8pt, style=Bold" TextFill.Color="17, 17, 17"/>
+      <TextObject Name="SecHdr21" Left="0" Top="140" Width="700" Height="22" Fill.Color="27, 42, 74" Text="Vendor" Padding="6, 0, 6, 0" HorzAlign="Left" VertAlign="Center" Font="Arial, 10pt, style=Bold" TextFill.Color="White"/>
+      <TextObject Name="Lbl22" Left="0" Top="162" Width="195" Height="16" Border.Lines="Bottom" Border.Color="221, 221, 221" Text="Current Vendor Balance" Padding="4, 0, 4, 0" HorzAlign="Left" VertAlign="Center" Font="Arial, 8pt" TextFill.Color="136, 136, 136"/>
+      <TextObject Name="Val23" Left="195" Top="162" Width="145" Height="16" Border.Lines="Bottom" Border.Color="221, 221, 221" Text="[Table1.VendorBalance]" Format="Number" Format.UseLocale="false" Format.DecimalDigits="2" Format.DecimalSeparator="." Format.GroupSeparator="," Format.NegativePattern="1" Padding="4, 0, 4, 0" HorzAlign="Right" VertAlign="Center" Font="Arial, 8pt, style=Bold" TextFill.Color="17, 17, 17"/>
+      <TextObject Name="Lbl24" Left="360" Top="162" Width="195" Height="16" Border.Lines="Bottom" Border.Color="221, 221, 221" Text="Vendor Open Balance" Padding="4, 0, 4, 0" HorzAlign="Left" VertAlign="Center" Font="Arial, 8pt" TextFill.Color="136, 136, 136"/>
+      <TextObject Name="Val25" Left="555" Top="162" Width="145" Height="16" Border.Lines="Bottom" Border.Color="221, 221, 221" Text="[Table1.VendorOpenBalance]" Format="Number" Format.UseLocale="false" Format.DecimalDigits="2" Format.DecimalSeparator="." Format.GroupSeparator="," Format.NegativePattern="1" Padding="4, 0, 4, 0" HorzAlign="Right" VertAlign="Center" Font="Arial, 8pt, style=Bold" TextFill.Color="17, 17, 17"/>
+      <TextObject Name="Lbl26" Left="0" Top="178" Width="195" Height="16" Border.Lines="Bottom" Border.Color="221, 221, 221" Text="Vendor Balance Growth" Padding="4, 0, 4, 0" HorzAlign="Left" VertAlign="Center" Font="Arial, 8pt" TextFill.Color="136, 136, 136"/>
+      <TextObject Name="Val27" Left="195" Top="178" Width="145" Height="16" Border.Lines="Bottom" Border.Color="221, 221, 221" Text="[FormatPct([Table1.VendorBalanceGrowth])]" Padding="4, 0, 4, 0" HorzAlign="Right" VertAlign="Center" Font="Arial, 8pt, style=Bold" TextFill.Color="17, 17, 17"/>
+      <TextObject Name="Lbl28" Left="360" Top="178" Width="195" Height="16" Border.Lines="Bottom" Border.Color="221, 221, 221" Text="Vendors Payment" Padding="4, 0, 4, 0" HorzAlign="Left" VertAlign="Center" Font="Arial, 8pt" TextFill.Color="136, 136, 136"/>
+      <TextObject Name="Val29" Left="555" Top="178" Width="145" Height="16" Border.Lines="Bottom" Border.Color="221, 221, 221" Text="[Table1.TotalVendorsPayment]" Format="Number" Format.UseLocale="false" Format.DecimalDigits="2" Format.DecimalSeparator="." Format.GroupSeparator="," Format.NegativePattern="1" Padding="4, 0, 4, 0" HorzAlign="Right" VertAlign="Center" Font="Arial, 8pt, style=Bold" TextFill.Color="17, 17, 17"/>
+      <TextObject Name="Lbl30" Left="0" Top="194" Width="195" Height="16" Border.Lines="Bottom" Border.Color="221, 221, 221" Text="Vendor Invoices" Padding="4, 0, 4, 0" HorzAlign="Left" VertAlign="Center" Font="Arial, 8pt" TextFill.Color="136, 136, 136"/>
+      <TextObject Name="Val31" Left="195" Top="194" Width="145" Height="16" Border.Lines="Bottom" Border.Color="221, 221, 221" Text="[Table1.TotalVendorsInvoices]" Format="Number" Format.UseLocale="false" Format.DecimalDigits="2" Format.DecimalSeparator="." Format.GroupSeparator="," Format.NegativePattern="1" Padding="4, 0, 4, 0" HorzAlign="Right" VertAlign="Center" Font="Arial, 8pt, style=Bold" TextFill.Color="17, 17, 17"/>
+      <TextObject Name="Lbl32" Left="360" Top="194" Width="195" Height="16" Border.Lines="Bottom" Border.Color="221, 221, 221" Text="Vendor Payment Ratio" Padding="4, 0, 4, 0" HorzAlign="Left" VertAlign="Center" Font="Arial, 8pt" TextFill.Color="136, 136, 136"/>
+      <TextObject Name="Val33" Left="555" Top="194" Width="145" Height="16" Border.Lines="Bottom" Border.Color="221, 221, 221" Text="[Table1.VendorPaymentRatio]" Format="Number" Format.UseLocale="false" Format.DecimalDigits="2" Format.DecimalSeparator="." Format.GroupSeparator="" Format.NegativePattern="1" Padding="4, 0, 4, 0" HorzAlign="Right" VertAlign="Center" Font="Arial, 8pt, style=Bold" TextFill.Color="17, 17, 17"/>
+      <TextObject Name="SecHdr34" Left="0" Top="218" Width="700" Height="22" Fill.Color="27, 42, 74" Text="Customer" Padding="6, 0, 6, 0" HorzAlign="Left" VertAlign="Center" Font="Arial, 10pt, style=Bold" TextFill.Color="White"/>
+      <TextObject Name="Lbl35" Left="0" Top="240" Width="195" Height="16" Border.Lines="Bottom" Border.Color="221, 221, 221" Text="Current Customer Balance" Padding="4, 0, 4, 0" HorzAlign="Left" VertAlign="Center" Font="Arial, 8pt" TextFill.Color="136, 136, 136"/>
+      <TextObject Name="Val36" Left="195" Top="240" Width="145" Height="16" Border.Lines="Bottom" Border.Color="221, 221, 221" Text="[Table1.CustomerBalance]" Format="Number" Format.UseLocale="false" Format.DecimalDigits="2" Format.DecimalSeparator="." Format.GroupSeparator="," Format.NegativePattern="1" Padding="4, 0, 4, 0" HorzAlign="Right" VertAlign="Center" Font="Arial, 8pt, style=Bold" TextFill.Color="17, 17, 17"/>
+      <TextObject Name="Lbl37" Left="360" Top="240" Width="195" Height="16" Border.Lines="Bottom" Border.Color="221, 221, 221" Text="Customer Open Balance" Padding="4, 0, 4, 0" HorzAlign="Left" VertAlign="Center" Font="Arial, 8pt" TextFill.Color="136, 136, 136"/>
+      <TextObject Name="Val38" Left="555" Top="240" Width="145" Height="16" Border.Lines="Bottom" Border.Color="221, 221, 221" Text="[Table1.CustomerOpenBalance]" Format="Number" Format.UseLocale="false" Format.DecimalDigits="2" Format.DecimalSeparator="." Format.GroupSeparator="," Format.NegativePattern="1" Padding="4, 0, 4, 0" HorzAlign="Right" VertAlign="Center" Font="Arial, 8pt, style=Bold" TextFill.Color="17, 17, 17"/>
+      <TextObject Name="Lbl39" Left="0" Top="256" Width="195" Height="16" Border.Lines="Bottom" Border.Color="221, 221, 221" Text="Customer Balance Growth" Padding="4, 0, 4, 0" HorzAlign="Left" VertAlign="Center" Font="Arial, 8pt" TextFill.Color="136, 136, 136"/>
+      <TextObject Name="Val40" Left="195" Top="256" Width="145" Height="16" Border.Lines="Bottom" Border.Color="221, 221, 221" Text="[FormatPct([Table1.CustomerBalanceGrowth])]" Padding="4, 0, 4, 0" HorzAlign="Right" VertAlign="Center" Font="Arial, 8pt, style=Bold" TextFill.Color="17, 17, 17"/>
+      <TextObject Name="Lbl41" Left="360" Top="256" Width="195" Height="16" Border.Lines="Bottom" Border.Color="221, 221, 221" Text="Customer Payment" Padding="4, 0, 4, 0" HorzAlign="Left" VertAlign="Center" Font="Arial, 8pt" TextFill.Color="136, 136, 136"/>
+      <TextObject Name="Val42" Left="555" Top="256" Width="145" Height="16" Border.Lines="Bottom" Border.Color="221, 221, 221" Text="[Table1.TotalCustomerPayment]" Format="Number" Format.UseLocale="false" Format.DecimalDigits="2" Format.DecimalSeparator="." Format.GroupSeparator="," Format.NegativePattern="1" Padding="4, 0, 4, 0" HorzAlign="Right" VertAlign="Center" Font="Arial, 8pt, style=Bold" TextFill.Color="17, 17, 17"/>
+      <TextObject Name="Lbl43" Left="0" Top="272" Width="195" Height="16" Border.Lines="Bottom" Border.Color="221, 221, 221" Text="Customer Invoices" Padding="4, 0, 4, 0" HorzAlign="Left" VertAlign="Center" Font="Arial, 8pt" TextFill.Color="136, 136, 136"/>
+      <TextObject Name="Val44" Left="195" Top="272" Width="145" Height="16" Border.Lines="Bottom" Border.Color="221, 221, 221" Text="[Table1.TotalCustomerSales]" Format="Number" Format.UseLocale="false" Format.DecimalDigits="2" Format.DecimalSeparator="." Format.GroupSeparator="," Format.NegativePattern="1" Padding="4, 0, 4, 0" HorzAlign="Right" VertAlign="Center" Font="Arial, 8pt, style=Bold" TextFill.Color="17, 17, 17"/>
+      <TextObject Name="Lbl45" Left="360" Top="272" Width="195" Height="16" Border.Lines="Bottom" Border.Color="221, 221, 221" Text="Customer Payment Ratio" Padding="4, 0, 4, 0" HorzAlign="Left" VertAlign="Center" Font="Arial, 8pt" TextFill.Color="136, 136, 136"/>
+      <TextObject Name="Val46" Left="555" Top="272" Width="145" Height="16" Border.Lines="Bottom" Border.Color="221, 221, 221" Text="[SafeDivide([Table1.TotalCustomerPayment],[Table1.TotalCustomerSales])]" Format="Number" Format.UseLocale="false" Format.DecimalDigits="2" Format.DecimalSeparator="." Format.GroupSeparator="" Format.NegativePattern="1" Padding="4, 0, 4, 0" HorzAlign="Right" VertAlign="Center" Font="Arial, 8pt, style=Bold" TextFill.Color="17, 17, 17"/>
+      <TextObject Name="SecHdr47" Left="0" Top="296" Width="700" Height="22" Fill.Color="27, 42, 74" Text="Payments &amp; Collections" Padding="6, 0, 6, 0" HorzAlign="Left" VertAlign="Center" Font="Arial, 10pt, style=Bold" TextFill.Color="White"/>
+      <TextObject Name="Lbl48" Left="0" Top="318" Width="195" Height="16" Border.Lines="Bottom" Border.Color="221, 221, 221" Text="Total Collection" Padding="4, 0, 4, 0" HorzAlign="Left" VertAlign="Center" Font="Arial, 8pt" TextFill.Color="136, 136, 136"/>
+      <TextObject Name="Val49" Left="195" Top="318" Width="145" Height="16" Border.Lines="Bottom" Border.Color="221, 221, 221" Text="[Table1.TotalCollection]" Format="Number" Format.UseLocale="false" Format.DecimalDigits="2" Format.DecimalSeparator="." Format.GroupSeparator="," Format.NegativePattern="1" Padding="4, 0, 4, 0" HorzAlign="Right" VertAlign="Center" Font="Arial, 8pt, style=Bold" TextFill.Color="17, 17, 17"/>
+      <TextObject Name="Lbl50" Left="360" Top="318" Width="195" Height="16" Border.Lines="Bottom" Border.Color="221, 221, 221" Text="Check Collection" Padding="4, 0, 4, 0" HorzAlign="Left" VertAlign="Center" Font="Arial, 8pt" TextFill.Color="136, 136, 136"/>
+      <TextObject Name="Val51" Left="555" Top="318" Width="145" Height="16" Border.Lines="Bottom" Border.Color="221, 221, 221" Text="[Table1.TotalCheckCollection]" Format="Number" Format.UseLocale="false" Format.DecimalDigits="2" Format.DecimalSeparator="." Format.GroupSeparator="," Format.NegativePattern="1" Padding="4, 0, 4, 0" HorzAlign="Right" VertAlign="Center" Font="Arial, 8pt, style=Bold" TextFill.Color="17, 17, 17"/>
+      <TextObject Name="Lbl52" Left="0" Top="334" Width="195" Height="16" Border.Lines="Bottom" Border.Color="221, 221, 221" Text="Check Paid" Padding="4, 0, 4, 0" HorzAlign="Left" VertAlign="Center" Font="Arial, 8pt" TextFill.Color="136, 136, 136"/>
+      <TextObject Name="Val53" Left="195" Top="334" Width="145" Height="16" Border.Lines="Bottom" Border.Color="221, 221, 221" Text="[Table1.TotalCheckPaid]" Format="Number" Format.UseLocale="false" Format.DecimalDigits="2" Format.DecimalSeparator="." Format.GroupSeparator="," Format.NegativePattern="1" Padding="4, 0, 4, 0" HorzAlign="Right" VertAlign="Center" Font="Arial, 8pt, style=Bold" TextFill.Color="17, 17, 17"/>
+      <TextObject Name="Lbl54" Left="360" Top="334" Width="195" Height="16" Border.Lines="Bottom" Border.Color="221, 221, 221" Text="Due Check" Padding="4, 0, 4, 0" HorzAlign="Left" VertAlign="Center" Font="Arial, 8pt" TextFill.Color="136, 136, 136"/>
+      <TextObject Name="Val55" Left="555" Top="334" Width="145" Height="16" Border.Lines="Bottom" Border.Color="221, 221, 221" Text="[Table1.TotalDueCheck]" Format="Number" Format.UseLocale="false" Format.DecimalDigits="2" Format.DecimalSeparator="." Format.GroupSeparator="," Format.NegativePattern="1" Padding="4, 0, 4, 0" HorzAlign="Right" VertAlign="Center" Font="Arial, 8pt, style=Bold" TextFill.Color="17, 17, 17"/>
+      <TextObject Name="Lbl56" Left="0" Top="350" Width="195" Height="16" Border.Lines="Bottom" Border.Color="221, 221, 221" Text="Customer Payment (Yearly)" Padding="4, 0, 4, 0" HorzAlign="Left" VertAlign="Center" Font="Arial, 8pt" TextFill.Color="136, 136, 136"/>
+      <TextObject Name="Val57" Left="195" Top="350" Width="145" Height="16" Border.Lines="Bottom" Border.Color="221, 221, 221" Text="[Table1.CustomerPaymentYearly]" Format="Number" Format.UseLocale="false" Format.DecimalDigits="2" Format.DecimalSeparator="." Format.GroupSeparator="," Format.NegativePattern="1" Padding="4, 0, 4, 0" HorzAlign="Right" VertAlign="Center" Font="Arial, 8pt, style=Bold" TextFill.Color="17, 17, 17"/>
+      <TextObject Name="SecHdr58" Left="0" Top="374" Width="700" Height="22" Fill.Color="27, 42, 74" Text="Sales" Padding="6, 0, 6, 0" HorzAlign="Left" VertAlign="Center" Font="Arial, 10pt, style=Bold" TextFill.Color="White"/>
+      <TextObject Name="Lbl59" Left="0" Top="396" Width="195" Height="16" Border.Lines="Bottom" Border.Color="221, 221, 221" Text="Customer Sales" Padding="4, 0, 4, 0" HorzAlign="Left" VertAlign="Center" Font="Arial, 8pt" TextFill.Color="136, 136, 136"/>
+      <TextObject Name="Val60" Left="195" Top="396" Width="145" Height="16" Border.Lines="Bottom" Border.Color="221, 221, 221" Text="[Table1.TotalCustomerSales]" Format="Number" Format.UseLocale="false" Format.DecimalDigits="2" Format.DecimalSeparator="." Format.GroupSeparator="," Format.NegativePattern="1" Padding="4, 0, 4, 0" HorzAlign="Right" VertAlign="Center" Font="Arial, 8pt, style=Bold" TextFill.Color="17, 17, 17"/>
+      <TextObject Name="Lbl61" Left="360" Top="396" Width="195" Height="16" Border.Lines="Bottom" Border.Color="221, 221, 221" Text="YTD Sales 2025" Padding="4, 0, 4, 0" HorzAlign="Left" VertAlign="Center" Font="Arial, 8pt" TextFill.Color="136, 136, 136"/>
+      <TextObject Name="Val62" Left="555" Top="396" Width="145" Height="16" Border.Lines="Bottom" Border.Color="221, 221, 221" Text="[Table1.YTDSales2025]" Format="Number" Format.UseLocale="false" Format.DecimalDigits="2" Format.DecimalSeparator="." Format.GroupSeparator="," Format.NegativePattern="1" Padding="4, 0, 4, 0" HorzAlign="Right" VertAlign="Center" Font="Arial, 8pt, style=Bold" TextFill.Color="17, 17, 17"/>
+      <TextObject Name="Lbl63" Left="0" Top="412" Width="195" Height="16" Border.Lines="Bottom" Border.Color="221, 221, 221" Text="YTD Sales 2026" Padding="4, 0, 4, 0" HorzAlign="Left" VertAlign="Center" Font="Arial, 8pt" TextFill.Color="136, 136, 136"/>
+      <TextObject Name="Val64" Left="195" Top="412" Width="145" Height="16" Border.Lines="Bottom" Border.Color="221, 221, 221" Text="[Table1.YTDSales2026]" Format="Number" Format.UseLocale="false" Format.DecimalDigits="2" Format.DecimalSeparator="." Format.GroupSeparator="," Format.NegativePattern="1" Padding="4, 0, 4, 0" HorzAlign="Right" VertAlign="Center" Font="Arial, 8pt, style=Bold" TextFill.Color="17, 17, 17"/>
+      <TextObject Name="Lbl65" Left="360" Top="412" Width="195" Height="16" Border.Lines="Bottom" Border.Color="221, 221, 221" Text="YTD Sales Growth" Padding="4, 0, 4, 0" HorzAlign="Left" VertAlign="Center" Font="Arial, 8pt" TextFill.Color="136, 136, 136"/>
+      <TextObject Name="Val66" Left="555" Top="412" Width="145" Height="16" Border.Lines="Bottom" Border.Color="221, 221, 221" Text="[FormatPct([Table1.YTDSalesGrowthPct])]" Padding="4, 0, 4, 0" HorzAlign="Right" VertAlign="Center" Font="Arial, 8pt, style=Bold" TextFill.Color="17, 17, 17"/>
+      <TextObject Name="Lbl67" Left="0" Top="428" Width="195" Height="16" Border.Lines="Bottom" Border.Color="221, 221, 221" Text="Item Amount" Padding="4, 0, 4, 0" HorzAlign="Left" VertAlign="Center" Font="Arial, 8pt" TextFill.Color="136, 136, 136"/>
+      <TextObject Name="Val68" Left="195" Top="428" Width="145" Height="16" Border.Lines="Bottom" Border.Color="221, 221, 221" Text="[Table1.TotalItemAmount]" Format="Number" Format.UseLocale="false" Format.DecimalDigits="2" Format.DecimalSeparator="." Format.GroupSeparator="," Format.NegativePattern="1" Padding="4, 0, 4, 0" HorzAlign="Right" VertAlign="Center" Font="Arial, 8pt, style=Bold" TextFill.Color="17, 17, 17"/>
+      <TextObject Name="Lbl69" Left="360" Top="428" Width="195" Height="16" Border.Lines="Bottom" Border.Color="221, 221, 221" Text="Invoice Discount" Padding="4, 0, 4, 0" HorzAlign="Left" VertAlign="Center" Font="Arial, 8pt" TextFill.Color="136, 136, 136"/>
+      <TextObject Name="Val70" Left="555" Top="428" Width="145" Height="16" Border.Lines="Bottom" Border.Color="221, 221, 221" Text="[Table1.TotalInvoiceDiscount]" Format="Number" Format.UseLocale="false" Format.DecimalDigits="2" Format.DecimalSeparator="." Format.GroupSeparator="," Format.NegativePattern="1" Padding="4, 0, 4, 0" HorzAlign="Right" VertAlign="Center" Font="Arial, 8pt, style=Bold" TextFill.Color="17, 17, 17"/>
+      <TextObject Name="Lbl71" Left="0" Top="444" Width="195" Height="16" Border.Lines="Bottom" Border.Color="221, 221, 221" Text="Customer Extra Discount" Padding="4, 0, 4, 0" HorzAlign="Left" VertAlign="Center" Font="Arial, 8pt" TextFill.Color="136, 136, 136"/>
+      <TextObject Name="Val72" Left="195" Top="444" Width="145" Height="16" Border.Lines="Bottom" Border.Color="221, 221, 221" Text="[Table1.TotalCustomerExtraDiscount]" Format="Number" Format.UseLocale="false" Format.DecimalDigits="2" Format.DecimalSeparator="." Format.GroupSeparator="," Format.NegativePattern="1" Padding="4, 0, 4, 0" HorzAlign="Right" VertAlign="Center" Font="Arial, 8pt, style=Bold" TextFill.Color="17, 17, 17"/>
+      <TextObject Name="SecHdr73" Left="0" Top="468" Width="700" Height="22" Fill.Color="27, 42, 74" Text="Sales Details" Padding="6, 0, 6, 0" HorzAlign="Left" VertAlign="Center" Font="Arial, 10pt, style=Bold" TextFill.Color="White"/>
+      <TextObject Name="Lbl74" Left="0" Top="490" Width="195" Height="16" Border.Lines="Bottom" Border.Color="221, 221, 221" Text="Whole Sales" Padding="4, 0, 4, 0" HorzAlign="Left" VertAlign="Center" Font="Arial, 8pt" TextFill.Color="136, 136, 136"/>
+      <TextObject Name="Val75" Left="195" Top="490" Width="145" Height="16" Border.Lines="Bottom" Border.Color="221, 221, 221" Text="[Table1.WholeSales]" Format="Number" Format.UseLocale="false" Format.DecimalDigits="2" Format.DecimalSeparator="." Format.GroupSeparator="," Format.NegativePattern="1" Padding="4, 0, 4, 0" HorzAlign="Right" VertAlign="Center" Font="Arial, 8pt, style=Bold" TextFill.Color="17, 17, 17"/>
+      <TextObject Name="Lbl76" Left="360" Top="490" Width="195" Height="16" Border.Lines="Bottom" Border.Color="221, 221, 221" Text="Customer Modern Sales" Padding="4, 0, 4, 0" HorzAlign="Left" VertAlign="Center" Font="Arial, 8pt" TextFill.Color="136, 136, 136"/>
+      <TextObject Name="Val77" Left="555" Top="490" Width="145" Height="16" Border.Lines="Bottom" Border.Color="221, 221, 221" Text="[Table1.CustomerModernSales]" Format="Number" Format.UseLocale="false" Format.DecimalDigits="2" Format.DecimalSeparator="." Format.GroupSeparator="," Format.NegativePattern="1" Padding="4, 0, 4, 0" HorzAlign="Right" VertAlign="Center" Font="Arial, 8pt, style=Bold" TextFill.Color="17, 17, 17"/>
+      <TextObject Name="SecHdr78" Left="0" Top="514" Width="700" Height="22" Fill.Color="27, 42, 74" Text="Expenses &amp; Ratios" Padding="6, 0, 6, 0" HorzAlign="Left" VertAlign="Center" Font="Arial, 10pt, style=Bold" TextFill.Color="White"/>
+      <TextObject Name="Lbl79" Left="0" Top="536" Width="195" Height="16" Border.Lines="Bottom" Border.Color="221, 221, 221" Text="Expenses" Padding="4, 0, 4, 0" HorzAlign="Left" VertAlign="Center" Font="Arial, 8pt" TextFill.Color="136, 136, 136"/>
+      <TextObject Name="Val80" Left="195" Top="536" Width="145" Height="16" Border.Lines="Bottom" Border.Color="221, 221, 221" Text="[Table1.Expenses]" Format="Number" Format.UseLocale="false" Format.DecimalDigits="2" Format.DecimalSeparator="." Format.GroupSeparator="," Format.NegativePattern="1" Padding="4, 0, 4, 0" HorzAlign="Right" VertAlign="Center" Font="Arial, 8pt, style=Bold" TextFill.Color="17, 17, 17"/>
+      <TextObject Name="Lbl81" Left="360" Top="536" Width="195" Height="16" Border.Lines="Bottom" Border.Color="221, 221, 221" Text="Year Expenses" Padding="4, 0, 4, 0" HorzAlign="Left" VertAlign="Center" Font="Arial, 8pt" TextFill.Color="136, 136, 136"/>
+      <TextObject Name="Val82" Left="555" Top="536" Width="145" Height="16" Border.Lines="Bottom" Border.Color="221, 221, 221" Text="[Table1.TotalYearExpenses]" Format="Number" Format.UseLocale="false" Format.DecimalDigits="2" Format.DecimalSeparator="." Format.GroupSeparator="," Format.NegativePattern="1" Padding="4, 0, 4, 0" HorzAlign="Right" VertAlign="Center" Font="Arial, 8pt, style=Bold" TextFill.Color="17, 17, 17"/>
+      <TextObject Name="Lbl83" Left="0" Top="552" Width="195" Height="16" Border.Lines="Bottom" Border.Color="221, 221, 221" Text="Expenses Ratio" Padding="4, 0, 4, 0" HorzAlign="Left" VertAlign="Center" Font="Arial, 8pt" TextFill.Color="136, 136, 136"/>
+      <TextObject Name="Val84" Left="195" Top="552" Width="145" Height="16" Border.Lines="Bottom" Border.Color="221, 221, 221" Text="[FormatPct([Table1.ExpensesRatio])]" Padding="4, 0, 4, 0" HorzAlign="Right" VertAlign="Center" Font="Arial, 8pt, style=Bold" TextFill.Color="17, 17, 17"/>
+    </DataBand>
+    <PageFooterBand Name="PageFooter1" Top="640" Width="700" Height="24">
+      <TextObject Name="FooterDate" Left="0" Top="4" Width="350" Height="16" Text="Printed [Date]" Padding="10, 0, 0, 0" VertAlign="Center" Font="Arial, 8pt" TextFill.Color="136, 136, 136"/>
+      <TextObject Name="FooterPage" Left="350" Top="4" Width="350" Height="16" Text="Page [Page]" Padding="0, 0, 10, 0" HorzAlign="Right" VertAlign="Center" Font="Arial, 8pt" TextFill.Color="136, 136, 136"/>
+    </PageFooterBand>
+  </ReportPage>
+</Report>

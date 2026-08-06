@@ -1,6 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { apiCall } from '../shared/api.js';
 
+const REPORT_API_BASE = 'https://sila.silasystem.com:7102/api/reports';
+// PLS.ReportsMaster ReportID (seeded by RegisterCashFlowReport.sql).
+const CASH_FLOW_REPORT_ID = 5;
+
 function fmtMoney(v) {
   const n = Number(v) || 0;
   const color = n < 0 ? 'var(--red)' : 'var(--text)';
@@ -84,23 +88,33 @@ const PANEL_GROUPS = [
   ]}
 ];
 
-function MonthSection({ row, open, onToggle }) {
+function MonthSection({ row, open, onToggle, onPrint }) {
   const label = `${MONTHS.find(m => m.value === Number(row.Month))?.label || row.Month} ${row.Year}`;
   return (
     <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 16, boxShadow: 'var(--shadow)', overflow: 'hidden' }}>
       <div
-        onClick={onToggle}
         style={{
           padding: '14px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          cursor: 'pointer', userSelect: 'none',
+          userSelect: 'none',
           background: open ? 'linear-gradient(135deg, var(--orange), var(--orange2))' : 'var(--soft)',
           color: open ? '#fff' : 'var(--text)'
         }}
       >
-        <span style={{ fontSize: 14.5, fontWeight: 800, display: 'flex', alignItems: 'center', gap: 8 }}>
+        <span onClick={onToggle} style={{ cursor: 'pointer', fontSize: 14.5, fontWeight: 800, display: 'flex', alignItems: 'center', gap: 8, flex: 1 }}>
           📅 {label}
         </span>
-        <span style={{ fontSize: 12, transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s ease' }}>▾</span>
+        <button
+          onClick={(e) => { e.stopPropagation(); onPrint(row); }}
+          style={{
+            height: 30, padding: '0 14px', marginRight: 10, borderRadius: 8,
+            border: open ? '1px solid rgba(255,255,255,0.4)' : '1px solid var(--border)',
+            background: open ? 'rgba(255,255,255,0.15)' : 'var(--surface)', color: open ? '#fff' : 'var(--text)',
+            fontSize: 12, fontWeight: 700, cursor: 'pointer'
+          }}
+        >
+          🖨️ Print
+        </button>
+        <span onClick={onToggle} style={{ cursor: 'pointer', fontSize: 12, transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s ease' }}>▾</span>
       </div>
 
       {open && (
@@ -162,6 +176,9 @@ export default function CashFlow({ user }) {
   const [error, setError] = useState(null);
   const [month, setMonth] = useState('');
   const [openSet, setOpenSet] = useState(new Set());
+  const [reportPreviewUrl, setReportPreviewUrl] = useState(null);
+  const [reportLoading, setReportLoading] = useState(false);
+  const [printRow, setPrintRow] = useState(null);
 
   const loadData = async () => {
     try {
@@ -194,6 +211,12 @@ export default function CashFlow({ user }) {
       next.has(yearMonth) ? next.delete(yearMonth) : next.add(yearMonth);
       return next;
     });
+  }
+
+  function handlePrint(row) {
+    setPrintRow(row);
+    setReportLoading(true);
+    setReportPreviewUrl(`${REPORT_API_BASE}/${CASH_FLOW_REPORT_ID}/${row.YearMonth}`);
   }
 
   return (
@@ -258,11 +281,56 @@ export default function CashFlow({ user }) {
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
             {data.map(row => (
-              <MonthSection key={row.YearMonth} row={row} open={openSet.has(row.YearMonth)} onToggle={() => toggle(row.YearMonth)} />
+              <MonthSection key={row.YearMonth} row={row} open={openSet.has(row.YearMonth)} onToggle={() => toggle(row.YearMonth)} onPrint={handlePrint} />
             ))}
           </div>
         )}
       </div>
+
+      {reportPreviewUrl && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.6)', zIndex: 1100, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ width: '90vw', height: '92vh', background: 'var(--bg)', borderRadius: 12, display: 'flex', flexDirection: 'column', overflow: 'hidden', boxShadow: '0 20px 60px rgba(0,0,0,0.4)' }}>
+            <div style={{ padding: '14px 20px', background: 'var(--surface)', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <h3 style={{ margin: 0, fontSize: 15, fontWeight: 800, color: 'var(--text)' }}>
+                Cash Flow Report — {MONTHS.find(m => m.value === Number(printRow?.Month))?.label} {printRow?.Year}
+              </h3>
+              <div style={{ display: 'flex', gap: 10 }}>
+                <a
+                  href={`${reportPreviewUrl}/download`}
+                  download={`CashFlow_${printRow?.YearMonth}.pdf`}
+                  style={{
+                    height: 32, padding: '0 16px', background: 'linear-gradient(135deg, var(--orange), var(--orange2))',
+                    color: '#fff', border: 'none', borderRadius: 8, fontSize: 12.5, fontWeight: 700, cursor: 'pointer',
+                    display: 'flex', alignItems: 'center', textDecoration: 'none'
+                  }}
+                >
+                  ⬇ Download
+                </a>
+                <button
+                  onClick={() => { setReportPreviewUrl(null); setReportLoading(false); setPrintRow(null); }}
+                  style={{ width: 32, height: 32, borderRadius: 16, border: 'none', background: 'var(--soft)', color: 'var(--text)', fontSize: 18, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                >
+                  ×
+                </button>
+              </div>
+            </div>
+            <div style={{ flex: 1, position: 'relative' }}>
+              {reportLoading && (
+                <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 12, background: '#fff', zIndex: 1 }}>
+                  <div className="spinner"></div>
+                  <div style={{ fontSize: 12.5, color: 'var(--muted)', fontWeight: 600 }}>Generating report…</div>
+                </div>
+              )}
+              <iframe
+                src={reportPreviewUrl}
+                title="Cash Flow Report Preview"
+                onLoad={() => setReportLoading(false)}
+                style={{ width: '100%', height: '100%', border: 'none', background: '#fff' }}
+              />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
