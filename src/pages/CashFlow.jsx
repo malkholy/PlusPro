@@ -44,7 +44,6 @@ const PANEL_GROUPS = [
   { title: 'Cash Position', icon: '🏦', accent: '#ff650f', items: [
     ['TreasuryCashEGP', 'Treasury Cash'], ['BankCashEGP', 'Bank Cash'],
     ['TreasuryCashEGP_Open', 'Treasury Cash (Open)'], ['BankCashEGP_Open', 'Bank Cash (Open)'],
-    ['TreasuryCashOpenYear', 'Treasury Cash (Open Year)'], ['BankCashOpenYear', 'Bank Cash (Open Year)'],
     ['CashState', 'Cash State']
   ]},
   { title: 'Payables & Receivables', icon: '⚖️', accent: '#34d399', items: [
