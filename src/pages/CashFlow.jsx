@@ -70,11 +70,13 @@ const PANEL_GROUPS = [
     ['CustomerPaymentYearly', 'Customer Payment (Yearly)']
   ]},
   { title: 'Sales', icon: '📈', accent: '#38bdf8', items: [
-    ['TotalCustomerSales', 'Customer Sales'], ['WholeSales', 'Whole Sales'],
-    ['CustomerModernSales', 'Customer Modern Sales'], ['YTDSales2025', 'YTD Sales 2025'],
+    ['TotalCustomerSales', 'Customer Sales'], ['YTDSales2025', 'YTD Sales 2025'],
     ['YTDSales2026', 'YTD Sales 2026'], ['YTDSalesGrowthPct', 'YTD Sales Growth', fmtPct],
     ['TotalItemAmount', 'Item Amount'], ['TotalInvoiceDiscount', 'Invoice Discount'],
     ['TotalCustomerExtraDiscount', 'Customer Extra Discount']
+  ]},
+  { title: 'Sales Details', icon: '🛒', accent: '#c084fc', items: [
+    ['WholeSales', 'Whole Sales'], ['CustomerModernSales', 'Customer Modern Sales']
   ]},
   { title: 'Expenses & Ratios', icon: '📊', accent: '#f472b6', items: [
     ['Expenses', 'Expenses'], ['TotalYearExpenses', 'Year Expenses'],
