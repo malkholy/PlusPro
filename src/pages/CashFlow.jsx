@@ -1,10 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { apiCall } from '../shared/api.js';
 
-const REPORT_API_BASE = 'https://sila.silasystem.com:7102/api/reports';
-// PLS.ReportsMaster ReportID (seeded by RegisterCashFlowReport.sql).
-const CASH_FLOW_REPORT_ID = 5;
-
 function fmtMoney(v) {
   const n = Number(v) || 0;
   const color = n < 0 ? 'var(--red)' : 'var(--text)';
@@ -20,21 +16,6 @@ function fmtPct(v) {
 
 function fmtRatio(v) {
   return (Number(v) || 0).toFixed(2);
-}
-
-// Plain-text equivalents of the JSX formatters above, for the built-in
-// (non-FastReport) print view -- built as an HTML string, not React.
-function plainMoney(v) {
-  return (Number(v) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-}
-function plainPct(v) {
-  const n = Number(v) || 0;
-  return (n > 0 ? '+' : '') + n.toFixed(2) + '%';
-}
-function plainFormat(formatter, value) {
-  if (formatter === fmtPct) return plainPct(value);
-  if (!formatter || formatter === fmtMoney) return plainMoney(value);
-  return String(formatter(value)); // fmtRatio already returns plain text
 }
 
 const MONTHS = [
@@ -103,7 +84,7 @@ const PANEL_GROUPS = [
   ]}
 ];
 
-function MonthSection({ row, open, onToggle, onPrint }) {
+function MonthSection({ row, open, onToggle, onPrint, printing }) {
   const label = `${MONTHS.find(m => m.value === Number(row.Month))?.label || row.Month} ${row.Year}`;
   return (
     <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 16, boxShadow: 'var(--shadow)', overflow: 'hidden' }}>
@@ -133,7 +114,11 @@ function MonthSection({ row, open, onToggle, onPrint }) {
       </div>
 
       {open && (
-        <div style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 20 }}>
+        <div className={printing ? 'cf-print-target' : ''} style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 20 }}>
+          <div className="cf-print-only" style={{ display: 'none' }}>
+            <h1 style={{ margin: '0 0 2px 0', fontSize: 20, color: '#1b2a4a' }}>Cash Flow Report</h1>
+            <h2 style={{ margin: '0 0 16px 0', fontSize: 13, color: '#555', fontWeight: 'normal' }}>{label}</h2>
+          </div>
           {/* Headline KPI strip */}
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 14 }}>
             {HERO_METRICS.map(([key, label, icon]) => (
@@ -191,21 +176,9 @@ export default function CashFlow({ user }) {
   const [error, setError] = useState(null);
   const [month, setMonth] = useState('');
   const [openSet, setOpenSet] = useState(new Set());
-  const [reportPreviewUrl, setReportPreviewUrl] = useState(null);
-  const [reportLoading, setReportLoading] = useState(false);
-  const [printRow, setPrintRow] = useState(null);
-  // PLS.ReportsMaster.IsFastReport for CASH_FLOW_REPORT_ID -- null until
-  // fetched, defaults to true (existing FastReport flow) if lookup fails.
-  const [isFastReport, setIsFastReport] = useState(true);
-
-  useEffect(() => {
-    apiCall('GetReportsMaster', {}, {}, 'plus').then(res => {
-      if (res.State === 0) {
-        const report = (res.List0 || []).find(r => r.ReportID === CASH_FLOW_REPORT_ID);
-        if (report) setIsFastReport(report.IsFastReport !== 0 && report.IsFastReport !== false);
-      }
-    }).catch(() => {});
-  }, []);
+  // YearMonth currently being printed -- drives the .cf-print-target CSS
+  // (print current on-screen layout directly, no FastReport/report server).
+  const [printingMonth, setPrintingMonth] = useState(null);
 
   const loadData = async () => {
     try {
@@ -240,64 +213,22 @@ export default function CashFlow({ user }) {
     });
   }
 
+  // Prints the current on-screen panel layout for this month directly (no
+  // FastReport/report server): expand the section if needed, mark it as the
+  // print target, then trigger the browser print dialog once it's rendered.
   function handlePrint(row) {
-    if (isFastReport) {
-      setPrintRow(row);
-      setReportLoading(true);
-      setReportPreviewUrl(`${REPORT_API_BASE}/${CASH_FLOW_REPORT_ID}/${row.YearMonth}`);
-    } else {
-      printBuiltInReport(row);
-    }
+    setOpenSet(prev => new Set(prev).add(row.YearMonth));
+    setPrintingMonth(row.YearMonth);
   }
 
-  // No-.frx fallback: renders the same section/label data as a standalone
-  // print-friendly HTML document in a new tab and triggers the browser's
-  // print dialog directly -- no NewReleaseReportApi/FastReport dependency.
-  function printBuiltInReport(row) {
-    const win = window.open('', '_blank', 'width=900,height=1000');
-    if (!win) return;
-    const monthLabel = `${MONTHS.find(m => m.value === Number(row.Month))?.label || row.Month} ${row.Year}`;
-
-    const sectionsHtml = PANEL_GROUPS.map(group => `
-      <div class="section">
-        <div class="section-title">${group.title}</div>
-        <table>
-          ${group.items.map(([key, label, formatter]) => {
-            const raw = typeof key === 'function' ? key(row) : row[key];
-            return `<tr><td class="label">${label}</td><td class="value">${plainFormat(formatter, raw)}</td></tr>`;
-          }).join('')}
-        </table>
-      </div>
-    `).join('');
-
-    win.document.write(`<!DOCTYPE html>
-<html>
-<head>
-<meta charset="utf-8">
-<title>Cash Flow Report - ${monthLabel}</title>
-<style>
-  body { font-family: Arial, sans-serif; padding: 24px; color: #111; }
-  h1 { font-size: 20px; margin: 0 0 2px 0; color: #1b2a4a; }
-  h2 { font-size: 13px; color: #555; margin: 0 0 20px 0; font-weight: normal; }
-  .section { margin-bottom: 12px; break-inside: avoid; }
-  .section-title { background: #1b2a4a; color: #fff; padding: 6px 10px; font-size: 12px; font-weight: bold; }
-  table { width: 100%; border-collapse: collapse; }
-  td { padding: 4px 10px; font-size: 11.5px; border-bottom: 1px solid #eee; }
-  .label { color: #666; width: 60%; }
-  .value { text-align: right; font-weight: bold; width: 40%; }
-  @media print { body { padding: 0; } }
-</style>
-</head>
-<body>
-  <h1>Cash Flow Report</h1>
-  <h2>${monthLabel}</h2>
-  ${sectionsHtml}
-</body>
-</html>`);
-    win.document.close();
-    win.focus();
-    win.print();
-  }
+  useEffect(() => {
+    if (printingMonth == null || !openSet.has(printingMonth)) return;
+    const id = requestAnimationFrame(() => {
+      window.print();
+      setPrintingMonth(null);
+    });
+    return () => cancelAnimationFrame(id);
+  }, [printingMonth, openSet]);
 
   return (
     <div style={{ height: '100vh', display: 'flex', flexDirection: 'column', background: 'var(--bg)', fontFamily: 'var(--font)', color: 'var(--text)' }}>
@@ -361,56 +292,27 @@ export default function CashFlow({ user }) {
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
             {data.map(row => (
-              <MonthSection key={row.YearMonth} row={row} open={openSet.has(row.YearMonth)} onToggle={() => toggle(row.YearMonth)} onPrint={handlePrint} />
+              <MonthSection
+                key={row.YearMonth}
+                row={row}
+                open={openSet.has(row.YearMonth)}
+                onToggle={() => toggle(row.YearMonth)}
+                onPrint={handlePrint}
+                printing={printingMonth === row.YearMonth}
+              />
             ))}
           </div>
         )}
       </div>
 
-      {reportPreviewUrl && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.6)', zIndex: 1100, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <div style={{ width: '90vw', height: '92vh', background: 'var(--bg)', borderRadius: 12, display: 'flex', flexDirection: 'column', overflow: 'hidden', boxShadow: '0 20px 60px rgba(0,0,0,0.4)' }}>
-            <div style={{ padding: '14px 20px', background: 'var(--surface)', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <h3 style={{ margin: 0, fontSize: 15, fontWeight: 800, color: 'var(--text)' }}>
-                Cash Flow Report — {MONTHS.find(m => m.value === Number(printRow?.Month))?.label} {printRow?.Year}
-              </h3>
-              <div style={{ display: 'flex', gap: 10 }}>
-                <a
-                  href={`${reportPreviewUrl}/download`}
-                  download={`CashFlow_${printRow?.YearMonth}.pdf`}
-                  style={{
-                    height: 32, padding: '0 16px', background: 'linear-gradient(135deg, var(--orange), var(--orange2))',
-                    color: '#fff', border: 'none', borderRadius: 8, fontSize: 12.5, fontWeight: 700, cursor: 'pointer',
-                    display: 'flex', alignItems: 'center', textDecoration: 'none'
-                  }}
-                >
-                  ⬇ Download
-                </a>
-                <button
-                  onClick={() => { setReportPreviewUrl(null); setReportLoading(false); setPrintRow(null); }}
-                  style={{ width: 32, height: 32, borderRadius: 16, border: 'none', background: 'var(--soft)', color: 'var(--text)', fontSize: 18, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                >
-                  ×
-                </button>
-              </div>
-            </div>
-            <div style={{ flex: 1, position: 'relative' }}>
-              {reportLoading && (
-                <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 12, background: '#fff', zIndex: 1 }}>
-                  <div className="spinner"></div>
-                  <div style={{ fontSize: 12.5, color: 'var(--muted)', fontWeight: 600 }}>Generating report…</div>
-                </div>
-              )}
-              <iframe
-                src={reportPreviewUrl}
-                title="Cash Flow Report Preview"
-                onLoad={() => setReportLoading(false)}
-                style={{ width: '100%', height: '100%', border: 'none', background: '#fff' }}
-              />
-            </div>
-          </div>
-        </div>
-      )}
+      <style>{`
+        @media print {
+          body * { visibility: hidden; }
+          .cf-print-target, .cf-print-target * { visibility: visible; }
+          .cf-print-target { position: absolute; left: 0; top: 0; width: 100%; }
+          .cf-print-only { display: block !important; }
+        }
+      `}</style>
     </div>
   );
 }
