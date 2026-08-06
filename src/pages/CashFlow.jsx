@@ -122,7 +122,7 @@ function MonthSection({ row, open, onToggle, onPrint, printing }) {
           {/* Headline KPI strip */}
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 14 }}>
             {HERO_METRICS.map(([key, label, icon]) => (
-              <div key={key} style={{
+              <div key={key} className="cf-kpi-card" style={{
                 flex: '1 1 160px', minWidth: 160, background: 'var(--soft)', border: '1px solid var(--border)',
                 borderRadius: 12, padding: '12px 16px'
               }}>
@@ -135,9 +135,9 @@ function MonthSection({ row, open, onToggle, onPrint, printing }) {
           </div>
 
           {/* Detail panels */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 16 }}>
+          <div className="cf-panels-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 16 }}>
             {PANEL_GROUPS.map(group => (
-              <div key={group.title} style={{
+              <div key={group.title} className="cf-panel-card" style={{
                 background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 14,
                 borderLeft: `4px solid ${group.accent}`, overflow: 'hidden', transition: 'box-shadow 0.15s ease, transform 0.15s ease'
               }}
@@ -307,10 +307,22 @@ export default function CashFlow({ user }) {
 
       <style>{`
         @media print {
+          @page { size: A4; margin: 14mm; }
           body * { visibility: hidden; }
           .cf-print-target, .cf-print-target * { visibility: visible; }
-          .cf-print-target { position: absolute; left: 0; top: 0; width: 100%; }
+          .cf-print-target {
+            position: absolute; left: 0; top: 0; width: 100%;
+            /* Redefine the theme's CSS vars to print-safe values -- fixes
+               light-on-light / dark-on-dark text if printed from dark mode,
+               since every color in this page is one of these vars, resolved
+               fresh wherever var(...) is used, inline styles included. */
+            --text: #111; --muted: #666; --border: #ddd;
+            --bg: #fff; --surface: #fff; --soft: #f6f6f6;
+            --red: #b91c1c; --green: #16a34a;
+          }
           .cf-print-only { display: block !important; }
+          .cf-panels-grid { gap: 10px !important; }
+          .cf-panel-card, .cf-kpi-card { break-inside: avoid; page-break-inside: avoid; box-shadow: none !important; }
         }
       `}</style>
     </div>
