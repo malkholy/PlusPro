@@ -61,10 +61,11 @@ const PANEL_GROUPS = [
   ]},
   { title: 'Customer', icon: '🏢', accent: '#22d3ee', items: [
     ['CustomerBalance', 'Current Customer Balance'], ['CustomerOpenBalance', 'Customer Open Balance'],
-    ['CustomerBalanceGrowth', 'Customer Balance Growth', fmtPct]
+    ['CustomerBalanceGrowth', 'Customer Balance Growth', fmtPct],
+    ['TotalCustomerPayment', 'Customer Payment'], ['TotalCustomerSales', 'Customer Invoices'],
+    [row => (Number(row.TotalCustomerSales) || 0) ? (Number(row.TotalCustomerPayment) || 0) / Number(row.TotalCustomerSales) : 0, 'Customer Payment Ratio', fmtRatio]
   ]},
   { title: 'Payments & Collections', icon: '💳', accent: '#a78bfa', items: [
-    ['TotalCustomerPayment', 'Customer Payment'],
     ['TotalCollection', 'Total Collection'], ['TotalCheckCollection', 'Check Collection'],
     ['TotalCheckPaid', 'Check Paid'], ['TotalDueCheck', 'Due Check'],
     ['CustomerPaymentYearly', 'Customer Payment (Yearly)']
