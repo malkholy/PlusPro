@@ -1,5 +1,4 @@
 import React, { useState } from 'react';
-import DataGrid from '../shared/DataGrid';
 import FilterPanel from '../shared/FilterPanel';
 import { apiCall } from '../shared/api.js';
 
@@ -10,7 +9,13 @@ function fmtMoney(v) {
 
 function fmtPct(v) {
   const n = Number(v) || 0;
-  return n.toFixed(2) + '%';
+  const color = n > 0 ? 'var(--green, #16a34a)' : n < 0 ? 'var(--red)' : 'var(--text)';
+  const sign = n > 0 ? '+' : '';
+  return <span style={{ color }}>{sign}{n.toFixed(2)}%</span>;
+}
+
+function fmtRatio(v) {
+  return (Number(v) || 0).toFixed(2);
 }
 
 const MONTHS = [
@@ -20,6 +25,45 @@ const MONTHS = [
   { value: 7, label: 'July' },    { value: 8, label: 'August' },
   { value: 9, label: 'September' }, { value: 10, label: 'October' },
   { value: 11, label: 'November' }, { value: 12, label: 'December' },
+];
+
+// Metric groups shown as data panels (not a grid table) -- each entry is
+// [column key, label, formatter]. formatter defaults to fmtMoney.
+const PANEL_GROUPS = [
+  { title: 'Cash Position', icon: '🏦', items: [
+    ['TreasuryCashEGP', 'Treasury Cash'], ['BankCashEGP', 'Bank Cash'],
+    ['TreasuryCashEGP_Open', 'Treasury Cash (Open)'], ['BankCashEGP_Open', 'Bank Cash (Open)'],
+    ['TreasuryCashOpenYear', 'Treasury Cash (Open Year)'], ['BankCashOpenYear', 'Bank Cash (Open Year)'],
+    ['CashState', 'Cash State']
+  ]},
+  { title: 'Payables & Receivables', icon: '⚖️', items: [
+    ['TotalCashPayable', 'Cash Payable'], ['TotalTransferPayable', 'Transfer Payable'],
+    ['TotalCashReceivable', 'Cash Receivable'], ['TotalTransferReceivable', 'Transfer Receivable'],
+    ['VendorBalance', 'Vendor Balance'], ['VendorOpenBalance', 'Vendor Open Balance'],
+    ['CustomerBalance', 'Customer Balance'], ['CustomerOpenBalance', 'Customer Open Balance'],
+    ['TotalDueVendorInvoices', 'Due Vendor Invoices'], ['TotalDueCustomerInvoices', 'Due Customer Invoices']
+  ]},
+  { title: 'Payments & Collections', icon: '💳', items: [
+    ['TotalVendorsPayment', 'Vendors Payment'], ['TotalCustomerPayment', 'Customer Payment'],
+    ['TotalCollection', 'Total Collection'], ['TotalCheckCollection', 'Check Collection'],
+    ['TotalCheckPaid', 'Check Paid'], ['TotalDueCheck', 'Due Check'],
+    ['CustomerPaymentYearly', 'Customer Payment (Yearly)']
+  ]},
+  { title: 'Sales', icon: '📈', items: [
+    ['TotalCustomerSales', 'Customer Sales'], ['WholeSales', 'Whole Sales'],
+    ['CustomerModernSales', 'Customer Modern Sales'], ['YTDSales2025', 'YTD Sales 2025'],
+    ['YTDSales2026', 'YTD Sales 2026'], ['YTDSalesGrowthPct', 'YTD Sales Growth', fmtPct],
+    ['TotalItemAmount', 'Item Amount'], ['TotalInvoiceDiscount', 'Invoice Discount'],
+    ['TotalCustomerExtraDiscount', 'Customer Extra Discount']
+  ]},
+  { title: 'Expenses & Ratios', icon: '📊', items: [
+    ['Expenses', 'Expenses'], ['TotalYearExpenses', 'Year Expenses'],
+    ['ExpensesRatio', 'Expenses Ratio', fmtPct], ['VendorPaymentRatio', 'Vendor Payment Ratio', fmtRatio],
+    ['CustomerBalanceGrowth', 'Customer Balance Growth', fmtPct], ['VendorBalanceGrowth', 'Vendor Balance Growth', fmtPct]
+  ]},
+  { title: 'Invoices', icon: '🧾', items: [
+    ['TotalVendorsInvoices', 'Vendors Invoices']
+  ]}
 ];
 
 export default function CashFlow({ user }) {
@@ -45,51 +89,6 @@ export default function CashFlow({ user }) {
       setLoading(false);
     }
   };
-
-  const columns = [
-    { key: 'Year', label: 'Year', width: 80, numeric: true, render: v => String(v) },
-    { key: 'Month', label: 'Month', width: 80, numeric: true, render: v => String(v) },
-    { key: 'TotalCashPayable', label: 'Cash Payable', width: 140, numeric: true, render: fmtMoney },
-    { key: 'TotalTransferPayable', label: 'Transfer Payable', width: 150, numeric: true, render: fmtMoney },
-    { key: 'TotalCashReceivable', label: 'Cash Receivable', width: 150, numeric: true, render: fmtMoney },
-    { key: 'TotalTransferReceivable', label: 'Transfer Receivable', width: 160, numeric: true, render: fmtMoney },
-    { key: 'TotalVendorsPayment', label: 'Vendors Payment', width: 150, numeric: true, render: fmtMoney },
-    { key: 'TotalCustomerPayment', label: 'Customer Payment', width: 150, numeric: true, render: fmtMoney },
-    { key: 'TotalCustomerSales', label: 'Customer Sales', width: 150, numeric: true, render: fmtMoney },
-    { key: 'CashState', label: 'Cash State', width: 130, numeric: true, render: fmtMoney },
-    { key: 'Expenses', label: 'Expenses', width: 130, numeric: true, render: fmtMoney },
-    { key: 'TotalCollection', label: 'Total Collection', width: 140, numeric: true, render: fmtMoney },
-    { key: 'ExpensesRatio', label: 'Expenses Ratio', width: 120, numeric: true, render: fmtPct },
-    { key: 'TotalVendorsInvoices', label: 'Vendors Invoices', width: 150, numeric: true, render: fmtMoney },
-    { key: 'TreasuryCashEGP_Open', label: 'Treasury Cash (Open)', width: 160, numeric: true, render: fmtMoney },
-    { key: 'BankCashEGP_Open', label: 'Bank Cash (Open)', width: 150, numeric: true, render: fmtMoney },
-    { key: 'VendorBalance', label: 'Vendor Balance', width: 140, numeric: true, render: fmtMoney },
-    { key: 'VendorOpenBalance', label: 'Vendor Open Balance', width: 160, numeric: true, render: fmtMoney },
-    { key: 'CustomerOpenBalance', label: 'Customer Open Balance', width: 170, numeric: true, render: fmtMoney },
-    { key: 'CustomerBalance', label: 'Customer Balance', width: 150, numeric: true, render: fmtMoney },
-    { key: 'BankCashEGP', label: 'Bank Cash', width: 130, numeric: true, render: fmtMoney },
-    { key: 'TreasuryCashEGP', label: 'Treasury Cash', width: 140, numeric: true, render: fmtMoney },
-    { key: 'BankCashOpenYear', label: 'Bank Cash (Open Year)', width: 170, numeric: true, render: fmtMoney },
-    { key: 'TreasuryCashOpenYear', label: 'Treasury Cash (Open Year)', width: 180, numeric: true, render: fmtMoney },
-    { key: 'TotalCheckCollection', label: 'Check Collection', width: 150, numeric: true, render: fmtMoney },
-    { key: 'TotalCheckPaid', label: 'Check Paid', width: 130, numeric: true, render: fmtMoney },
-    { key: 'TotalDueCheck', label: 'Due Check', width: 130, numeric: true, render: fmtMoney },
-    { key: 'YTDSales2025', label: 'YTD Sales 2025', width: 140, numeric: true, render: fmtMoney },
-    { key: 'YTDSales2026', label: 'YTD Sales 2026', width: 140, numeric: true, render: fmtMoney },
-    { key: 'YTDSalesGrowthPct', label: 'YTD Sales Growth', width: 140, numeric: true, render: fmtPct },
-    { key: 'VendorPaymentRatio', label: 'Vendor Payment Ratio', width: 160, numeric: true, render: v => (Number(v) || 0).toFixed(2) },
-    { key: 'CustomerBalanceGrowth', label: 'Customer Balance Growth', width: 180, numeric: true, render: fmtPct },
-    { key: 'VendorBalanceGrowth', label: 'Vendor Balance Growth', width: 170, numeric: true, render: fmtPct },
-    { key: 'CustomerModernSales', label: 'Customer Modern Sales', width: 170, numeric: true, render: fmtMoney },
-    { key: 'WholeSales', label: 'Whole Sales', width: 130, numeric: true, render: fmtMoney },
-    { key: 'CustomerPaymentYearly', label: 'Customer Payment (Yearly)', width: 180, numeric: true, render: fmtMoney },
-    { key: 'TotalYearExpenses', label: 'Year Expenses', width: 140, numeric: true, render: fmtMoney },
-    { key: 'TotalCustomerExtraDiscount', label: 'Customer Extra Discount', width: 180, numeric: true, render: fmtMoney },
-    { key: 'TotalItemAmount', label: 'Item Amount', width: 130, numeric: true, render: fmtMoney },
-    { key: 'TotalInvoiceDiscount', label: 'Invoice Discount', width: 150, numeric: true, render: fmtMoney },
-    { key: 'TotalDueCustomerInvoices', label: 'Due Customer Invoices', width: 170, numeric: true, render: fmtMoney },
-    { key: 'TotalDueVendorInvoices', label: 'Due Vendor Invoices', width: 160, numeric: true, render: fmtMoney }
-  ];
 
   return (
     <div className="flex-row-layout" style={{ height: '100vh', background: 'var(--bg)', fontFamily: 'var(--font)', color: 'var(--text)' }}>
@@ -133,15 +132,54 @@ export default function CashFlow({ user }) {
             <h3 style={{ margin: 0, color: 'var(--text)', fontSize: '16px', fontWeight: '700' }}>No Data Loaded Yet</h3>
             <p style={{ margin: '8px 0 0 0', fontSize: '13px', maxWidth: '320px' }}>Click "Generate" to load the cash flow summary.</p>
           </div>
+        ) : loading ? (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '32px 0', color: 'var(--muted)', fontSize: 13 }}>
+            <div className="spinner"></div>
+            Loading...
+          </div>
+        ) : data.length === 0 ? (
+          <div style={{ padding: '32px 0', textAlign: 'center', color: 'var(--muted)', fontSize: 13 }}>
+            No cash flow data found.
+          </div>
         ) : (
-          <div style={{ flex: 1, overflow: 'hidden' }}>
-            <DataGrid
-              rows={data}
-              columns={columns}
-              loading={loading}
-              hideSearch
-              onRefresh={loadData}
-            />
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 28 }}>
+            {data.map(row => (
+              <div key={row.YearMonth}>
+                <h3 style={{
+                  margin: '0 0 12px 0', fontSize: 15, fontWeight: 800, color: 'var(--text)',
+                  display: 'flex', alignItems: 'center', gap: 8
+                }}>
+                  📅 {MONTHS.find(m => m.value === Number(row.Month))?.label || row.Month} {row.Year}
+                </h3>
+
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 16 }}>
+                  {PANEL_GROUPS.map(group => (
+                    <div key={group.title} style={{
+                      background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 14,
+                      boxShadow: 'var(--shadow)', overflow: 'hidden'
+                    }}>
+                      <div style={{
+                        padding: '10px 16px', borderBottom: '1px solid var(--border)', background: 'var(--soft)',
+                        fontSize: 11, fontWeight: 800, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: 0.4,
+                        display: 'flex', alignItems: 'center', gap: 6
+                      }}>
+                        <span>{group.icon}</span> {group.title}
+                      </div>
+                      <div style={{ padding: '10px 16px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+                        {group.items.map(([key, label, formatter]) => (
+                          <div key={key} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+                            <span style={{ fontSize: 12.5, color: 'var(--muted)' }}>{label}</span>
+                            <span style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--text)', whiteSpace: 'nowrap' }}>
+                              {(formatter || fmtMoney)(row[key])}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
           </div>
         )}
       </div>
