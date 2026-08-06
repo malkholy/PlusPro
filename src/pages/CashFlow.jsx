@@ -55,14 +55,15 @@ const PANEL_GROUPS = [
   ]},
   { title: 'Vendor', icon: '🏭', accent: '#f59e0b', items: [
     ['VendorBalance', 'Current Vendor Balance'], ['VendorOpenBalance', 'Vendor Open Balance'],
-    ['VendorBalanceGrowth', 'Vendor Balance Growth', fmtPct]
+    ['VendorBalanceGrowth', 'Vendor Balance Growth', fmtPct],
+    ['TotalVendorsPayment', 'Vendors Payment'], ['TotalVendorsInvoices', 'Vendor Invoices']
   ]},
   { title: 'Customer', icon: '🏢', accent: '#22d3ee', items: [
     ['CustomerBalance', 'Current Customer Balance'], ['CustomerOpenBalance', 'Customer Open Balance'],
     ['CustomerBalanceGrowth', 'Customer Balance Growth', fmtPct]
   ]},
   { title: 'Payments & Collections', icon: '💳', accent: '#a78bfa', items: [
-    ['TotalVendorsPayment', 'Vendors Payment'], ['TotalCustomerPayment', 'Customer Payment'],
+    ['TotalCustomerPayment', 'Customer Payment'],
     ['TotalCollection', 'Total Collection'], ['TotalCheckCollection', 'Check Collection'],
     ['TotalCheckPaid', 'Check Paid'], ['TotalDueCheck', 'Due Check'],
     ['CustomerPaymentYearly', 'Customer Payment (Yearly)']
@@ -77,9 +78,6 @@ const PANEL_GROUPS = [
   { title: 'Expenses & Ratios', icon: '📊', accent: '#f472b6', items: [
     ['Expenses', 'Expenses'], ['TotalYearExpenses', 'Year Expenses'],
     ['ExpensesRatio', 'Expenses Ratio', fmtPct], ['VendorPaymentRatio', 'Vendor Payment Ratio', fmtRatio]
-  ]},
-  { title: 'Invoices', icon: '🧾', accent: '#94a3b8', items: [
-    ['TotalVendorsInvoices', 'Vendors Invoices']
   ]}
 ];
 
