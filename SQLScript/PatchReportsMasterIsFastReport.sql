@@ -1,11 +1,7 @@
 USE [ERPMega25]
 GO
-/****** Object:  StoredProcedure [dbo].[APIPlusOperation]    Script Date: 19/07/2026 09:02:57 م ******/
-SET ANSI_NULLS ON
-GO
-SET QUOTED_IDENTIFIER ON
-GO
-ALTER    PROCEDURE [dbo].[APIPlusOperation]
+
+ALTER PROCEDURE [dbo].[APIPlusOperation]
     @Operation      nvarchar(100) = '',
     @LineData       nvarchar(max) = '',
     @User           nvarchar(100) = '',
@@ -75,19 +71,6 @@ BEGIN
 
 	if @operation='BOM L1 Header'
 	begin
-		-- Defensive cleanup: this cursor was previously never CLOSEd/
-		-- DEALLOCATEd below, so on a pooled connection that got reused
-		-- across requests, the DECLARE two lines down would fail with
-		-- "A cursor with the name 'fff' already exists" -- surfaced to the
-		-- frontend as a generic "An error has occurred." Guard against both
-		-- a leftover cursor from before this fix and any mid-loop failure.
-		IF CURSOR_STATUS('local','fff') > -3
-		BEGIN
-			IF CURSOR_STATUS('local','fff') >= 0
-				CLOSE fff;
-			DEALLOCATE fff;
-		END
-
 		declare fff cursor for  select distinct ItemCode from acr.CustomerInvoiceLine  where year(invoiceDate )=2026
 
 
@@ -100,11 +83,7 @@ BEGIN
 
 			fetch next from fff into @ITemCode
 		end;
-
-		close fff;
-		deallocate fff;
-
-		select
+		select 
 			x.ParentItemID , 
 			x.ParentItemCode , 
 			y.ItemType , 
@@ -1871,24 +1850,6 @@ BEGIN
         DECLARE @ICMItemID INT = TRY_CAST(NULLIF(JSON_VALUE(@LineData, '$.ItemID'), '') AS INT);
         DECLARE @ICMSalesPerson INT = TRY_CAST(NULLIF(JSON_VALUE(@LineData, '$.SalesPerson'), '') AS INT);
 
-        -- Per-user row-level condition, same UserQueryPermissions mechanism
-        -- GetGridData uses. RegisterItemCustomerSalesQuery.sql registers this
-        -- data query's QueryID under Operation = 'Item Customer Sales' purely
-        -- so admins can attach a condition via UserPermissions.jsx's Grid
-        -- Permission tab (or QueryMaster.jsx's User Permissions tab).
-        -- SQLFilter is trusted admin input -- same trust boundary GetGridData
-        -- already applies -- so it's appended as raw SQL against the
-        -- #ICMResults temp table below rather than parameterized.
-        DECLARE @ICMQueryID INT = (SELECT QueryID FROM [PLS].[QueryMaster] WHERE Operation = 'Item Customer Sales');
-        DECLARE @ICMIsAdmin BIT = 0, @ICMPermFilter NVARCHAR(MAX) = NULL;
-        IF @User = 'sysadmin'
-            SET @ICMIsAdmin = 1;
-        ELSE
-            SELECT @ICMIsAdmin = ISNULL(IsAdmin, 0) FROM ERPManagement25.System.UserMaster WHERE Username = @User;
-
-        IF @ICMIsAdmin = 0 AND @ICMQueryID IS NOT NULL
-            SELECT @ICMPermFilter = SQLFilter FROM [PLS].[UserQueryPermissions] WHERE Username = @User AND QueryID = @ICMQueryID;
-
         -- Switched from Sales.ItemCustomerMonthly (a pre-aggregated summary
         -- table) to real ACR.CustomerInvoiceLine detail -- the summary table's
         -- totals didn't match true invoice-level sums for at least one
@@ -1900,8 +1861,6 @@ BEGIN
         -- working unchanged.
         -- No baseline exclusions this time (explicitly requested) -- every
         -- real invoice line is included regardless of customer or year.
-        IF OBJECT_ID('tempdb..#ICMResults') IS NOT NULL DROP TABLE #ICMResults;
-
         SELECT      year(b.InvoiceDate)        as InvoiceYear ,  b.InvoiceDate ,  b.CustomerNo        as  CustomerNumber ,  C.CustomerSalesPerson  as  SalesPersonNumber,
                          b.WarehouseLine as     Warehouse ,  b.LineShipToID as    ShipToID,   b.LineCurrency    as Currency , B.LineExchangeRate as ExchangeRate,
 						 b.ItemCode,
@@ -1918,7 +1877,8 @@ BEGIN
 						 ( select ShipToName  from acr.CustomerShipToMaster y where y.ShipToID=b.LineShipToID ) as ShipToName , IntID ,isnull( PO.Point ,0 ) Point ,
 						  ( b.InvoicedQuantity/d.SellingConversion) as QtyBox , ( select x.ShipToAddress from acr.CustomerShipToMaster x where x.ShipToID=b.LineShipToID ) ShipToAddress
 
-        INTO        #ICMResults
+
+
         FROM
                          ACR.CustomerInvoiceLine b LEFT OUTER JOIN
                          ACR.CustomerMaster AS c ON b.CustomerNo  = c.CustomerNo LEFT OUTER JOIN
@@ -1930,19 +1890,8 @@ BEGIN
           AND (@ICMMonths IS NULL OR LTRIM(RTRIM(@ICMMonths)) = '' OR MONTH(b.InvoiceDate) IN (SELECT CAST(value AS INT) FROM STRING_SPLIT(@ICMMonths, ',')))
           AND (@ICMCustomer IS NULL OR b.CustomerNo = @ICMCustomer)
           AND (@ICMItemID IS NULL OR b.ItemID = @ICMItemID)
-          AND (@ICMSalesPerson IS NULL OR c.CustomerSalesPerson = @ICMSalesPerson);
-
-        IF @ICMPermFilter IS NOT NULL AND LTRIM(RTRIM(@ICMPermFilter)) <> ''
-        BEGIN
-            DECLARE @ICMFilterSQL NVARCHAR(MAX) = N'SELECT * FROM #ICMResults WHERE ' + @ICMPermFilter + N' ORDER BY InvoiceYear DESC, InvoiceMonth DESC, ItemCode;';
-            EXEC sys.sp_executesql @ICMFilterSQL;
-        END
-        ELSE
-        BEGIN
-            SELECT * FROM #ICMResults ORDER BY InvoiceYear DESC, InvoiceMonth DESC, ItemCode;
-        END
-
-        DROP TABLE #ICMResults;
+          AND (@ICMSalesPerson IS NULL OR c.CustomerSalesPerson = @ICMSalesPerson)
+        ORDER BY year(b.InvoiceDate) DESC, month(b.invoicedate) DESC, b.ItemCode;
         RETURN;
     END
 
@@ -1986,3 +1935,4 @@ BEGIN
     END
 
 end
+GO

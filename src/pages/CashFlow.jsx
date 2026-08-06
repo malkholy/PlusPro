@@ -22,6 +22,21 @@ function fmtRatio(v) {
   return (Number(v) || 0).toFixed(2);
 }
 
+// Plain-text equivalents of the JSX formatters above, for the built-in
+// (non-FastReport) print view -- built as an HTML string, not React.
+function plainMoney(v) {
+  return (Number(v) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+function plainPct(v) {
+  const n = Number(v) || 0;
+  return (n > 0 ? '+' : '') + n.toFixed(2) + '%';
+}
+function plainFormat(formatter, value) {
+  if (formatter === fmtPct) return plainPct(value);
+  if (!formatter || formatter === fmtMoney) return plainMoney(value);
+  return String(formatter(value)); // fmtRatio already returns plain text
+}
+
 const MONTHS = [
   { value: 1, label: 'January' }, { value: 2, label: 'February' },
   { value: 3, label: 'March' },   { value: 4, label: 'April' },
@@ -179,6 +194,18 @@ export default function CashFlow({ user }) {
   const [reportPreviewUrl, setReportPreviewUrl] = useState(null);
   const [reportLoading, setReportLoading] = useState(false);
   const [printRow, setPrintRow] = useState(null);
+  // PLS.ReportsMaster.IsFastReport for CASH_FLOW_REPORT_ID -- null until
+  // fetched, defaults to true (existing FastReport flow) if lookup fails.
+  const [isFastReport, setIsFastReport] = useState(true);
+
+  useEffect(() => {
+    apiCall('GetReportsMaster', {}, {}, 'plus').then(res => {
+      if (res.State === 0) {
+        const report = (res.List0 || []).find(r => r.ReportID === CASH_FLOW_REPORT_ID);
+        if (report) setIsFastReport(report.IsFastReport !== 0 && report.IsFastReport !== false);
+      }
+    }).catch(() => {});
+  }, []);
 
   const loadData = async () => {
     try {
@@ -214,9 +241,62 @@ export default function CashFlow({ user }) {
   }
 
   function handlePrint(row) {
-    setPrintRow(row);
-    setReportLoading(true);
-    setReportPreviewUrl(`${REPORT_API_BASE}/${CASH_FLOW_REPORT_ID}/${row.YearMonth}`);
+    if (isFastReport) {
+      setPrintRow(row);
+      setReportLoading(true);
+      setReportPreviewUrl(`${REPORT_API_BASE}/${CASH_FLOW_REPORT_ID}/${row.YearMonth}`);
+    } else {
+      printBuiltInReport(row);
+    }
+  }
+
+  // No-.frx fallback: renders the same section/label data as a standalone
+  // print-friendly HTML document in a new tab and triggers the browser's
+  // print dialog directly -- no NewReleaseReportApi/FastReport dependency.
+  function printBuiltInReport(row) {
+    const win = window.open('', '_blank', 'width=900,height=1000');
+    if (!win) return;
+    const monthLabel = `${MONTHS.find(m => m.value === Number(row.Month))?.label || row.Month} ${row.Year}`;
+
+    const sectionsHtml = PANEL_GROUPS.map(group => `
+      <div class="section">
+        <div class="section-title">${group.title}</div>
+        <table>
+          ${group.items.map(([key, label, formatter]) => {
+            const raw = typeof key === 'function' ? key(row) : row[key];
+            return `<tr><td class="label">${label}</td><td class="value">${plainFormat(formatter, raw)}</td></tr>`;
+          }).join('')}
+        </table>
+      </div>
+    `).join('');
+
+    win.document.write(`<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Cash Flow Report - ${monthLabel}</title>
+<style>
+  body { font-family: Arial, sans-serif; padding: 24px; color: #111; }
+  h1 { font-size: 20px; margin: 0 0 2px 0; color: #1b2a4a; }
+  h2 { font-size: 13px; color: #555; margin: 0 0 20px 0; font-weight: normal; }
+  .section { margin-bottom: 12px; break-inside: avoid; }
+  .section-title { background: #1b2a4a; color: #fff; padding: 6px 10px; font-size: 12px; font-weight: bold; }
+  table { width: 100%; border-collapse: collapse; }
+  td { padding: 4px 10px; font-size: 11.5px; border-bottom: 1px solid #eee; }
+  .label { color: #666; width: 60%; }
+  .value { text-align: right; font-weight: bold; width: 40%; }
+  @media print { body { padding: 0; } }
+</style>
+</head>
+<body>
+  <h1>Cash Flow Report</h1>
+  <h2>${monthLabel}</h2>
+  ${sectionsHtml}
+</body>
+</html>`);
+    win.document.close();
+    win.focus();
+    win.print();
   }
 
   return (

@@ -9,6 +9,7 @@ const EMPTY_FORM = {
   PageGroupID: '',
   KeyParam: '',
   Description: '',
+  IsFastReport: true,
   Queries: []
 };
 
@@ -69,6 +70,7 @@ export default function ReportsMaster({ user }) {
     { key: 'FileName', label: 'File Name', width: 220 },
     { key: 'PageLabel', label: 'Linked Page', width: 160 },
     { key: 'KeyParam', label: 'Key Param', width: 110 },
+    { key: 'IsFastReport', label: 'Type', width: 100, render: v => (v !== 0 && v !== false) ? 'FastReport' : 'Built-in' },
     { key: 'QueryNames', label: 'Queries', flex: 1 },
     { key: 'Description', label: 'Description', flex: 1 }
   ];
@@ -87,6 +89,7 @@ export default function ReportsMaster({ user }) {
       PageGroupID: row.PageGroupID || '',
       KeyParam: row.KeyParam || '',
       Description: row.Description || '',
+      IsFastReport: row.IsFastReport !== 0 && row.IsFastReport !== false,
       Queries: (reportQueryMap[row.ReportID] || []).map(q => ({ QueryName: q.QueryName, QuerySQL: q.QuerySQL }))
     });
     setError(null);
@@ -216,6 +219,21 @@ export default function ReportsMaster({ user }) {
                     style={{ width: '100%', height: 38, padding: '0 12px', border: '1.5px solid var(--border)', borderRadius: 8, fontSize: 12.5, color: 'var(--text)', background: 'var(--surface)', outline: 'none', fontFamily: 'monospace' }}
                   />
                 </div>
+              </div>
+
+              <div>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12.5, fontWeight: 700, color: 'var(--text)', cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={formData.IsFastReport}
+                    onChange={e => setFormData({ ...formData, IsFastReport: e.target.checked })}
+                    style={{ width: 16, height: 16, accentColor: 'var(--orange)' }}
+                  />
+                  Is FastReport (.frx via NewReleaseReportApi)
+                </label>
+                <p style={{ margin: '4px 0 0 24px', fontSize: 11, color: 'var(--muted)' }}>
+                  Uncheck if there's no verified .frx yet -- the frontend renders its own printable view instead.
+                </p>
               </div>
 
               <div>
