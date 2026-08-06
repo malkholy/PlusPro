@@ -13,17 +13,27 @@ function fmtPct(v) {
   return n.toFixed(2) + '%';
 }
 
+const MONTHS = [
+  { value: 1, label: 'January' }, { value: 2, label: 'February' },
+  { value: 3, label: 'March' },   { value: 4, label: 'April' },
+  { value: 5, label: 'May' },     { value: 6, label: 'June' },
+  { value: 7, label: 'July' },    { value: 8, label: 'August' },
+  { value: 9, label: 'September' }, { value: 10, label: 'October' },
+  { value: 11, label: 'November' }, { value: 12, label: 'December' },
+];
+
 export default function CashFlow({ user }) {
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [hasSearched, setHasSearched] = useState(false);
+  const [month, setMonth] = useState('');
 
   const loadData = async () => {
     try {
       setLoading(true);
       setError(null);
-      const res = await apiCall('GetGridData', { PageGroupID: 'cash_flow' }, {}, 'plus');
+      const res = await apiCall('GetGridData', { PageGroupID: 'cash_flow', month }, {}, 'plus');
       if (res.State === 0) {
         setData(res.List0 || []);
       } else {
@@ -93,6 +103,18 @@ export default function CashFlow({ user }) {
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, minWidth: 0, overflow: 'auto', padding: '20px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
           <h2 style={{ margin: 0, fontSize: '24px' }}>💵 Cash Flow</h2>
+
+          <select
+            value={month}
+            onChange={e => setMonth(e.target.value)}
+            style={{
+              height: 38, padding: '0 12px', borderRadius: 8, border: '1px solid var(--border)',
+              background: 'var(--surface)', color: 'var(--text)', fontSize: 13, outline: 'none'
+            }}
+          >
+            <option value="">All Months</option>
+            {MONTHS.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
+          </select>
         </div>
 
         {error && (
