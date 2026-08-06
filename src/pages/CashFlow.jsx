@@ -51,9 +51,15 @@ const PANEL_GROUPS = [
   { title: 'Payables & Receivables', icon: '⚖️', accent: '#34d399', items: [
     [row => (Number(row.TotalCashPayable) || 0) + (Number(row.TotalTransferPayable) || 0), 'Total Payable'],
     [row => (Number(row.TotalCashReceivable) || 0) + (Number(row.TotalTransferReceivable) || 0), 'Total Receivable'],
-    ['VendorBalance', 'Vendor Balance'], ['VendorOpenBalance', 'Vendor Open Balance'],
-    ['CustomerBalance', 'Customer Balance'], ['CustomerOpenBalance', 'Customer Open Balance'],
     ['TotalDueVendorInvoices', 'Due Vendor Invoices'], ['TotalDueCustomerInvoices', 'Due Customer Invoices']
+  ]},
+  { title: 'Vendor', icon: '🏭', accent: '#f59e0b', items: [
+    ['VendorBalance', 'Current Vendor Balance'], ['VendorOpenBalance', 'Vendor Open Balance'],
+    ['VendorBalanceGrowth', 'Vendor Balance Growth', fmtPct]
+  ]},
+  { title: 'Customer', icon: '🏢', accent: '#22d3ee', items: [
+    ['CustomerBalance', 'Current Customer Balance'], ['CustomerOpenBalance', 'Customer Open Balance'],
+    ['CustomerBalanceGrowth', 'Customer Balance Growth', fmtPct]
   ]},
   { title: 'Payments & Collections', icon: '💳', accent: '#a78bfa', items: [
     ['TotalVendorsPayment', 'Vendors Payment'], ['TotalCustomerPayment', 'Customer Payment'],
@@ -70,8 +76,7 @@ const PANEL_GROUPS = [
   ]},
   { title: 'Expenses & Ratios', icon: '📊', accent: '#f472b6', items: [
     ['Expenses', 'Expenses'], ['TotalYearExpenses', 'Year Expenses'],
-    ['ExpensesRatio', 'Expenses Ratio', fmtPct], ['VendorPaymentRatio', 'Vendor Payment Ratio', fmtRatio],
-    ['CustomerBalanceGrowth', 'Customer Balance Growth', fmtPct], ['VendorBalanceGrowth', 'Vendor Balance Growth', fmtPct]
+    ['ExpensesRatio', 'Expenses Ratio', fmtPct], ['VendorPaymentRatio', 'Vendor Payment Ratio', fmtRatio]
   ]},
   { title: 'Invoices', icon: '🧾', accent: '#94a3b8', items: [
     ['TotalVendorsInvoices', 'Vendors Invoices']
