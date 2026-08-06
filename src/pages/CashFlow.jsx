@@ -1,5 +1,4 @@
-import React, { useState } from 'react';
-import FilterPanel from '../shared/FilterPanel';
+import React, { useState, useEffect } from 'react';
 import { apiCall } from '../shared/api.js';
 
 function fmtMoney(v) {
@@ -159,7 +158,6 @@ export default function CashFlow({ user }) {
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-  const [hasSearched, setHasSearched] = useState(false);
   const [month, setMonth] = useState('');
   const [openSet, setOpenSet] = useState(new Set());
 
@@ -183,6 +181,11 @@ export default function CashFlow({ user }) {
     }
   };
 
+  useEffect(() => {
+    loadData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   function toggle(yearMonth) {
     setOpenSet(prev => {
       const next = new Set(prev);
@@ -192,14 +195,7 @@ export default function CashFlow({ user }) {
   }
 
   return (
-    <div className="flex-row-layout" style={{ height: '100vh', background: 'var(--bg)', fontFamily: 'var(--font)', color: 'var(--text)' }}>
-      <FilterPanel
-        pageGroupId="cash_flow"
-        user={user}
-        loading={loading}
-        onSearch={() => { setHasSearched(true); loadData(); }}
-      />
-
+    <div style={{ height: '100vh', display: 'flex', flexDirection: 'column', background: 'var(--bg)', fontFamily: 'var(--font)', color: 'var(--text)' }}>
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, minWidth: 0, overflow: 'auto', padding: '20px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
           <h2 style={{ margin: 0, fontSize: '24px' }}>💵 Cash Flow</h2>
@@ -227,6 +223,18 @@ export default function CashFlow({ user }) {
               <option value="">All Months</option>
               {MONTHS.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
             </select>
+            <button
+              onClick={loadData}
+              disabled={loading}
+              style={{
+                height: 38, padding: '0 18px', background: 'linear-gradient(135deg, var(--orange), var(--orange2))',
+                color: '#fff', border: 'none', borderRadius: 8, fontSize: 12.5, fontWeight: 700,
+                cursor: loading ? 'default' : 'pointer', opacity: loading ? 0.7 : 1,
+                boxShadow: '0 4px 12px var(--orange-glow)'
+              }}
+            >
+              {loading ? 'Loading...' : '🔄 Refresh'}
+            </button>
           </div>
         </div>
 
@@ -236,17 +244,7 @@ export default function CashFlow({ user }) {
           </div>
         )}
 
-        {!hasSearched ? (
-          <div style={{
-            display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-            flex: 1, color: 'var(--muted)', textAlign: 'center', padding: '64px 0',
-            background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: '16px'
-          }}>
-            <span style={{ fontSize: '48px', marginBottom: 16 }}>💵</span>
-            <h3 style={{ margin: 0, color: 'var(--text)', fontSize: '16px', fontWeight: '700' }}>No Data Loaded Yet</h3>
-            <p style={{ margin: '8px 0 0 0', fontSize: '13px', maxWidth: '320px' }}>Click "Generate" to load the cash flow summary.</p>
-          </div>
-        ) : loading ? (
+        {loading ? (
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '32px 0', color: 'var(--muted)', fontSize: 13 }}>
             <div className="spinner"></div>
             Loading...
