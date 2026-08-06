@@ -38,8 +38,10 @@ const HERO_METRICS = [
 ];
 
 // Metric groups shown as data panels (not a grid table) -- each entry is
-// [column key, label, formatter]. formatter defaults to fmtMoney. Each group
-// gets a left accent stripe color, matching the sidebar's group-accent style.
+// [column key, label, formatter]. Key can also be a function(row) for
+// computed values (e.g. summing two columns). formatter defaults to
+// fmtMoney. Each group gets a left accent stripe color, matching the
+// sidebar's group-accent style.
 const PANEL_GROUPS = [
   { title: 'Cash Position', icon: '🏦', accent: '#ff650f', items: [
     ['TreasuryCashEGP', 'Treasury Cash'], ['BankCashEGP', 'Bank Cash'],
@@ -47,8 +49,8 @@ const PANEL_GROUPS = [
     ['CashState', 'Cash State']
   ]},
   { title: 'Payables & Receivables', icon: '⚖️', accent: '#34d399', items: [
-    ['TotalCashPayable', 'Cash Payable'], ['TotalTransferPayable', 'Transfer Payable'],
-    ['TotalCashReceivable', 'Cash Receivable'], ['TotalTransferReceivable', 'Transfer Receivable'],
+    [row => (Number(row.TotalCashPayable) || 0) + (Number(row.TotalTransferPayable) || 0), 'Total Payable'],
+    [row => (Number(row.TotalCashReceivable) || 0) + (Number(row.TotalTransferReceivable) || 0), 'Total Receivable'],
     ['VendorBalance', 'Vendor Balance'], ['VendorOpenBalance', 'Vendor Open Balance'],
     ['CustomerBalance', 'Customer Balance'], ['CustomerOpenBalance', 'Customer Open Balance'],
     ['TotalDueVendorInvoices', 'Due Vendor Invoices'], ['TotalDueCustomerInvoices', 'Due Customer Invoices']
@@ -131,10 +133,10 @@ function MonthSection({ row, open, onToggle }) {
                 </div>
                 <div style={{ padding: '10px 16px', display: 'flex', flexDirection: 'column', gap: 8 }}>
                   {group.items.map(([key, label, formatter]) => (
-                    <div key={key} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+                    <div key={label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
                       <span style={{ fontSize: 12.5, color: 'var(--muted)' }}>{label}</span>
                       <span style={{ fontSize: 13.5, fontWeight: 700, whiteSpace: 'nowrap' }}>
-                        {(formatter || fmtMoney)(row[key])}
+                        {(formatter || fmtMoney)(typeof key === 'function' ? key(row) : row[key])}
                       </span>
                     </div>
                   ))}
