@@ -16,8 +16,10 @@ const PANEL_GROUPS = [
   { title: 'Notes', icon: '📝', accent: '#34d399', items: [
     ['NoteReceivable', 'Note Receivable'], ['NotePayable', 'Note Payable']
   ]},
+  { title: 'Cash', icon: '💰', accent: '#38bdf8', items: [
+    ['BankCashEGP', 'Bank Cash'], ['TreasuryCashEGP', 'Treasury Cash']
+  ]},
   { title: 'Other', icon: '📊', accent: '#a78bfa', items: [
-    ['BankCashEGP', 'Bank Cash'], ['TreasuryCashEGP', 'Treasury Cash'],
     ['Loans', 'Loans'], ['Custody', 'Custody'],
     ['Debtors', 'Debtors'], ['Creditors', 'Creditors'],
     ['Due', 'Due'], ['WorkingCapitalFunds', 'Working Capital Funds']
