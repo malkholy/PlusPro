@@ -80,8 +80,8 @@ namespace FastReport
       <Column Name="TotalCustomerExtraDiscount" DataType="System.Decimal"/>
       <Column Name="TotalItemAmount" DataType="System.Decimal"/>
       <Column Name="TotalInvoiceDiscount" DataType="System.Decimal"/>
-      <Column Name="TotalDueCustomerInvoices" DataType="System.Decimal"/>
-      <Column Name="TotalDueVendorInvoices" DataType="System.Decimal"/>
+      <Column Name="TotalDueCustomerInvoicesMonthEnding" DataType="System.Decimal"/>
+      <Column Name="TotalDueVendorInvoicesMonthEnding" DataType="System.Decimal"/>
     </TableDataSource>
   </Dictionary>
   <ReportPage Name="Page1">
@@ -107,9 +107,9 @@ namespace FastReport
       <TextObject Name="Lbl15" Left="360" Top="100" Width="195" Height="16" Border.Lines="Bottom" Border.Color="221, 221, 221" Text="Total Receivable" Padding="4, 0, 4, 0" HorzAlign="Left" VertAlign="Center" Font="Arial, 8pt" TextFill.Color="136, 136, 136"/>
       <TextObject Name="Val16" Left="555" Top="100" Width="145" Height="16" Border.Lines="Bottom" Border.Color="221, 221, 221" Text="[Table1.TotalCashReceivable]+[Table1.TotalTransferReceivable]" Format="Number" Format.UseLocale="false" Format.DecimalDigits="2" Format.DecimalSeparator="." Format.GroupSeparator="," Format.NegativePattern="1" Padding="4, 0, 4, 0" HorzAlign="Right" VertAlign="Center" Font="Arial, 8pt, style=Bold" TextFill.Color="17, 17, 17"/>
       <TextObject Name="Lbl17" Left="0" Top="116" Width="195" Height="16" Border.Lines="Bottom" Border.Color="221, 221, 221" Text="Due Vendor Invoices" Padding="4, 0, 4, 0" HorzAlign="Left" VertAlign="Center" Font="Arial, 8pt" TextFill.Color="136, 136, 136"/>
-      <TextObject Name="Val18" Left="195" Top="116" Width="145" Height="16" Border.Lines="Bottom" Border.Color="221, 221, 221" Text="[Table1.TotalDueVendorInvoices]" Format="Number" Format.UseLocale="false" Format.DecimalDigits="2" Format.DecimalSeparator="." Format.GroupSeparator="," Format.NegativePattern="1" Padding="4, 0, 4, 0" HorzAlign="Right" VertAlign="Center" Font="Arial, 8pt, style=Bold" TextFill.Color="17, 17, 17"/>
+      <TextObject Name="Val18" Left="195" Top="116" Width="145" Height="16" Border.Lines="Bottom" Border.Color="221, 221, 221" Text="[Table1.TotalDueVendorInvoicesMonthEnding]" Format="Number" Format.UseLocale="false" Format.DecimalDigits="2" Format.DecimalSeparator="." Format.GroupSeparator="," Format.NegativePattern="1" Padding="4, 0, 4, 0" HorzAlign="Right" VertAlign="Center" Font="Arial, 8pt, style=Bold" TextFill.Color="17, 17, 17"/>
       <TextObject Name="Lbl19" Left="360" Top="116" Width="195" Height="16" Border.Lines="Bottom" Border.Color="221, 221, 221" Text="Due Customer Invoices" Padding="4, 0, 4, 0" HorzAlign="Left" VertAlign="Center" Font="Arial, 8pt" TextFill.Color="136, 136, 136"/>
-      <TextObject Name="Val20" Left="555" Top="116" Width="145" Height="16" Border.Lines="Bottom" Border.Color="221, 221, 221" Text="[Table1.TotalDueCustomerInvoices]" Format="Number" Format.UseLocale="false" Format.DecimalDigits="2" Format.DecimalSeparator="." Format.GroupSeparator="," Format.NegativePattern="1" Padding="4, 0, 4, 0" HorzAlign="Right" VertAlign="Center" Font="Arial, 8pt, style=Bold" TextFill.Color="17, 17, 17"/>
+      <TextObject Name="Val20" Left="555" Top="116" Width="145" Height="16" Border.Lines="Bottom" Border.Color="221, 221, 221" Text="[Table1.TotalDueCustomerInvoicesMonthEnding]" Format="Number" Format.UseLocale="false" Format.DecimalDigits="2" Format.DecimalSeparator="." Format.GroupSeparator="," Format.NegativePattern="1" Padding="4, 0, 4, 0" HorzAlign="Right" VertAlign="Center" Font="Arial, 8pt, style=Bold" TextFill.Color="17, 17, 17"/>
       <TextObject Name="SecHdr21" Left="0" Top="140" Width="700" Height="22" Fill.Color="27, 42, 74" Text="Vendor" Padding="6, 0, 6, 0" HorzAlign="Left" VertAlign="Center" Font="Arial, 10pt, style=Bold" TextFill.Color="White"/>
       <TextObject Name="Lbl22" Left="0" Top="162" Width="195" Height="16" Border.Lines="Bottom" Border.Color="221, 221, 221" Text="Current Vendor Balance" Padding="4, 0, 4, 0" HorzAlign="Left" VertAlign="Center" Font="Arial, 8pt" TextFill.Color="136, 136, 136"/>
       <TextObject Name="Val23" Left="195" Top="162" Width="145" Height="16" Border.Lines="Bottom" Border.Color="221, 221, 221" Text="[Table1.VendorBalance]" Format="Number" Format.UseLocale="false" Format.DecimalDigits="2" Format.DecimalSeparator="." Format.GroupSeparator="," Format.NegativePattern="1" Padding="4, 0, 4, 0" HorzAlign="Right" VertAlign="Center" Font="Arial, 8pt, style=Bold" TextFill.Color="17, 17, 17"/>
