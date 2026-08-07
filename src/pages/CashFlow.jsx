@@ -61,8 +61,9 @@ const PANEL_GROUPS = [
   { title: 'Payables & Receivables', icon: '⚖️', accent: '#34d399', items: [
     [row => (Number(row.TotalCashPayable) || 0) + (Number(row.TotalTransferPayable) || 0), 'Total Payable'],
     [row => (Number(row.TotalCashReceivable) || 0) + (Number(row.TotalTransferReceivable) || 0), 'Total Receivable'],
+    ['CashState', 'Cash State'],
     ['TotalDueVendorInvoicesMonthEnding', 'Due Vendor Invoices'], ['TotalDueCustomerInvoicesMonthEnding', 'Due Customer Invoices'],
-    ['CashState', 'Cash State']
+    [row => (Number(row.TotalDueVendorInvoicesMonthEnding) || 0) - (Number(row.TotalDueCustomerInvoicesMonthEnding) || 0), 'Diff (Vendor - Customer)', fmtDiff]
   ]},
   { title: 'Vendor', icon: '🏭', accent: '#f59e0b', items: [
     ['VendorBalance', 'Current Vendor Balance'], ['VendorOpenBalance', 'Vendor Open Balance'],
