@@ -34,13 +34,15 @@ const MONTHS = [
   { value: 11, label: 'November' }, { value: 12, label: 'December' },
 ];
 
-// Headline KPIs shown large, up top, per month.
+// Headline KPIs shown large, up top, per month -- [key, label, icon, formatter].
+// key can be a function(row) for computed values; formatter defaults to fmtMoney.
 const HERO_METRICS = [
   [row => (Number(row.TreasuryCashEGP) || 0) + (Number(row.BankCashEGP) || 0), 'Current Cash', '💰'],
-  ['TotalCollection', 'Total Collection', '📥'],
   ['TotalCustomerSales', 'Customer Sales', '📈'],
+  [row => (Number(row.TotalCustomerSales) || 0) ? (Number(row.TotalCustomerPayment) || 0) / Number(row.TotalCustomerSales) : 0, 'Customer Payment Ratio', '💳', fmtRatioPct],
+  ['VendorPaymentRatio', 'Vendor Payment Ratio', '💳', fmtRatioPct],
   ['Expenses', 'Expenses', '📉'],
-  ['TotalVendorsPayment', 'Vendors Payment', '📤']
+  [row => (Number(row.TotalDueCustomerInvoicesMonthEnding) || 0) - (Number(row.TotalDueVendorInvoicesMonthEnding) || 0), 'Diff (Customer - Vendor)', '⚖️', fmtDiff]
 ];
 
 // Metric groups shown as data panels (not a grid table) -- each entry is
@@ -133,7 +135,7 @@ function MonthSection({ row, open, onToggle, onPrint, printing }) {
           </div>
           {/* Headline KPI strip */}
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 14 }}>
-            {HERO_METRICS.map(([key, label, icon]) => (
+            {HERO_METRICS.map(([key, label, icon, formatter]) => (
               <div key={label} className="cf-kpi-card" style={{
                 flex: '1 1 160px', minWidth: 160, background: 'var(--soft)', border: '1px solid var(--border)',
                 borderRadius: 12, padding: '12px 16px'
@@ -141,7 +143,7 @@ function MonthSection({ row, open, onToggle, onPrint, printing }) {
                 <div style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 4 }}>
                   {icon} {label}
                 </div>
-                <div style={{ fontSize: 18, fontWeight: 800 }}>{fmtMoney(typeof key === 'function' ? key(row) : row[key])}</div>
+                <div style={{ fontSize: 18, fontWeight: 800 }}>{(formatter || fmtMoney)(typeof key === 'function' ? key(row) : row[key])}</div>
               </div>
             ))}
           </div>
