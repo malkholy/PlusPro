@@ -189,7 +189,7 @@ export default function AccountStatement({ user, def }) {
         transactions: [], 
         entityOpenings: {}, 
         entityClosingBalances: {}, 
-        summary: { openingBalance: 0, totalDebit: 0, totalCredit: 0, netChange: 0, closingBalance: 0 } 
+        summary: { openingBalance: 0, totalDebit: 0, totalCredit: 0, totalDebitTransaction: 0, totalCreditTransaction: 0, netChange: 0, closingBalance: 0 }
       };
     }
 
@@ -213,6 +213,8 @@ export default function AccountStatement({ user, def }) {
     let accountOpeningBalance = 0;
     let accountTotalDebit = 0;
     let accountTotalCredit = 0;
+    let accountTotalDebitTransaction = 0;
+    let accountTotalCreditTransaction = 0;
 
     const processedTransactions = [];
 
@@ -297,6 +299,8 @@ export default function AccountStatement({ user, def }) {
       } else {
         accountTotalDebit += debit;
         accountTotalCredit += credit;
+        accountTotalDebitTransaction += Number(row.DebitTransaction || 0);
+        accountTotalCreditTransaction += Number(row.CreditTransaction || 0);
         entityDebits[entKey] += debit;
         entityCredits[entKey] += credit;
         processedTransactions.push({
@@ -329,6 +333,8 @@ export default function AccountStatement({ user, def }) {
         openingBalance: accountOpeningBalance,
         totalDebit: accountTotalDebit,
         totalCredit: accountTotalCredit,
+        totalDebitTransaction: accountTotalDebitTransaction,
+        totalCreditTransaction: accountTotalCreditTransaction,
         netChange: accountTotalDebit - accountTotalCredit,
         closingBalance: accountOpeningBalance + accountTotalDebit - accountTotalCredit
       }
@@ -426,8 +432,13 @@ export default function AccountStatement({ user, def }) {
               boxShadow: '0 1px 3px rgba(0,0,0,0.02)'
             }}>
               <div style={{ fontSize: '11px', fontWeight: '800', color: 'var(--muted)', textTransform: 'uppercase' }}>Total Inflows (Debit)</div>
-              <div style={{ fontSize: '20px', fontWeight: '800', marginTop: 4, color: 'var(--green)' }}>
-                +{fmtAmt(statementData.summary.totalDebit)}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 2, marginTop: 4 }}>
+                <div style={{ fontSize: '20px', fontWeight: '800', color: 'var(--green)' }}>
+                  +{fmtAmt(statementData.summary.totalDebit)} <span style={{ fontSize: '10px', fontWeight: '700', color: 'var(--muted)', textTransform: 'uppercase' }}>Book</span>
+                </div>
+                <div style={{ fontSize: '13px', fontWeight: '700', color: 'var(--muted)' }}>
+                  +{fmtAmt(statementData.summary.totalDebitTransaction)} <span style={{ fontSize: '10px', fontWeight: '700', textTransform: 'uppercase' }}>Trans</span>
+                </div>
               </div>
             </div>
 
@@ -440,8 +451,13 @@ export default function AccountStatement({ user, def }) {
               boxShadow: '0 1px 3px rgba(0,0,0,0.02)'
             }}>
               <div style={{ fontSize: '11px', fontWeight: '800', color: 'var(--muted)', textTransform: 'uppercase' }}>Total Outflows (Credit)</div>
-              <div style={{ fontSize: '20px', fontWeight: '800', marginTop: 4, color: 'var(--red)' }}>
-                -{fmtAmt(statementData.summary.totalCredit)}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 2, marginTop: 4 }}>
+                <div style={{ fontSize: '20px', fontWeight: '800', color: 'var(--red)' }}>
+                  -{fmtAmt(statementData.summary.totalCredit)} <span style={{ fontSize: '10px', fontWeight: '700', color: 'var(--muted)', textTransform: 'uppercase' }}>Book</span>
+                </div>
+                <div style={{ fontSize: '13px', fontWeight: '700', color: 'var(--muted)' }}>
+                  -{fmtAmt(statementData.summary.totalCreditTransaction)} <span style={{ fontSize: '10px', fontWeight: '700', textTransform: 'uppercase' }}>Trans</span>
+                </div>
               </div>
             </div>
 
