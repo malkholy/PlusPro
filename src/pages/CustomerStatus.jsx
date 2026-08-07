@@ -19,9 +19,11 @@ const PANEL_GROUPS = [
   { title: 'Cash', icon: '💰', accent: '#38bdf8', items: [
     ['BankCashEGP', 'Bank Cash'], ['TreasuryCashEGP', 'Treasury Cash']
   ]},
+  { title: 'Debtors & Creditors', icon: '👥', accent: '#f472b6', items: [
+    ['Debtors', 'Debtors'], ['Creditors', 'Creditors']
+  ]},
   { title: 'Other', icon: '📊', accent: '#a78bfa', items: [
     ['Loans', 'Loans'], ['Custody', 'Custody'],
-    ['Debtors', 'Debtors'], ['Creditors', 'Creditors'],
     ['Due', 'Due'], ['WorkingCapitalFunds', 'Working Capital Funds']
   ]}
 ];
