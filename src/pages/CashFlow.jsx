@@ -133,11 +133,12 @@ function MonthSection({ row, open, onToggle, onPrint, printing }) {
             <h1 style={{ margin: '0 0 2px 0', fontSize: 20, color: '#1b2a4a' }}>Cash Flow Report</h1>
             <h2 style={{ margin: '0 0 16px 0', fontSize: 13, color: '#555', fontWeight: 'normal' }}>{label}</h2>
           </div>
-          {/* Headline KPI strip */}
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 14 }}>
+          {/* Headline KPI strip -- fixed 4-column grid so it always lays out
+              as two lines (HERO_METRICS has 8 items). */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14 }}>
             {HERO_METRICS.map(([key, label, icon, formatter]) => (
               <div key={label} className="cf-kpi-card" style={{
-                flex: '1 1 160px', minWidth: 160, background: 'var(--soft)', border: '1px solid var(--border)',
+                minWidth: 0, background: 'var(--soft)', border: '1px solid var(--border)',
                 borderRadius: 12, padding: '12px 16px'
               }}>
                 <div style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 4 }}>
