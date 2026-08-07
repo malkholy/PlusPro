@@ -44,7 +44,6 @@ const HERO_METRICS = [
 const PANEL_GROUPS = [
   { title: 'Cash Position', icon: '🏦', accent: '#ff650f', items: [
     ['TreasuryCashEGP', 'Treasury Cash'], ['BankCashEGP', 'Bank Cash'],
-    ['TreasuryCashEGP_Open', 'Treasury Cash (Open)'], ['BankCashEGP_Open', 'Bank Cash (Open)'],
     [row => (Number(row.TreasuryCashEGP_Open) || 0) + (Number(row.BankCashEGP_Open) || 0), 'Month Begin Cash'],
     ['CashState', 'Cash State']
   ]},
