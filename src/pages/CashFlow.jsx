@@ -44,13 +44,13 @@ const HERO_METRICS = [
 const PANEL_GROUPS = [
   { title: 'Cash Position', icon: '🏦', accent: '#ff650f', items: [
     [row => (Number(row.TreasuryCashEGP) || 0) + (Number(row.BankCashEGP) || 0), 'Current Cash'],
-    [row => (Number(row.TreasuryCashEGP_Open) || 0) + (Number(row.BankCashEGP_Open) || 0), 'Month Begin Cash'],
-    ['CashState', 'Cash State']
+    [row => (Number(row.TreasuryCashEGP_Open) || 0) + (Number(row.BankCashEGP_Open) || 0), 'Month Begin Cash']
   ]},
   { title: 'Payables & Receivables', icon: '⚖️', accent: '#34d399', items: [
     [row => (Number(row.TotalCashPayable) || 0) + (Number(row.TotalTransferPayable) || 0), 'Total Payable'],
     [row => (Number(row.TotalCashReceivable) || 0) + (Number(row.TotalTransferReceivable) || 0), 'Total Receivable'],
-    ['TotalDueVendorInvoicesMonthEnding', 'Due Vendor Invoices'], ['TotalDueCustomerInvoicesMonthEnding', 'Due Customer Invoices']
+    ['TotalDueVendorInvoicesMonthEnding', 'Due Vendor Invoices'], ['TotalDueCustomerInvoicesMonthEnding', 'Due Customer Invoices'],
+    ['CashState', 'Cash State']
   ]},
   { title: 'Vendor', icon: '🏭', accent: '#f59e0b', items: [
     ['VendorBalance', 'Current Vendor Balance'], ['VendorOpenBalance', 'Vendor Open Balance'],
