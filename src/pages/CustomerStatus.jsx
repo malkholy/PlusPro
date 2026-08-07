@@ -7,20 +7,21 @@ function fmtMoney(v) {
   return <span style={{ color }}>{n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>;
 }
 
-// [column key, label, icon]
-const FIELDS = [
-  ['CustomerBalance', 'Customer Balance', '🏢'],
-  ['VendorBalance', 'Vendor Balance', '🏭'],
-  ['BankCashEGP', 'Bank Cash', '🏦'],
-  ['TreasuryCashEGP', 'Treasury Cash', '💰'],
-  ['NoteReceivable', 'Note Receivable', '📥'],
-  ['NotePayable', 'Note Payable', '📤'],
-  ['Loans', 'Loans', '💳'],
-  ['Custody', 'Custody', '🔒'],
-  ['Debtors', 'Debtors', '📈'],
-  ['Creditors', 'Creditors', '📉'],
-  ['Due', 'Due', '⚖️'],
-  ['WorkingCapitalFunds', 'Working Capital Funds', '💵']
+// Grouped panels -- each entry is [column key, label]. Each group gets a
+// left accent stripe color, matching Cash Flow's panel style.
+const PANEL_GROUPS = [
+  { title: 'Customer & Vendor', icon: '🏢', accent: '#ff650f', items: [
+    ['CustomerBalance', 'Customer Balance'], ['VendorBalance', 'Vendor Balance']
+  ]},
+  { title: 'Notes', icon: '📝', accent: '#34d399', items: [
+    ['NoteReceivable', 'Note Receivable'], ['NotePayable', 'Note Payable']
+  ]},
+  { title: 'Other', icon: '📊', accent: '#a78bfa', items: [
+    ['BankCashEGP', 'Bank Cash'], ['TreasuryCashEGP', 'Treasury Cash'],
+    ['Loans', 'Loans'], ['Custody', 'Custody'],
+    ['Debtors', 'Debtors'], ['Creditors', 'Creditors'],
+    ['Due', 'Due'], ['WorkingCapitalFunds', 'Working Capital Funds']
+  ]}
 ];
 
 export default function CustomerStatus({ user }) {
@@ -85,16 +86,27 @@ export default function CustomerStatus({ user }) {
             No data found.
           </div>
         ) : (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 16 }}>
-            {FIELDS.map(([key, label, icon]) => (
-              <div key={key} style={{
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 16 }}>
+            {PANEL_GROUPS.map(group => (
+              <div key={group.title} style={{
                 background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 14,
-                boxShadow: 'var(--shadow)', padding: '16px 18px'
+                borderLeft: `4px solid ${group.accent}`, boxShadow: 'var(--shadow)', overflow: 'hidden'
               }}>
-                <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 6 }}>
-                  {icon} {label}
+                <div style={{
+                  padding: '10px 16px', borderBottom: '1px solid var(--border)',
+                  fontSize: 11, fontWeight: 800, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: 0.4,
+                  display: 'flex', alignItems: 'center', gap: 6
+                }}>
+                  <span>{group.icon}</span> {group.title}
                 </div>
-                <div style={{ fontSize: 20, fontWeight: 800 }}>{fmtMoney(row[key])}</div>
+                <div style={{ padding: '10px 16px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {group.items.map(([key, label]) => (
+                    <div key={key} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+                      <span style={{ fontSize: 12.5, color: 'var(--muted)' }}>{label}</span>
+                      <span style={{ fontSize: 13.5, fontWeight: 700, whiteSpace: 'nowrap' }}>{fmtMoney(row[key])}</span>
+                    </div>
+                  ))}
+                </div>
               </div>
             ))}
           </div>
