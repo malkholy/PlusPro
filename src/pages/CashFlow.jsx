@@ -85,9 +85,7 @@ const PANEL_GROUPS = [
   ]},
   { title: 'Sales', icon: '📈', accent: '#38bdf8', items: [
     ['TotalCustomerSales', 'Customer Sales'], ['YTDSales2025', 'YTD Sales 2025'],
-    ['YTDSales2026', 'YTD Sales 2026'], ['YTDSalesGrowthPct', 'YTD Sales Growth', fmtPct],
-    ['TotalItemAmount', 'Item Amount'], ['TotalInvoiceDiscount', 'Invoice Discount'],
-    ['TotalCustomerExtraDiscount', 'Customer Extra Discount']
+    ['YTDSales2026', 'YTD Sales 2026'], ['YTDSalesGrowthPct', 'YTD Sales Growth', fmtPct]
   ]},
   { title: 'Sales Details', icon: '🛒', accent: '#c084fc', items: [
     ['WholeSales', 'Whole Sales'], ['CustomerModernSales', 'Customer Modern Sales']
