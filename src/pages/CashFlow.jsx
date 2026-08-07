@@ -14,8 +14,8 @@ function fmtPct(v) {
   return <span style={{ color, fontWeight: 700 }}>{sign}{n.toFixed(2)}%</span>;
 }
 
-function fmtRatio(v) {
-  return (Number(v) || 0).toFixed(2);
+function fmtRatioPct(v) {
+  return ((Number(v) || 0) * 100).toFixed(2) + '%';
 }
 
 function fmtDiff(v) {
@@ -69,13 +69,13 @@ const PANEL_GROUPS = [
     ['VendorBalance', 'Current Vendor Balance'], ['VendorOpenBalance', 'Vendor Open Balance'],
     ['VendorBalanceGrowth', 'Vendor Balance Growth', fmtPct],
     ['TotalVendorsPayment', 'Vendors Payment'], ['TotalVendorsInvoices', 'Vendor Invoices'],
-    ['VendorPaymentRatio', 'Vendor Payment Ratio', fmtRatio]
+    ['VendorPaymentRatio', 'Vendor Payment Ratio', fmtRatioPct]
   ]},
   { title: 'Customer', icon: '🏢', accent: '#22d3ee', items: [
     ['CustomerBalance', 'Current Customer Balance'], ['CustomerOpenBalance', 'Customer Open Balance'],
     ['CustomerBalanceGrowth', 'Customer Balance Growth', fmtPct],
     ['TotalCustomerPayment', 'Customer Payment'], ['TotalCustomerSales', 'Customer Invoices'],
-    [row => (Number(row.TotalCustomerSales) || 0) ? (Number(row.TotalCustomerPayment) || 0) / Number(row.TotalCustomerSales) : 0, 'Customer Payment Ratio', fmtRatio]
+    [row => (Number(row.TotalCustomerSales) || 0) ? (Number(row.TotalCustomerPayment) || 0) / Number(row.TotalCustomerSales) : 0, 'Customer Payment Ratio', fmtRatioPct]
   ]},
   { title: 'Checks', icon: '💳', accent: '#a78bfa', items: [
     ['TotalCheckCollection', 'Check Collection'],
