@@ -39,6 +39,7 @@ const MONTHS = [
 const HERO_METRICS = [
   [row => (Number(row.TreasuryCashEGP) || 0) + (Number(row.BankCashEGP) || 0), 'Current Cash', '💰'],
   ['TotalCustomerSales', 'Customer Sales', '📈'],
+  ['YTDSalesGrowthPct', 'YTD Sales Growth', '📈', fmtPct],
   [row => (Number(row.TotalCustomerSales) || 0) ? (Number(row.TotalCustomerPayment) || 0) / Number(row.TotalCustomerSales) : 0, 'Customer Payment Ratio', '💳', fmtRatioPct],
   ['VendorPaymentRatio', 'Vendor Payment Ratio', '💳', fmtRatioPct],
   ['Expenses', 'Expenses', '📉'],
