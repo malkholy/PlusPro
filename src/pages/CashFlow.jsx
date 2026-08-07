@@ -36,7 +36,7 @@ const MONTHS = [
 
 // Headline KPIs shown large, up top, per month.
 const HERO_METRICS = [
-  ['CashState', 'Cash State', '💰'],
+  [row => (Number(row.TreasuryCashEGP) || 0) + (Number(row.BankCashEGP) || 0), 'Current Cash', '💰'],
   ['TotalCollection', 'Total Collection', '📥'],
   ['TotalCustomerSales', 'Customer Sales', '📈'],
   ['Expenses', 'Expenses', '📉'],
@@ -134,14 +134,14 @@ function MonthSection({ row, open, onToggle, onPrint, printing }) {
           {/* Headline KPI strip */}
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 14 }}>
             {HERO_METRICS.map(([key, label, icon]) => (
-              <div key={key} className="cf-kpi-card" style={{
+              <div key={label} className="cf-kpi-card" style={{
                 flex: '1 1 160px', minWidth: 160, background: 'var(--soft)', border: '1px solid var(--border)',
                 borderRadius: 12, padding: '12px 16px'
               }}>
                 <div style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 4 }}>
                   {icon} {label}
                 </div>
-                <div style={{ fontSize: 18, fontWeight: 800 }}>{fmtMoney(row[key])}</div>
+                <div style={{ fontSize: 18, fontWeight: 800 }}>{fmtMoney(typeof key === 'function' ? key(row) : row[key])}</div>
               </div>
             ))}
           </div>
