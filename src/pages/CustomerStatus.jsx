@@ -36,7 +36,7 @@ export default function CustomerStatus({ user }) {
       if (res.State === 0) {
         setRow((res.List0 || [])[0] || null);
       } else {
-        setError(res.Message || 'Failed to load Customer Status data.');
+        setError(res.Message || 'Failed to load Company Status data.');
       }
     } catch (err) {
       setError(err.message || 'Error connecting to server.');
@@ -53,7 +53,7 @@ export default function CustomerStatus({ user }) {
     <div style={{ height: '100vh', display: 'flex', flexDirection: 'column', background: 'var(--bg)', fontFamily: 'var(--font)', color: 'var(--text)' }}>
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, minWidth: 0, overflow: 'auto', padding: '20px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-          <h2 style={{ margin: 0, fontSize: '24px' }}>📋 Customer Status</h2>
+          <h2 style={{ margin: 0, fontSize: '24px' }}>📋 Company Status</h2>
 
           <button
             onClick={loadData}
