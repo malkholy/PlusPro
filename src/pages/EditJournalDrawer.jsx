@@ -124,6 +124,42 @@ export default function EditJournalDrawer({ row, user, onClose, onSaveSuccess })
     });
   };
 
+  // Book (base-currency) amounts must always equal Transaction amount x Rate.
+  // These update Rate/Transaction and recompute the matching Book value in a
+  // single atomic setLines call, so there's no risk of stale reads across
+  // separate updateLineField calls in one handler.
+  const updateLineRate = (idx, rawRate) => {
+    setLines(prev => {
+      const copy = [...prev];
+      const line = copy[idx];
+      const newRate = rawRate === '' ? '' : Number(rawRate);
+      const effectiveRate = rawRate !== '' ? Number(rawRate) : (Number(line.JournalExchangeRate) || 1);
+      copy[idx] = {
+        ...line,
+        LineExchangeRate: newRate,
+        DebitBook: line.DebitTransaction !== '' && line.DebitTransaction != null ? Number(line.DebitTransaction) * effectiveRate : line.DebitBook,
+        CreditBook: line.CreditTransaction !== '' && line.CreditTransaction != null ? Number(line.CreditTransaction) * effectiveRate : line.CreditBook
+      };
+      return copy;
+    });
+  };
+
+  const updateLineTransaction = (idx, field, rawVal) => {
+    setLines(prev => {
+      const copy = [...prev];
+      const line = copy[idx];
+      const val = rawVal === '' ? '' : Number(rawVal);
+      const rate = Number(line.LineExchangeRate) || Number(line.JournalExchangeRate) || 1;
+      const bookField = field === 'DebitTransaction' ? 'DebitBook' : 'CreditBook';
+      copy[idx] = {
+        ...line,
+        [field]: val,
+        [bookField]: val === '' ? '' : val * rate
+      };
+      return copy;
+    });
+  };
+
   const addLine = () => {
     setLines(prev => [
       ...prev,
@@ -979,13 +1015,7 @@ export default function EditJournalDrawer({ row, user, onClose, onSaveSuccess })
                                     type="number"
                                     step="any"
                                     value={line.LineExchangeRate ?? ''}
-                                    onChange={e => {
-                                      const newRate = e.target.value === '' ? '' : Number(e.target.value);
-                                      updateLineField(idx, 'LineExchangeRate', newRate);
-                                      const rate = Number(newRate || line.JournalExchangeRate || 1);
-                                      if (line.DebitTransaction) updateLineField(idx, 'DebitBook', Number(line.DebitTransaction) * rate);
-                                      if (line.CreditTransaction) updateLineField(idx, 'CreditBook', Number(line.CreditTransaction) * rate);
-                                    }}
+                                    onChange={e => updateLineRate(idx, e.target.value)}
                                     style={{ width:'100%', padding:'4px 6px', border:'1px solid #DCE1EA', borderRadius:4, textAlign:'right', fontFamily:"'Roboto Mono', monospace", fontSize:12, outline:'none' }}
                                   />
                                 ) : (
@@ -998,12 +1028,7 @@ export default function EditJournalDrawer({ row, user, onClose, onSaveSuccess })
                                     type="number"
                                     step="any"
                                     value={line.DebitTransaction ?? ''}
-                                    onChange={e => {
-                                      const val = e.target.value === '' ? '' : Number(e.target.value);
-                                      updateLineField(idx, 'DebitTransaction', val);
-                                      const rate = Number(line.LineExchangeRate || line.JournalExchangeRate || 1);
-                                      updateLineField(idx, 'DebitBook', val === '' ? '' : val * rate);
-                                    }}
+                                    onChange={e => updateLineTransaction(idx, 'DebitTransaction', e.target.value)}
                                     style={{ width:'100%', padding:'4px 6px', border:'1px solid #DCE1EA', borderRadius:4, textAlign:'right', fontFamily:"'Roboto Mono', monospace", fontSize:12, outline:'none' }}
                                   />
                                 ) : (
@@ -1016,12 +1041,7 @@ export default function EditJournalDrawer({ row, user, onClose, onSaveSuccess })
                                     type="number"
                                     step="any"
                                     value={line.CreditTransaction ?? ''}
-                                    onChange={e => {
-                                      const val = e.target.value === '' ? '' : Number(e.target.value);
-                                      updateLineField(idx, 'CreditTransaction', val);
-                                      const rate = Number(line.LineExchangeRate || line.JournalExchangeRate || 1);
-                                      updateLineField(idx, 'CreditBook', val === '' ? '' : val * rate);
-                                    }}
+                                    onChange={e => updateLineTransaction(idx, 'CreditTransaction', e.target.value)}
                                     style={{ width:'100%', padding:'4px 6px', border:'1px solid #DCE1EA', borderRadius:4, textAlign:'right', fontFamily:"'Roboto Mono', monospace", fontSize:12, outline:'none' }}
                                   />
                                 ) : (
