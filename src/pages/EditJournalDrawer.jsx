@@ -226,6 +226,15 @@ export default function EditJournalDrawer({ row, user, onClose, onSaveSuccess })
     });
   };
 
+  const copyLine = (idx) => {
+    setLines(prev => {
+      const copy = [...prev];
+      const duplicate = { ...copy[idx] };
+      copy.splice(idx + 1, 0, duplicate);
+      return copy.map((line, i) => ({ ...line, Line: i + 1 }));
+    });
+  };
+
   useEffect(() => {
     async function loadDropdowns() {
       try {
@@ -913,6 +922,22 @@ export default function EditJournalDrawer({ row, user, onClose, onSaveSuccess })
                               >
                                 <div style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:4 }}>
                                   <span>{segOpen ? '▾' : '▸'} {line.Line ?? idx + 1}</span>
+                                  {mode === 'edit' && (
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        copyLine(idx);
+                                      }}
+                                      style={{
+                                        background:'transparent', border:'none', color:'#1D4FB8',
+                                        cursor:'pointer', fontSize:11, padding:'2px 4px',
+                                        display:'inline-flex', alignItems:'center'
+                                      }}
+                                      title="Copy row"
+                                    >
+                                      📄
+                                    </button>
+                                  )}
                                   {mode === 'edit' && (
                                     <button
                                       onClick={(e) => {
