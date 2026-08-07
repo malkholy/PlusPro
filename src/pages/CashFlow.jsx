@@ -43,7 +43,7 @@ const HERO_METRICS = [
 // sidebar's group-accent style.
 const PANEL_GROUPS = [
   { title: 'Cash Position', icon: '🏦', accent: '#ff650f', items: [
-    ['TreasuryCashEGP', 'Treasury Cash'], ['BankCashEGP', 'Bank Cash'],
+    [row => (Number(row.TreasuryCashEGP) || 0) + (Number(row.BankCashEGP) || 0), 'Current Cash'],
     [row => (Number(row.TreasuryCashEGP_Open) || 0) + (Number(row.BankCashEGP_Open) || 0), 'Month Begin Cash'],
     ['CashState', 'Cash State']
   ]},
