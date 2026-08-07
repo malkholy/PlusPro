@@ -91,7 +91,7 @@ const PANEL_GROUPS = [
     ['WholeSales', 'Whole Sales'], ['CustomerModernSales', 'Customer Modern Sales']
   ]},
   { title: 'Expenses & Ratios', icon: '📊', accent: '#f472b6', items: [
-    ['Expenses', 'Expenses'], ['TotalYearExpenses', 'Year Expenses'],
+    ['Expenses', 'Expenses'],
     ['ExpensesRatio', 'Expenses Ratio', fmtPct]
   ]}
 ];
