@@ -77,7 +77,7 @@ const PANEL_GROUPS = [
     [row => (Number(row.TotalCustomerSales) || 0) ? (Number(row.TotalCustomerPayment) || 0) / Number(row.TotalCustomerSales) : 0, 'Customer Payment Ratio', fmtRatio]
   ]},
   { title: 'Checks', icon: '💳', accent: '#a78bfa', items: [
-    ['TotalCollection', 'Total Collection'], ['TotalCheckCollection', 'Check Collection'],
+    ['TotalCheckCollection', 'Check Collection'],
     ['TotalCheckPaid', 'Check Paid'], ['TotalDueCheck', 'Due Check']
   ]},
   { title: 'Sales', icon: '📈', accent: '#38bdf8', items: [
