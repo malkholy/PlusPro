@@ -18,6 +18,13 @@ function fmtRatio(v) {
   return (Number(v) || 0).toFixed(2);
 }
 
+function fmtDiff(v) {
+  const n = Number(v) || 0;
+  const color = n > 0 ? 'var(--green, #16a34a)' : n < 0 ? 'var(--red)' : 'var(--text)';
+  const sign = n > 0 ? '+' : '';
+  return <span style={{ color, fontWeight: 700 }}>{sign}{n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>;
+}
+
 const MONTHS = [
   { value: 1, label: 'January' }, { value: 2, label: 'February' },
   { value: 3, label: 'March' },   { value: 4, label: 'April' },
@@ -44,7 +51,12 @@ const HERO_METRICS = [
 const PANEL_GROUPS = [
   { title: 'Cash Position', icon: '🏦', accent: '#ff650f', items: [
     [row => (Number(row.TreasuryCashEGP) || 0) + (Number(row.BankCashEGP) || 0), 'Current Cash'],
-    [row => (Number(row.TreasuryCashEGP_Open) || 0) + (Number(row.BankCashEGP_Open) || 0), 'Month Begin Cash']
+    [row => (Number(row.TreasuryCashEGP_Open) || 0) + (Number(row.BankCashEGP_Open) || 0), 'Month Begin Cash'],
+    [row => {
+      const current = (Number(row.TreasuryCashEGP) || 0) + (Number(row.BankCashEGP) || 0);
+      const monthBegin = (Number(row.TreasuryCashEGP_Open) || 0) + (Number(row.BankCashEGP_Open) || 0);
+      return current - monthBegin;
+    }, 'Diff', fmtDiff]
   ]},
   { title: 'Payables & Receivables', icon: '⚖️', accent: '#34d399', items: [
     [row => (Number(row.TotalCashPayable) || 0) + (Number(row.TotalTransferPayable) || 0), 'Total Payable'],
