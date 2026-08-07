@@ -6,6 +6,25 @@ function fmtAmt(v) {
   const n = Number(v || 0);
   return n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
+// Thousands-groups the integer part while editing, without forcing decimal
+// digits or collapsing a trailing "." -- a plain toLocaleString reformat on
+// every keystroke would make it impossible to type a decimal point/cents.
+function formatInputNumber(raw) {
+  if (raw === '' || raw == null) return '';
+  const s = String(raw);
+  const negative = s.startsWith('-');
+  const body = negative ? s.slice(1) : s;
+  const [intPart, decPart] = body.split('.');
+  const grouped = (intPart || '').replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  return (negative ? '-' : '') + grouped + (decPart !== undefined ? '.' + decPart : '');
+}
+// Strips comma grouping and rejects anything that isn't a valid (possibly
+// partial, e.g. "12." while typing) numeric string.
+function parseInputNumber(displayVal) {
+  const cleaned = displayVal.replace(/,/g, '');
+  if (cleaned !== '' && !/^-?\d*\.?\d*$/.test(cleaned)) return null;
+  return cleaned;
+}
 function fmtDate(v) {
   if (!v) return '—';
   return v.split('T')[0];
@@ -134,27 +153,31 @@ export default function EditJournalDrawer({ row, user, onClose, onSaveSuccess })
       const line = copy[idx];
       const newRate = rawRate === '' ? '' : Number(rawRate);
       const effectiveRate = rawRate !== '' ? Number(rawRate) : (Number(line.JournalExchangeRate) || 1);
+      const debitNum = Number(line.DebitTransaction);
+      const creditNum = Number(line.CreditTransaction);
       copy[idx] = {
         ...line,
         LineExchangeRate: newRate,
-        DebitBook: line.DebitTransaction !== '' && line.DebitTransaction != null ? Number(line.DebitTransaction) * effectiveRate : line.DebitBook,
-        CreditBook: line.CreditTransaction !== '' && line.CreditTransaction != null ? Number(line.CreditTransaction) * effectiveRate : line.CreditBook
+        DebitBook: line.DebitTransaction !== '' && line.DebitTransaction != null && Number.isFinite(debitNum) ? debitNum * effectiveRate : line.DebitBook,
+        CreditBook: line.CreditTransaction !== '' && line.CreditTransaction != null && Number.isFinite(creditNum) ? creditNum * effectiveRate : line.CreditBook
       };
       return copy;
     });
   };
 
   const updateLineTransaction = (idx, field, rawVal) => {
+    const val = parseInputNumber(rawVal);
+    if (val === null) return; // reject invalid keystroke, leave state untouched
     setLines(prev => {
       const copy = [...prev];
       const line = copy[idx];
-      const val = rawVal === '' ? '' : Number(rawVal);
       const rate = Number(line.LineExchangeRate) || Number(line.JournalExchangeRate) || 1;
       const bookField = field === 'DebitTransaction' ? 'DebitBook' : 'CreditBook';
+      const numeric = val === '' || val === '-' || val === '.' ? NaN : Number(val);
       copy[idx] = {
         ...line,
         [field]: val,
-        [bookField]: val === '' ? '' : val * rate
+        [bookField]: val === '' ? '' : (Number.isFinite(numeric) ? numeric * rate : line[bookField])
       };
       return copy;
     });
@@ -1025,9 +1048,9 @@ export default function EditJournalDrawer({ row, user, onClose, onSaveSuccess })
                               <td style={{ padding:'5px 8px', borderBottom:'1px solid #E9ECF2', background:'#FFFCF7', color:'#1D4FB8', textAlign:'right', width:110 }}>
                                 {mode === 'edit' ? (
                                   <input
-                                    type="number"
-                                    step="any"
-                                    value={line.DebitTransaction ?? ''}
+                                    type="text"
+                                    inputMode="decimal"
+                                    value={formatInputNumber(line.DebitTransaction)}
                                     onChange={e => updateLineTransaction(idx, 'DebitTransaction', e.target.value)}
                                     style={{ width:'100%', padding:'4px 6px', border:'1px solid #DCE1EA', borderRadius:4, textAlign:'right', fontFamily:"'Roboto Mono', monospace", fontSize:12, outline:'none' }}
                                   />
@@ -1038,9 +1061,9 @@ export default function EditJournalDrawer({ row, user, onClose, onSaveSuccess })
                               <td style={{ padding:'5px 8px', borderBottom:'1px solid #E9ECF2', background:'#FFFCF7', color:'#B5651D', textAlign:'right', width:110 }}>
                                 {mode === 'edit' ? (
                                   <input
-                                    type="number"
-                                    step="any"
-                                    value={line.CreditTransaction ?? ''}
+                                    type="text"
+                                    inputMode="decimal"
+                                    value={formatInputNumber(line.CreditTransaction)}
                                     onChange={e => updateLineTransaction(idx, 'CreditTransaction', e.target.value)}
                                     style={{ width:'100%', padding:'4px 6px', border:'1px solid #DCE1EA', borderRadius:4, textAlign:'right', fontFamily:"'Roboto Mono', monospace", fontSize:12, outline:'none' }}
                                   />
@@ -1051,10 +1074,10 @@ export default function EditJournalDrawer({ row, user, onClose, onSaveSuccess })
                               <td style={{ padding:'5px 8px', borderBottom:'1px solid #E9ECF2', background:'#EFF5FF', color:'#1D4FB8', textAlign:'right', width:110 }}>
                                 {mode === 'edit' ? (
                                   <input
-                                    type="number"
-                                    step="any"
-                                    value={line.DebitBook ?? ''}
-                                    onChange={e => updateLineField(idx, 'DebitBook', e.target.value === '' ? '' : Number(e.target.value))}
+                                    type="text"
+                                    inputMode="decimal"
+                                    value={formatInputNumber(line.DebitBook)}
+                                    onChange={e => { const v = parseInputNumber(e.target.value); if (v !== null) updateLineField(idx, 'DebitBook', v); }}
                                     style={{ width:'100%', padding:'4px 6px', border:'1px solid #DCE1EA', borderRadius:4, textAlign:'right', fontFamily:"'Roboto Mono', monospace", fontSize:12, outline:'none' }}
                                   />
                                 ) : (
@@ -1064,10 +1087,10 @@ export default function EditJournalDrawer({ row, user, onClose, onSaveSuccess })
                               <td style={{ padding:'5px 8px', borderBottom:'1px solid #E9ECF2', background:'#FFF6EC', color:'#B5651D', textAlign:'right', width:110 }}>
                                 {mode === 'edit' ? (
                                   <input
-                                    type="number"
-                                    step="any"
-                                    value={line.CreditBook ?? ''}
-                                    onChange={e => updateLineField(idx, 'CreditBook', e.target.value === '' ? '' : Number(e.target.value))}
+                                    type="text"
+                                    inputMode="decimal"
+                                    value={formatInputNumber(line.CreditBook)}
+                                    onChange={e => { const v = parseInputNumber(e.target.value); if (v !== null) updateLineField(idx, 'CreditBook', v); }}
                                     style={{ width:'100%', padding:'4px 6px', border:'1px solid #DCE1EA', borderRadius:4, textAlign:'right', fontFamily:"'Roboto Mono', monospace", fontSize:12, outline:'none' }}
                                   />
                                 ) : (
