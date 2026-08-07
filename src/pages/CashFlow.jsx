@@ -42,6 +42,7 @@ const HERO_METRICS = [
   [row => (Number(row.TotalCustomerSales) || 0) ? (Number(row.TotalCustomerPayment) || 0) / Number(row.TotalCustomerSales) : 0, 'Customer Payment Ratio', '💳', fmtRatioPct],
   ['VendorPaymentRatio', 'Vendor Payment Ratio', '💳', fmtRatioPct],
   ['Expenses', 'Expenses', '📉'],
+  ['ExpensesRatio', 'Expenses Ratio', '📊', fmtPct],
   [row => (Number(row.TotalDueCustomerInvoicesMonthEnding) || 0) - (Number(row.TotalDueVendorInvoicesMonthEnding) || 0), 'Diff (Customer - Vendor)', '⚖️', fmtDiff]
 ];
 
