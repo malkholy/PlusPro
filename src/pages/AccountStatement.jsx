@@ -713,10 +713,10 @@ export default function AccountStatement({ user, def }) {
                     <div style={{ width: '90px', borderRight: showBorders ? '1px solid var(--border)' : 'none', paddingRight: showBorders ? '8px' : '0' }}>Date</div>
                     <div style={{ width: '190px', borderRight: showBorders ? '1px solid var(--border)' : 'none', paddingLeft: showBorders ? '8px' : '0', paddingRight: showBorders ? '8px' : '0' }}>Ref / Journal</div>
                     <div style={{ flex: 1, textAlign: 'center', borderRight: showBorders ? '1px solid var(--border)' : 'none', paddingLeft: showBorders ? '8px' : '0', paddingRight: showBorders ? '8px' : '0' }}>Description</div>
-                    <div style={{ width: '70px', textAlign: 'center', borderRight: showBorders ? '1px solid var(--border)' : 'none', paddingLeft: showBorders ? '8px' : '0', paddingRight: showBorders ? '8px' : '0' }}>Currency</div>
-                    <div style={{ width: '80px', textAlign: 'right', borderRight: showBorders ? '1px solid var(--border)' : 'none', paddingRight: showBorders ? '8px' : '0' }}>Rate</div>
                     <div style={{ width: '110px', textAlign: 'right', borderRight: showBorders ? '1px solid var(--border)' : 'none', paddingRight: showBorders ? '8px' : '0' }}>Debit Trans</div>
                     <div style={{ width: '110px', textAlign: 'right', borderRight: showBorders ? '1px solid var(--border)' : 'none', paddingRight: showBorders ? '8px' : '0' }}>Credit Trans</div>
+                    <div style={{ width: '70px', textAlign: 'center', borderRight: showBorders ? '1px solid var(--border)' : 'none', paddingLeft: showBorders ? '8px' : '0', paddingRight: showBorders ? '8px' : '0' }}>Currency</div>
+                    <div style={{ width: '80px', textAlign: 'right', borderRight: showBorders ? '1px solid var(--border)' : 'none', paddingRight: showBorders ? '8px' : '0' }}>Rate</div>
                     <div style={{ width: '110px', textAlign: 'right', borderRight: showBorders ? '1px solid var(--border)' : 'none', paddingRight: showBorders ? '8px' : '0' }}>Debit Book</div>
                     <div style={{ width: '110px', textAlign: 'right', borderRight: showBorders ? '1px solid var(--border)' : 'none', paddingRight: showBorders ? '8px' : '0' }}>Credit Book</div>
                     <div style={{ width: '120px', textAlign: 'right', paddingLeft: showBorders ? '8px' : '0' }}>Balance</div>
@@ -764,10 +764,10 @@ export default function AccountStatement({ user, def }) {
                           <div style={{ flex: 1, textAlign: 'center', borderRight: showBorders ? '1px solid var(--border)' : 'none', paddingLeft: showBorders ? '8px' : '0', paddingRight: showBorders ? '8px' : '0' }}>
                             Opening Balance for this section
                           </div>
+                          <div style={{ width: '110px', borderRight: showBorders ? '1px solid var(--border)' : 'none' }}></div>
+                          <div style={{ width: '110px', borderRight: showBorders ? '1px solid var(--border)' : 'none' }}></div>
                           <div style={{ width: '70px', borderRight: showBorders ? '1px solid var(--border)' : 'none' }}></div>
                           <div style={{ width: '80px', borderRight: showBorders ? '1px solid var(--border)' : 'none' }}></div>
-                          <div style={{ width: '110px', borderRight: showBorders ? '1px solid var(--border)' : 'none' }}></div>
-                          <div style={{ width: '110px', borderRight: showBorders ? '1px solid var(--border)' : 'none' }}></div>
                           <div style={{ width: '110px', borderRight: showBorders ? '1px solid var(--border)' : 'none' }}></div>
                           <div style={{ width: '110px', borderRight: showBorders ? '1px solid var(--border)' : 'none' }}></div>
                           <div style={{ width: '120px', textAlign: 'right', fontFamily: 'var(--mono)', paddingLeft: showBorders ? '8px' : '0' }}>
@@ -838,6 +838,32 @@ export default function AccountStatement({ user, def }) {
                                 {item.Reference1 && <span style={{ color: 'var(--muted)', fontSize: '11px', marginLeft: 8 }}>(Ref: {item.Reference1})</span>}
                               </div>
                               
+                              {/* Debit Trans (transaction currency) */}
+                              <div style={{
+                                width: '110px',
+                                textAlign: 'right',
+                                fontWeight: '600',
+                                color: 'var(--green)',
+                                fontFamily: 'var(--mono)',
+                                borderRight: showBorders ? '1px solid var(--border)' : 'none',
+                                paddingRight: showBorders ? '8px' : '0'
+                              }}>
+                                {Number(item.DebitTransaction || 0) > 0 ? fmtAmt(item.DebitTransaction) : ''}
+                              </div>
+
+                              {/* Credit Trans (transaction currency) */}
+                              <div style={{
+                                width: '110px',
+                                textAlign: 'right',
+                                fontWeight: '600',
+                                color: 'var(--red)',
+                                fontFamily: 'var(--mono)',
+                                borderRight: showBorders ? '1px solid var(--border)' : 'none',
+                                paddingRight: showBorders ? '8px' : '0'
+                              }}>
+                                {Number(item.CreditTransaction || 0) > 0 ? fmtAmt(item.CreditTransaction) : ''}
+                              </div>
+
                               {/* Currency */}
                               <div style={{
                                 width: '70px',
@@ -863,32 +889,6 @@ export default function AccountStatement({ user, def }) {
                                 paddingRight: showBorders ? '8px' : '0'
                               }}>
                                 {item.LineExchangeRate != null ? item.LineExchangeRate : '—'}
-                              </div>
-
-                              {/* Debit Trans (transaction currency) */}
-                              <div style={{
-                                width: '110px',
-                                textAlign: 'right',
-                                fontWeight: '600',
-                                color: 'var(--green)',
-                                fontFamily: 'var(--mono)',
-                                borderRight: showBorders ? '1px solid var(--border)' : 'none',
-                                paddingRight: showBorders ? '8px' : '0'
-                              }}>
-                                {Number(item.DebitTransaction || 0) > 0 ? fmtAmt(item.DebitTransaction) : ''}
-                              </div>
-
-                              {/* Credit Trans (transaction currency) */}
-                              <div style={{
-                                width: '110px',
-                                textAlign: 'right',
-                                fontWeight: '600',
-                                color: 'var(--red)',
-                                fontFamily: 'var(--mono)',
-                                borderRight: showBorders ? '1px solid var(--border)' : 'none',
-                                paddingRight: showBorders ? '8px' : '0'
-                              }}>
-                                {Number(item.CreditTransaction || 0) > 0 ? fmtAmt(item.CreditTransaction) : ''}
                               </div>
 
                               {/* Debit Book */}
@@ -946,10 +946,10 @@ export default function AccountStatement({ user, def }) {
                           <div style={{ width: '90px', borderRight: showBorders ? '1px solid var(--border)' : 'none', paddingRight: showBorders ? '8px' : '0' }}>—</div>
                           <div style={{ width: '190px', borderRight: showBorders ? '1px solid var(--border)' : 'none', paddingLeft: showBorders ? '8px' : '0', paddingRight: showBorders ? '8px' : '0' }}></div>
                           <div style={{ flex: 1, textAlign: 'right', borderRight: showBorders ? '1px solid var(--border)' : 'none', paddingRight: '12px', textTransform: 'uppercase' }}>Subtotal:</div>
+                          <div style={{ width: '110px', borderRight: showBorders ? '1px solid var(--border)' : 'none' }}></div>
+                          <div style={{ width: '110px', borderRight: showBorders ? '1px solid var(--border)' : 'none' }}></div>
                           <div style={{ width: '70px', borderRight: showBorders ? '1px solid var(--border)' : 'none' }}></div>
                           <div style={{ width: '80px', borderRight: showBorders ? '1px solid var(--border)' : 'none' }}></div>
-                          <div style={{ width: '110px', borderRight: showBorders ? '1px solid var(--border)' : 'none' }}></div>
-                          <div style={{ width: '110px', borderRight: showBorders ? '1px solid var(--border)' : 'none' }}></div>
                           <div style={{ width: '110px', textAlign: 'right', color: 'var(--green)', fontFamily: 'var(--mono)', borderRight: showBorders ? '1px solid var(--border)' : 'none', paddingRight: showBorders ? '8px' : '0' }}>
                             {groupDebit > 0 ? `+${fmtAmt(groupDebit)}` : ''}
                           </div>
@@ -978,10 +978,10 @@ export default function AccountStatement({ user, def }) {
                     <div style={{ width: '90px', color: 'var(--muted)', borderRight: showBorders ? '1px solid var(--border)' : 'none', paddingRight: showBorders ? '8px' : '0' }}>—</div>
                     <div style={{ width: '190px', color: 'var(--muted)', fontFamily: 'var(--mono)', borderRight: showBorders ? '1px solid var(--border)' : 'none', paddingLeft: showBorders ? '8px' : '0', paddingRight: showBorders ? '8px' : '0' }}>CLOSING</div>
                     <div style={{ flex: 1, textAlign: 'center', borderRight: showBorders ? '1px solid var(--border)' : 'none', paddingLeft: showBorders ? '8px' : '0', paddingRight: showBorders ? '8px' : '0' }}>Closing Balance period summary</div>
+                    <div style={{ width: '110px', borderRight: showBorders ? '1px solid var(--border)' : 'none' }}></div>
+                    <div style={{ width: '110px', borderRight: showBorders ? '1px solid var(--border)' : 'none' }}></div>
                     <div style={{ width: '70px', borderRight: showBorders ? '1px solid var(--border)' : 'none' }}></div>
                     <div style={{ width: '80px', borderRight: showBorders ? '1px solid var(--border)' : 'none' }}></div>
-                    <div style={{ width: '110px', borderRight: showBorders ? '1px solid var(--border)' : 'none' }}></div>
-                    <div style={{ width: '110px', borderRight: showBorders ? '1px solid var(--border)' : 'none' }}></div>
                     <div style={{ width: '110px', textAlign: 'right', color: 'var(--green)', fontFamily: 'var(--mono)', borderRight: showBorders ? '1px solid var(--border)' : 'none', paddingRight: showBorders ? '8px' : '0' }}>
                       +{fmtAmt(statementData.summary.totalDebit)}
                     </div>
