@@ -244,6 +244,7 @@ export default function TrialBalance({ user, def }) {
   const [viewMode, setViewMode] = useState('statement');
   const [showBorders, setShowBorders] = useState(true);
   const [showExtraInfo, setShowExtraInfo] = useState(false);
+  const [byBook, setByBook] = useState(false);
   
   // Drawer states
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
@@ -308,14 +309,16 @@ export default function TrialBalance({ user, def }) {
     setDrawerTbError('');
     setDrawerTbData([]);
     setActiveDrawerTab('journal_lines');
-    setDrawerTitle(`Details: ${row.AccountNumber} - ${row.AccountDescription} (${row.LineCurrency})`);
+    setDrawerTitle(byBook
+      ? `Details: ${row.AccountNumber} - ${row.AccountDescription} (All Currencies, By Book)`
+      : `Details: ${row.AccountNumber} - ${row.AccountDescription} (${row.LineCurrency})`);
 
     try {
       const d = await apiCall('Account Statement Lines', {
         param1: row.AccountNumber,
         param2: activeFilters.startDate,
         param3: activeFilters.endDate,
-        currency: row.LineCurrency,
+        currency: byBook ? '' : row.LineCurrency,
         fromCustomer: row.Customer || '',
         toCustomer: '',
         fromVendor: row.Vendor || '',
@@ -345,7 +348,7 @@ export default function TrialBalance({ user, def }) {
     try {
       const dTb = await apiCall('Trial Balance', {
         param1: row.AccountNumber,
-        currency: row.LineCurrency,
+        currency: byBook ? '' : row.LineCurrency,
         fromDate: activeFilters.startDate,
         toDate: activeFilters.endDate,
         fromCustomer: row.Customer || '',
@@ -402,6 +405,28 @@ export default function TrialBalance({ user, def }) {
 
     return { filteredData: filtered, totals: t };
   }, [rawData, searchTerm]);
+
+  // "By Book" -- consolidate rows across currency (the backend returns one
+  // row per Account + Currency, since Transaction amounts can't be summed
+  // across currencies) into one row per account using Book values, which are
+  // already base-currency-converted and safe to sum regardless of currency.
+  const bookRows = useMemo(() => {
+    const groups = {};
+    filteredData.forEach(row => {
+      const key = [row.AccountNumber, row.Customer, row.Vendor, row.Bank, row.Asset, row.Employee, row.Expense].join('|');
+      if (!groups[key]) {
+        groups[key] = {
+          ...row,
+          OpeningBook: 0, DebitBook: 0, CreditBook: 0, ClosingBook: 0
+        };
+      }
+      groups[key].OpeningBook += Number(row.OpeningBook || 0);
+      groups[key].DebitBook += Number(row.DebitBook || 0);
+      groups[key].CreditBook += Number(row.CreditBook || 0);
+      groups[key].ClosingBook += Number(row.ClosingBook || 0);
+    });
+    return Object.values(groups);
+  }, [filteredData]);
 
   return (
     <div className="flex-row-layout" style={{ flex: 1, minHeight: 0, minWidth: 0, height: '100%', gap: 16, position: 'relative' }}>
@@ -478,6 +503,27 @@ export default function TrialBalance({ user, def }) {
                 />
               </div>
               <button
+                onClick={() => setByBook(!byBook)}
+                style={{
+                  height: '38px',
+                  padding: '0 16px',
+                  background: byBook ? 'var(--orange-dark)' : 'var(--surface)',
+                  color: byBook ? '#fff' : 'var(--text)',
+                  border: `1px solid ${byBook ? 'var(--orange-dark)' : 'var(--border)'}`,
+                  borderRadius: '10px',
+                  fontSize: '13px',
+                  fontWeight: '600',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  transition: 'all 0.2s'
+                }}
+                title="Show one consolidated row per account, summed in Book (base-currency) values -- no per-currency split"
+              >
+                📘 {byBook ? 'By Book: ON' : 'By Book'}
+              </button>
+              <button
                 onClick={() => setShowExtraInfo(!showExtraInfo)}
                 style={{
                   height: '38px',
@@ -543,7 +589,7 @@ export default function TrialBalance({ user, def }) {
                   </svg>
                   <div style={{ fontSize: '13px', fontWeight: '700', color: 'var(--muted)', letterSpacing: '0.5px' }}>Fetching trial balance...</div>
                 </div>
-              ) : filteredData.length === 0 ? (
+              ) : (byBook ? bookRows : filteredData).length === 0 ? (
                 <div style={{ textAlign: 'center', padding: '48px', color: 'var(--muted)' }}>
                   No accounts found matching the filter criteria.
                 </div>
@@ -561,8 +607,9 @@ export default function TrialBalance({ user, def }) {
                     const hasAsset = activeFilters.fromAsset || activeFilters.toAsset;
                     const hasEmployee = activeFilters.fromEmployee || activeFilters.toEmployee;
                     const hasExpense = activeFilters.fromExpense || activeFilters.toExpense;
-                    const hasCurrency = true;
-                    
+                    const hasCurrency = !byBook;
+                    const rows = byBook ? bookRows : filteredData;
+
                     const colSpanBase = 2 + [hasCustomer, hasVendor, hasBank, hasAsset, hasEmployee, hasExpense, hasCurrency].filter(Boolean).length;
 
                     return (
@@ -578,26 +625,29 @@ export default function TrialBalance({ user, def }) {
                             {hasEmployee && <th style={{ padding: '16px', borderBottom: '1px solid var(--border)' }}>Employee</th>}
                             {hasExpense && <th style={{ padding: '16px', borderBottom: '1px solid var(--border)' }}>Expense</th>}
                             {hasCurrency && <th style={{ padding: '16px', borderBottom: '1px solid var(--border)' }}>Currency</th>}
-                            {!showExtraInfo && <th style={{ padding: '16px', borderBottom: '1px solid var(--border)', textAlign: 'right' }}>Opening</th>}
-                            {!showExtraInfo && <th style={{ padding: '16px', borderBottom: '1px solid var(--border)', textAlign: 'right' }}>Debit</th>}
-                            {!showExtraInfo && <th style={{ padding: '16px', borderBottom: '1px solid var(--border)', textAlign: 'right' }}>Credit</th>}
-                            {!showExtraInfo && <th style={{ padding: '16px', borderBottom: '1px solid var(--border)', textAlign: 'right' }}>Closing</th>}
+                            {byBook && <th style={{ padding: '16px', borderBottom: '1px solid var(--border)', textAlign: 'right', color: 'var(--blue)' }}>Opening (Book)</th>}
+                            {byBook && <th style={{ padding: '16px', borderBottom: '1px solid var(--border)', textAlign: 'right', color: 'var(--blue)' }}>Debit (Book)</th>}
+                            {byBook && <th style={{ padding: '16px', borderBottom: '1px solid var(--border)', textAlign: 'right', color: 'var(--blue)' }}>Credit (Book)</th>}
+                            {byBook && <th style={{ padding: '16px', borderBottom: '1px solid var(--border)', textAlign: 'right', color: 'var(--blue)' }}>Closing (Book)</th>}
 
-                            {showExtraInfo && <th style={{ padding: '16px', borderBottom: '1px solid var(--border)', textAlign: 'right', color: 'var(--orange-dark)' }}>Opening Transaction</th>}
-                            {showExtraInfo && <th style={{ padding: '16px', borderBottom: '1px solid var(--border)', textAlign: 'right', color: 'var(--orange-dark)' }}>Debit Transaction</th>}
-                            {showExtraInfo && <th style={{ padding: '16px', borderBottom: '1px solid var(--border)', textAlign: 'right', color: 'var(--orange-dark)' }}>Credit Transaction</th>}
-                            {showExtraInfo && <th style={{ padding: '16px', borderBottom: '1px solid var(--border)', textAlign: 'right', color: 'var(--orange-dark)' }}>Closing Transaction</th>}
-                            
-                            {/* Currency is rendered earlier if hasCurrency, but wait, Currency is usually among the groupers. If they want Currency right here, we should move it or just keep the grouping Currency. The user said: "Closing Transaction, Currency, Opening Book". Since Currency is already grouped, let's keep it in the grouping area but rename headers. Wait, I will just let the existing Currency column be, because it's already there before the balances. */}
+                            {!byBook && !showExtraInfo && <th style={{ padding: '16px', borderBottom: '1px solid var(--border)', textAlign: 'right' }}>Opening</th>}
+                            {!byBook && !showExtraInfo && <th style={{ padding: '16px', borderBottom: '1px solid var(--border)', textAlign: 'right' }}>Debit</th>}
+                            {!byBook && !showExtraInfo && <th style={{ padding: '16px', borderBottom: '1px solid var(--border)', textAlign: 'right' }}>Credit</th>}
+                            {!byBook && !showExtraInfo && <th style={{ padding: '16px', borderBottom: '1px solid var(--border)', textAlign: 'right' }}>Closing</th>}
 
-                            {showExtraInfo && <th style={{ padding: '16px', borderBottom: '1px solid var(--border)', textAlign: 'right', color: 'var(--blue)' }}>Opening Book</th>}
-                            {showExtraInfo && <th style={{ padding: '16px', borderBottom: '1px solid var(--border)', textAlign: 'right', color: 'var(--blue)' }}>Debit Book</th>}
-                            {showExtraInfo && <th style={{ padding: '16px', borderBottom: '1px solid var(--border)', textAlign: 'right', color: 'var(--blue)' }}>Credit Book</th>}
-                            {showExtraInfo && <th style={{ padding: '16px', borderBottom: '1px solid var(--border)', textAlign: 'right', color: 'var(--blue)' }}>Closing Book</th>}
+                            {!byBook && showExtraInfo && <th style={{ padding: '16px', borderBottom: '1px solid var(--border)', textAlign: 'right', color: 'var(--orange-dark)' }}>Opening Transaction</th>}
+                            {!byBook && showExtraInfo && <th style={{ padding: '16px', borderBottom: '1px solid var(--border)', textAlign: 'right', color: 'var(--orange-dark)' }}>Debit Transaction</th>}
+                            {!byBook && showExtraInfo && <th style={{ padding: '16px', borderBottom: '1px solid var(--border)', textAlign: 'right', color: 'var(--orange-dark)' }}>Credit Transaction</th>}
+                            {!byBook && showExtraInfo && <th style={{ padding: '16px', borderBottom: '1px solid var(--border)', textAlign: 'right', color: 'var(--orange-dark)' }}>Closing Transaction</th>}
+
+                            {!byBook && showExtraInfo && <th style={{ padding: '16px', borderBottom: '1px solid var(--border)', textAlign: 'right', color: 'var(--blue)' }}>Opening Book</th>}
+                            {!byBook && showExtraInfo && <th style={{ padding: '16px', borderBottom: '1px solid var(--border)', textAlign: 'right', color: 'var(--blue)' }}>Debit Book</th>}
+                            {!byBook && showExtraInfo && <th style={{ padding: '16px', borderBottom: '1px solid var(--border)', textAlign: 'right', color: 'var(--blue)' }}>Credit Book</th>}
+                            {!byBook && showExtraInfo && <th style={{ padding: '16px', borderBottom: '1px solid var(--border)', textAlign: 'right', color: 'var(--blue)' }}>Closing Book</th>}
                           </tr>
                         </thead>
                         <tbody>
-                          {filteredData.map((row, idx) => {
+                          {rows.map((row, idx) => {
                             return (
                               <tr 
                                 key={idx} 
@@ -615,41 +665,51 @@ export default function TrialBalance({ user, def }) {
                                 {hasEmployee && <td style={{ padding: '16px', color: 'var(--text)' }}>{row.Employee} - {row.EmployeeName}</td>}
                                 {hasExpense && <td style={{ padding: '16px', color: 'var(--text)' }}>{row.Expense} - {row.ExpenseName}</td>}
                                 {hasCurrency && <td style={{ padding: '16px', color: 'var(--text)' }}>{row.LineCurrency}</td>}
-                                
-                                {!showExtraInfo && <td style={{ padding: '16px', textAlign: 'right', fontWeight: '600' }}>{fmtAmt(row.OpeningTransaction)}</td>}
-                                {!showExtraInfo && <td style={{ padding: '16px', textAlign: 'right', color: 'var(--green)', fontWeight: '600' }}>{fmtAmt(row.DebitTransaction)}</td>}
-                                {!showExtraInfo && <td style={{ padding: '16px', textAlign: 'right', color: 'var(--red)', fontWeight: '600' }}>{fmtAmt(row.CreditTransaction)}</td>}
-                                {!showExtraInfo && <td style={{ padding: '16px', textAlign: 'right', fontWeight: '800' }}>{fmtAmt(row.ClosingTransaction)}</td>}
 
-                                {showExtraInfo && <td style={{ padding: '16px', textAlign: 'right', color: 'var(--orange-dark)', fontWeight: '600' }}>{fmtAmt(row.OpeningTransaction)}</td>}
-                                {showExtraInfo && <td style={{ padding: '16px', textAlign: 'right', color: 'var(--orange-dark)', fontWeight: '600' }}>{fmtAmt(row.DebitTransaction)}</td>}
-                                {showExtraInfo && <td style={{ padding: '16px', textAlign: 'right', color: 'var(--orange-dark)', fontWeight: '600' }}>{fmtAmt(row.CreditTransaction)}</td>}
-                                {showExtraInfo && <td style={{ padding: '16px', textAlign: 'right', color: 'var(--orange-dark)', fontWeight: '600' }}>{fmtAmt(row.ClosingTransaction)}</td>}
+                                {byBook && <td style={{ padding: '16px', textAlign: 'right', color: 'var(--blue)', fontWeight: '600' }}>{fmtAmt(row.OpeningBook)}</td>}
+                                {byBook && <td style={{ padding: '16px', textAlign: 'right', color: 'var(--green)', fontWeight: '600' }}>{fmtAmt(row.DebitBook)}</td>}
+                                {byBook && <td style={{ padding: '16px', textAlign: 'right', color: 'var(--red)', fontWeight: '600' }}>{fmtAmt(row.CreditBook)}</td>}
+                                {byBook && <td style={{ padding: '16px', textAlign: 'right', fontWeight: '800', color: 'var(--blue)' }}>{fmtAmt(row.ClosingBook)}</td>}
 
-                                {showExtraInfo && <td style={{ padding: '16px', textAlign: 'right', color: 'var(--blue)', fontWeight: '600' }}>{fmtAmt(row.OpeningBook)}</td>}
-                                {showExtraInfo && <td style={{ padding: '16px', textAlign: 'right', color: 'var(--blue)', fontWeight: '600' }}>{fmtAmt(row.DebitBook)}</td>}
-                                {showExtraInfo && <td style={{ padding: '16px', textAlign: 'right', color: 'var(--blue)', fontWeight: '600' }}>{fmtAmt(row.CreditBook)}</td>}
-                                {showExtraInfo && <td style={{ padding: '16px', textAlign: 'right', color: 'var(--blue)', fontWeight: '600' }}>{fmtAmt(row.ClosingBook)}</td>}
+                                {!byBook && !showExtraInfo && <td style={{ padding: '16px', textAlign: 'right', fontWeight: '600' }}>{fmtAmt(row.OpeningTransaction)}</td>}
+                                {!byBook && !showExtraInfo && <td style={{ padding: '16px', textAlign: 'right', color: 'var(--green)', fontWeight: '600' }}>{fmtAmt(row.DebitTransaction)}</td>}
+                                {!byBook && !showExtraInfo && <td style={{ padding: '16px', textAlign: 'right', color: 'var(--red)', fontWeight: '600' }}>{fmtAmt(row.CreditTransaction)}</td>}
+                                {!byBook && !showExtraInfo && <td style={{ padding: '16px', textAlign: 'right', fontWeight: '800' }}>{fmtAmt(row.ClosingTransaction)}</td>}
+
+                                {!byBook && showExtraInfo && <td style={{ padding: '16px', textAlign: 'right', color: 'var(--orange-dark)', fontWeight: '600' }}>{fmtAmt(row.OpeningTransaction)}</td>}
+                                {!byBook && showExtraInfo && <td style={{ padding: '16px', textAlign: 'right', color: 'var(--orange-dark)', fontWeight: '600' }}>{fmtAmt(row.DebitTransaction)}</td>}
+                                {!byBook && showExtraInfo && <td style={{ padding: '16px', textAlign: 'right', color: 'var(--orange-dark)', fontWeight: '600' }}>{fmtAmt(row.CreditTransaction)}</td>}
+                                {!byBook && showExtraInfo && <td style={{ padding: '16px', textAlign: 'right', color: 'var(--orange-dark)', fontWeight: '600' }}>{fmtAmt(row.ClosingTransaction)}</td>}
+
+                                {!byBook && showExtraInfo && <td style={{ padding: '16px', textAlign: 'right', color: 'var(--blue)', fontWeight: '600' }}>{fmtAmt(row.OpeningBook)}</td>}
+                                {!byBook && showExtraInfo && <td style={{ padding: '16px', textAlign: 'right', color: 'var(--blue)', fontWeight: '600' }}>{fmtAmt(row.DebitBook)}</td>}
+                                {!byBook && showExtraInfo && <td style={{ padding: '16px', textAlign: 'right', color: 'var(--blue)', fontWeight: '600' }}>{fmtAmt(row.CreditBook)}</td>}
+                                {!byBook && showExtraInfo && <td style={{ padding: '16px', textAlign: 'right', color: 'var(--blue)', fontWeight: '600' }}>{fmtAmt(row.ClosingBook)}</td>}
                               </tr>
                             );
                           })}
                           <tr style={{ background: 'var(--soft)' }}>
                             <td colSpan={colSpanBase} style={{ padding: '16px', fontWeight: '900', color: 'var(--text)', textTransform: 'uppercase' }}>Total</td>
-                            
-                            {!showExtraInfo && <td style={{ padding: '16px', textAlign: 'right', fontWeight: '800' }}>{fmtAmt(totals.OpeningTransaction)}</td>}
-                            {!showExtraInfo && <td style={{ padding: '16px', textAlign: 'right', color: 'var(--green)', fontWeight: '800' }}>{fmtAmt(totals.DebitTransaction)}</td>}
-                            {!showExtraInfo && <td style={{ padding: '16px', textAlign: 'right', color: 'var(--red)', fontWeight: '800' }}>{fmtAmt(totals.CreditTransaction)}</td>}
-                            {!showExtraInfo && <td style={{ padding: '16px', textAlign: 'right', fontWeight: '900', color: 'var(--text)' }}>{fmtAmt(totals.ClosingTransaction)}</td>}
 
-                            {showExtraInfo && <td style={{ padding: '16px', textAlign: 'right', color: 'var(--orange-dark)', fontWeight: '800' }}>{fmtAmt(totals.OpeningTransaction)}</td>}
-                            {showExtraInfo && <td style={{ padding: '16px', textAlign: 'right', color: 'var(--orange-dark)', fontWeight: '800' }}>{fmtAmt(totals.DebitTransaction)}</td>}
-                            {showExtraInfo && <td style={{ padding: '16px', textAlign: 'right', color: 'var(--orange-dark)', fontWeight: '800' }}>{fmtAmt(totals.CreditTransaction)}</td>}
-                            {showExtraInfo && <td style={{ padding: '16px', textAlign: 'right', color: 'var(--orange-dark)', fontWeight: '800' }}>{fmtAmt(totals.ClosingTransaction)}</td>}
+                            {byBook && <td style={{ padding: '16px', textAlign: 'right', fontWeight: '800', color: 'var(--blue)' }}>{fmtAmt(totals.OpeningBook)}</td>}
+                            {byBook && <td style={{ padding: '16px', textAlign: 'right', color: 'var(--green)', fontWeight: '800' }}>{fmtAmt(totals.DebitBook)}</td>}
+                            {byBook && <td style={{ padding: '16px', textAlign: 'right', color: 'var(--red)', fontWeight: '800' }}>{fmtAmt(totals.CreditBook)}</td>}
+                            {byBook && <td style={{ padding: '16px', textAlign: 'right', fontWeight: '900', color: 'var(--blue)' }}>{fmtAmt(totals.ClosingBook)}</td>}
 
-                            {showExtraInfo && <td style={{ padding: '16px', textAlign: 'right', color: 'var(--blue)', fontWeight: '800' }}>{fmtAmt(totals.OpeningBook)}</td>}
-                            {showExtraInfo && <td style={{ padding: '16px', textAlign: 'right', color: 'var(--blue)', fontWeight: '800' }}>{fmtAmt(totals.DebitBook)}</td>}
-                            {showExtraInfo && <td style={{ padding: '16px', textAlign: 'right', color: 'var(--blue)', fontWeight: '800' }}>{fmtAmt(totals.CreditBook)}</td>}
-                            {showExtraInfo && <td style={{ padding: '16px', textAlign: 'right', color: 'var(--blue)', fontWeight: '800' }}>{fmtAmt(totals.ClosingBook)}</td>}
+                            {!byBook && !showExtraInfo && <td style={{ padding: '16px', textAlign: 'right', fontWeight: '800' }}>{fmtAmt(totals.OpeningTransaction)}</td>}
+                            {!byBook && !showExtraInfo && <td style={{ padding: '16px', textAlign: 'right', color: 'var(--green)', fontWeight: '800' }}>{fmtAmt(totals.DebitTransaction)}</td>}
+                            {!byBook && !showExtraInfo && <td style={{ padding: '16px', textAlign: 'right', color: 'var(--red)', fontWeight: '800' }}>{fmtAmt(totals.CreditTransaction)}</td>}
+                            {!byBook && !showExtraInfo && <td style={{ padding: '16px', textAlign: 'right', fontWeight: '900', color: 'var(--text)' }}>{fmtAmt(totals.ClosingTransaction)}</td>}
+
+                            {!byBook && showExtraInfo && <td style={{ padding: '16px', textAlign: 'right', color: 'var(--orange-dark)', fontWeight: '800' }}>{fmtAmt(totals.OpeningTransaction)}</td>}
+                            {!byBook && showExtraInfo && <td style={{ padding: '16px', textAlign: 'right', color: 'var(--orange-dark)', fontWeight: '800' }}>{fmtAmt(totals.DebitTransaction)}</td>}
+                            {!byBook && showExtraInfo && <td style={{ padding: '16px', textAlign: 'right', color: 'var(--orange-dark)', fontWeight: '800' }}>{fmtAmt(totals.CreditTransaction)}</td>}
+                            {!byBook && showExtraInfo && <td style={{ padding: '16px', textAlign: 'right', color: 'var(--orange-dark)', fontWeight: '800' }}>{fmtAmt(totals.ClosingTransaction)}</td>}
+
+                            {!byBook && showExtraInfo && <td style={{ padding: '16px', textAlign: 'right', color: 'var(--blue)', fontWeight: '800' }}>{fmtAmt(totals.OpeningBook)}</td>}
+                            {!byBook && showExtraInfo && <td style={{ padding: '16px', textAlign: 'right', color: 'var(--blue)', fontWeight: '800' }}>{fmtAmt(totals.DebitBook)}</td>}
+                            {!byBook && showExtraInfo && <td style={{ padding: '16px', textAlign: 'right', color: 'var(--blue)', fontWeight: '800' }}>{fmtAmt(totals.CreditBook)}</td>}
+                            {!byBook && showExtraInfo && <td style={{ padding: '16px', textAlign: 'right', color: 'var(--blue)', fontWeight: '800' }}>{fmtAmt(totals.ClosingBook)}</td>}
                           </tr>
                         </tbody>
                       </table>
