@@ -7,28 +7,36 @@ function fmtMoney(v) {
   return <span style={{ color }}>{n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>;
 }
 
+// Total rows use inverted coloring vs. fmtMoney: negative = green, positive = red.
+function fmtTotal(v) {
+  const n = Number(v) || 0;
+  const color = n < 0 ? 'var(--green, #16a34a)' : n > 0 ? 'var(--red)' : 'var(--text)';
+  return <span style={{ color, fontWeight: 800 }}>{n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>;
+}
+
 // Grouped panels -- each entry is [column key, label]. Each group gets a
 // left accent stripe color, matching Cash Flow's panel style.
 const PANEL_GROUPS = [
   { title: 'Customer & Vendor', icon: '🏢', accent: '#ff650f', items: [
     ['CustomerBalance', 'Customer Balance'], ['VendorBalance', 'Vendor Balance'],
-    [row => (Number(row.CustomerBalance) || 0) + (Number(row.VendorBalance) || 0), 'Sum']
+    [row => (Number(row.CustomerBalance) || 0) + (Number(row.VendorBalance) || 0), 'Total', fmtTotal]
   ]},
   { title: 'Notes', icon: '📝', accent: '#34d399', items: [
     ['NoteReceivable', 'Note Receivable'], ['NotePayable', 'Note Payable'],
-    [row => (Number(row.NoteReceivable) || 0) + (Number(row.NotePayable) || 0), 'Sum']
+    [row => (Number(row.NoteReceivable) || 0) + (Number(row.NotePayable) || 0), 'Total', fmtTotal]
   ]},
   { title: 'Cash', icon: '💰', accent: '#38bdf8', items: [
     ['BankCashEGP', 'Bank Cash'], ['TreasuryCashEGP', 'Treasury Cash'],
-    [row => (Number(row.BankCashEGP) || 0) + (Number(row.TreasuryCashEGP) || 0), 'Sum']
+    [row => (Number(row.BankCashEGP) || 0) + (Number(row.TreasuryCashEGP) || 0), 'Total', fmtTotal]
   ]},
   { title: 'Debtors & Creditors', icon: '👥', accent: '#f472b6', items: [
     ['Debtors', 'Debtors'], ['Creditors', 'Creditors'],
-    [row => (Number(row.Debtors) || 0) + (Number(row.Creditors) || 0), 'Sum']
+    [row => (Number(row.Debtors) || 0) + (Number(row.Creditors) || 0), 'Total', fmtTotal]
   ]},
   { title: 'Other', icon: '📊', accent: '#a78bfa', items: [
     ['Loans', 'Loans'], ['Custody', 'Custody'],
-    ['Due', 'Due'], ['WorkingCapitalFunds', 'Working Capital Funds']
+    ['Due', 'Due'], ['WorkingCapitalFunds', 'Working Capital Funds'],
+    [row => (Number(row.Loans) || 0) + (Number(row.Custody) || 0) + (Number(row.Due) || 0) + (Number(row.WorkingCapitalFunds) || 0), 'Total', fmtTotal]
   ]}
 ];
 
@@ -129,11 +137,11 @@ export default function CustomerStatus({ user }) {
                   <span>{group.icon}</span> {group.title}
                 </div>
                 <div style={{ padding: '10px 16px', display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  {group.items.map(([key, label]) => (
+                  {group.items.map(([key, label, formatter]) => (
                     <div key={label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
                       <span style={{ fontSize: 12.5, color: 'var(--muted)' }}>{label}</span>
                       <span style={{ fontSize: 13.5, fontWeight: 700, whiteSpace: 'nowrap' }}>
-                        {fmtMoney(typeof key === 'function' ? key(row) : row[key])}
+                        {(formatter || fmtMoney)(typeof key === 'function' ? key(row) : row[key])}
                       </span>
                     </div>
                   ))}
