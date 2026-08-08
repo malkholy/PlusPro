@@ -36,7 +36,8 @@ const PANEL_GROUPS = [
   { title: 'Other', icon: '📊', accent: '#a78bfa', items: [
     ['Loans', 'Loans'], ['Custody', 'Custody'],
     ['Due', 'Due'], ['WorkingCapitalFunds', 'Working Capital Funds'],
-    [row => (Number(row.Loans) || 0) + (Number(row.Custody) || 0) + (Number(row.Due) || 0) + (Number(row.WorkingCapitalFunds) || 0), 'Total', fmtTotal]
+    ['PartnerProfit', 'Partner Profit'],
+    [row => (Number(row.Loans) || 0) + (Number(row.Custody) || 0) + (Number(row.Due) || 0) + (Number(row.WorkingCapitalFunds) || 0) + (Number(row.PartnerProfit) || 0), 'Total', fmtTotal]
   ]}
 ];
 
@@ -44,7 +45,7 @@ const PANEL_GROUPS = [
 const ALL_FIELDS = [
   'CustomerBalance', 'VendorBalance', 'BankCashEGP', 'TreasuryCashEGP',
   'NoteReceivable', 'NotePayable', 'Loans', 'Custody',
-  'Debtors', 'Creditors', 'Due', 'WorkingCapitalFunds'
+  'Debtors', 'Creditors', 'Due', 'WorkingCapitalFunds', 'PartnerProfit'
 ];
 function grandTotal(row) {
   return ALL_FIELDS.reduce((sum, key) => sum + (Number(row[key]) || 0), 0);
