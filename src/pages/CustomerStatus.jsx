@@ -11,16 +11,20 @@ function fmtMoney(v) {
 // left accent stripe color, matching Cash Flow's panel style.
 const PANEL_GROUPS = [
   { title: 'Customer & Vendor', icon: '🏢', accent: '#ff650f', items: [
-    ['CustomerBalance', 'Customer Balance'], ['VendorBalance', 'Vendor Balance']
+    ['CustomerBalance', 'Customer Balance'], ['VendorBalance', 'Vendor Balance'],
+    [row => (Number(row.CustomerBalance) || 0) + (Number(row.VendorBalance) || 0), 'Sum']
   ]},
   { title: 'Notes', icon: '📝', accent: '#34d399', items: [
-    ['NoteReceivable', 'Note Receivable'], ['NotePayable', 'Note Payable']
+    ['NoteReceivable', 'Note Receivable'], ['NotePayable', 'Note Payable'],
+    [row => (Number(row.NoteReceivable) || 0) + (Number(row.NotePayable) || 0), 'Sum']
   ]},
   { title: 'Cash', icon: '💰', accent: '#38bdf8', items: [
-    ['BankCashEGP', 'Bank Cash'], ['TreasuryCashEGP', 'Treasury Cash']
+    ['BankCashEGP', 'Bank Cash'], ['TreasuryCashEGP', 'Treasury Cash'],
+    [row => (Number(row.BankCashEGP) || 0) + (Number(row.TreasuryCashEGP) || 0), 'Sum']
   ]},
   { title: 'Debtors & Creditors', icon: '👥', accent: '#f472b6', items: [
-    ['Debtors', 'Debtors'], ['Creditors', 'Creditors']
+    ['Debtors', 'Debtors'], ['Creditors', 'Creditors'],
+    [row => (Number(row.Debtors) || 0) + (Number(row.Creditors) || 0), 'Sum']
   ]},
   { title: 'Other', icon: '📊', accent: '#a78bfa', items: [
     ['Loans', 'Loans'], ['Custody', 'Custody'],
@@ -105,9 +109,11 @@ export default function CustomerStatus({ user }) {
                 </div>
                 <div style={{ padding: '10px 16px', display: 'flex', flexDirection: 'column', gap: 8 }}>
                   {group.items.map(([key, label]) => (
-                    <div key={key} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+                    <div key={label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
                       <span style={{ fontSize: 12.5, color: 'var(--muted)' }}>{label}</span>
-                      <span style={{ fontSize: 13.5, fontWeight: 700, whiteSpace: 'nowrap' }}>{fmtMoney(row[key])}</span>
+                      <span style={{ fontSize: 13.5, fontWeight: 700, whiteSpace: 'nowrap' }}>
+                        {fmtMoney(typeof key === 'function' ? key(row) : row[key])}
+                      </span>
                     </div>
                   ))}
                 </div>
