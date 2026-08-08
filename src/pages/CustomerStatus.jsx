@@ -32,6 +32,16 @@ const PANEL_GROUPS = [
   ]}
 ];
 
+// Grand total across every field on the page, for the "Company Status" panel.
+const ALL_FIELDS = [
+  'CustomerBalance', 'VendorBalance', 'BankCashEGP', 'TreasuryCashEGP',
+  'NoteReceivable', 'NotePayable', 'Loans', 'Custody',
+  'Debtors', 'Creditors', 'Due', 'WorkingCapitalFunds'
+];
+function grandTotal(row) {
+  return ALL_FIELDS.reduce((sum, key) => sum + (Number(row[key]) || 0), 0);
+}
+
 export default function CustomerStatus({ user }) {
   const [row, setRow] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -94,6 +104,17 @@ export default function CustomerStatus({ user }) {
             No data found.
           </div>
         ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+            <div style={{
+              background: 'linear-gradient(135deg, var(--orange), var(--orange2))', borderRadius: 14, padding: '18px 24px',
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between', color: '#fff', boxShadow: '0 4px 16px var(--orange-glow)'
+            }}>
+              <div style={{ fontSize: 13, fontWeight: 800, textTransform: 'uppercase', letterSpacing: 0.5, display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span>🏛️</span> Company Status
+              </div>
+              <div style={{ fontSize: 26, fontWeight: 900 }}>{fmtMoney(grandTotal(row))}</div>
+            </div>
+
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 16 }}>
             {PANEL_GROUPS.map(group => (
               <div key={group.title} style={{
@@ -119,6 +140,7 @@ export default function CustomerStatus({ user }) {
                 </div>
               </div>
             ))}
+          </div>
           </div>
         )}
       </div>
