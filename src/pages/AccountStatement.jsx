@@ -251,27 +251,32 @@ export default function AccountStatement({ user, def }) {
       }
       if (selectedFromBank || selectedToBank) {
         const val = row.Bank || 'General';
-        keyParts.push(`🏦 Bank: ${val}`);
+        const name = row.BankName ? ` - ${row.BankName}` : '';
+        keyParts.push(`🏦 Bank: ${val}${name}`);
         codeParts.push(`BANK_${val}`);
       }
       if (selectedFromAsset || selectedToAsset) {
         const val = row.Asset || 'General';
-        keyParts.push(`📦 Asset: ${val}`);
+        const name = row.AssetName ? ` - ${row.AssetName}` : '';
+        keyParts.push(`📦 Asset: ${val}${name}`);
         codeParts.push(`AST_${val}`);
       }
       if (selectedFromEmployee || selectedToEmployee) {
         const val = row.Employee || 'General';
-        keyParts.push(`👥 Employee: ${val}`);
+        const name = row.EmployeeName ? ` - ${row.EmployeeName}` : '';
+        keyParts.push(`👥 Employee: ${val}${name}`);
         codeParts.push(`EMP_${val}`);
       }
       if (selectedFromExpense || selectedToExpense) {
         const val = row.Expense || 'General';
-        keyParts.push(`💸 Expense: ${val}`);
+        const name = row.ExpenseName ? ` - ${row.ExpenseName}` : '';
+        keyParts.push(`💸 Expense: ${val}${name}`);
         codeParts.push(`EXP_${val}`);
       }
       if (selectedFromDebtor || selectedToDebtor) {
         const val = row.DebitorCreditor || 'General';
-        keyParts.push(`👥 Debtor: ${val}`);
+        const name = row.DebitorCreditorName ? ` - ${row.DebitorCreditorName}` : '';
+        keyParts.push(`👥 Debtor: ${val}${name}`);
         codeParts.push(`DR_${val}`);
       }
 
@@ -849,9 +854,11 @@ export default function AccountStatement({ user, def }) {
                                 {item.LineDescription || 'No description'}
                                 {item.CustomerName && <span style={{ color: 'var(--orange-dark)', fontWeight: '700', marginLeft: 8 }}>({item.CustomerName})</span>}
                                 {item.VendorName && <span style={{ color: 'var(--orange-dark)', fontWeight: '700', marginLeft: 8 }}>({item.VendorName})</span>}
+                                {item.BankName && <span style={{ color: 'var(--orange-dark)', fontWeight: '700', marginLeft: 8 }}>({item.BankName})</span>}
                                 {item.EmployeeName && <span style={{ color: 'var(--orange-dark)', fontWeight: '700', marginLeft: 8 }}>({item.EmployeeName})</span>}
                                 {item.AssetName && <span style={{ color: 'var(--orange-dark)', fontWeight: '700', marginLeft: 8 }}>({item.AssetName})</span>}
                                 {item.ExpenseName && <span style={{ color: 'var(--orange-dark)', fontWeight: '700', marginLeft: 8 }}>({item.ExpenseName})</span>}
+                                {item.DebitorCreditorName && <span style={{ color: 'var(--orange-dark)', fontWeight: '700', marginLeft: 8 }}>({item.DebitorCreditorName})</span>}
                                 {item.Reference1 && <span style={{ color: 'var(--muted)', fontSize: '11px', marginLeft: 8 }}>(Ref: {item.Reference1})</span>}
                               </div>
                               
