@@ -116,7 +116,8 @@ export default function JournalEntry({ user, def }) {
     try {
       const res = await apiCall('Journal Entry', {
         fromDate: filterValues.startDate,
-        toDate: filterValues.endDate
+        toDate: filterValues.endDate,
+        journalNo: filterValues.journalNo || ''
       });
       if (res.State === 0) {
         setData(res.List0 || []);
@@ -149,7 +150,7 @@ export default function JournalEntry({ user, def }) {
       )}
 
       <FilterPanel
-        filters={['account', 'date', 'currency', 'customer', 'vendor', 'bank', 'asset', 'employee', 'expense', 'debtor']}
+        filters={['date', 'journalNo']}
         onSearch={handleSearch}
         loading={loading}
         user={user}
