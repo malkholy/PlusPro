@@ -26,6 +26,7 @@ export default function FilterPanel({
   const hasAccount = pageGroupId && dynamicLookups ? dynamicLookups.includes('Accounts Master All') : filters.includes('account');
   const hasDate = filters.includes('date');
   const hasCurrency = filters.includes('currency');
+  const hasJournalNo = filters.includes('journalNo');
   const hasCustomer = pageGroupId && dynamicLookups ? dynamicLookups.includes('Customer Master All') : filters.includes('customer');
   const hasVendor = pageGroupId && dynamicLookups ? dynamicLookups.includes('Vendor Master All') : filters.includes('vendor');
   const hasBank = pageGroupId && dynamicLookups ? dynamicLookups.includes('Bank Accounts Master') : filters.includes('bank');
@@ -63,6 +64,7 @@ export default function FilterPanel({
   })());
 
   const [selectedCurrency, setSelectedCurrency] = useState(defaultFilters.currency || '');
+  const [journalNo, setJournalNo] = useState(defaultFilters.journalNo || '');
 
   // Customer searchable dropdown states
   const [customers, setCustomers] = useState([]);
@@ -455,6 +457,7 @@ export default function FilterPanel({
         startDate,
         endDate,
         currency: selectedCurrency,
+        journalNo,
         fromCustomer: selectedFromCust,
         toCustomer: rangeTo(selectedFromCust, selectedToCust),
         fromVendor: selectedFromVendor,
@@ -885,6 +888,39 @@ export default function FilterPanel({
                     </select>
                   </div>
                 )}
+              </div>
+            )}
+
+            {hasJournalNo && (
+              <div style={{
+                background: 'var(--soft)',
+                borderRadius: '12px',
+                padding: '12px',
+                border: '1px solid var(--border)',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 8
+              }}>
+                <label style={{ fontSize: '11px', fontWeight: '800', color: 'var(--orange-dark)', textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <span>🔖</span> Journal No
+                </label>
+                <input
+                  type="text"
+                  value={journalNo}
+                  onChange={(e) => setJournalNo(e.target.value)}
+                  placeholder="Search journal no..."
+                  style={{
+                    height: '38px',
+                    padding: '0 12px',
+                    border: '1px solid var(--border)',
+                    borderRadius: '10px',
+                    fontSize: '13px',
+                    background: 'var(--surface)',
+                    color: 'var(--text)',
+                    outline: 'none',
+                    fontFamily: 'var(--font)'
+                  }}
+                />
               </div>
             )}
 

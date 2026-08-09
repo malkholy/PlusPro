@@ -149,6 +149,7 @@ export default function AccountStatement({ user, def }) {
       const d = await apiCall('Account Statement Lines', {
         param1: filters.account || '',
         currency: filters.currency || '',
+        journalNo: filters.journalNo || '',
         param2: '',
         param3: filters.endDate || '',
         fromCustomer: filters.fromCustomer || '',
@@ -378,7 +379,7 @@ export default function AccountStatement({ user, def }) {
   return (
     <div className="flex-row-layout" style={{ height: '100vh', background: 'var(--bg)', fontFamily: 'var(--font)', color: 'var(--text)' }}>
       <FilterPanel 
-        filters={['account', 'date', 'currency', 'customer', 'vendor', 'bank', 'asset', 'employee', 'expense', 'debtor']}
+        filters={['account', 'date', 'currency', 'journalNo', 'customer', 'vendor', 'bank', 'asset', 'employee', 'expense', 'debtor']}
         pageGroupId="account_statement"
         onSearch={fetchAccountStatement}
         loading={loading}
