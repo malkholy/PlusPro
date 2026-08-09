@@ -991,6 +991,7 @@ export default function FilterPanel({
                       <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
                         <input
                           type="text"
+                          dir="auto"
                           value={searchFrom}
                           onChange={(e) => {
                             setSearchFrom(e.target.value);
@@ -1051,7 +1052,7 @@ export default function FilterPanel({
                                   onMouseEnter={(e) => { if (!isCurrent) e.currentTarget.style.background = 'var(--soft)'; }}
                                   onMouseLeave={(e) => { if (!isCurrent) e.currentTarget.style.background = 'transparent'; }}
                                 >
-                                  <span style={{ fontWeight: isCurrent ? 700 : 500 }}>{item[idKey]} - {item[nameKey]}</span>
+                                  <span dir="auto" style={{ fontWeight: isCurrent ? 700 : 500 }}>{item[idKey]} - {item[nameKey]}</span>
                                 </div>
                               );
                             })
@@ -1069,6 +1070,7 @@ export default function FilterPanel({
                       <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
                         <input
                           type="text"
+                          dir="auto"
                           value={searchTo}
                           onChange={(e) => {
                             setSearchTo(e.target.value);
@@ -1129,7 +1131,7 @@ export default function FilterPanel({
                                   onMouseEnter={(e) => { if (!isCurrent) e.currentTarget.style.background = 'var(--soft)'; }}
                                   onMouseLeave={(e) => { if (!isCurrent) e.currentTarget.style.background = 'transparent'; }}
                                 >
-                                  <span style={{ fontWeight: isCurrent ? 700 : 500 }}>{item[idKey]} - {item[nameKey]}</span>
+                                  <span dir="auto" style={{ fontWeight: isCurrent ? 700 : 500 }}>{item[idKey]} - {item[nameKey]}</span>
                                 </div>
                               );
                             })
