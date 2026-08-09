@@ -312,6 +312,13 @@ BEGIN
 			 (isnull(@fromExpense, '') = '' or jl.Expense >= @fromExpense) and
 			 (isnull(@toExpense, '') = '' or jl.Expense <= @toExpense))
 		  )
+		  and (
+			(isnull(@fromDebtor, '') <> '' and isnull(@toDebtor, '') = '' and jl.DebitorCreditor = @fromDebtor)
+			or
+			((isnull(@fromDebtor, '') = '' or isnull(@toDebtor, '') <> '') and
+			 (isnull(@fromDebtor, '') = '' or jl.DebitorCreditor >= @fromDebtor) and
+			 (isnull(@toDebtor, '') = '' or jl.DebitorCreditor <= @toDebtor))
+		  )
 		  and (isnull(@currency, '') = '' or isnull(jl.LineCurrency, 'SYP') = @currency)
 		order by jl.JournalDate, jl.JournalNo, jl.Line
 	end
