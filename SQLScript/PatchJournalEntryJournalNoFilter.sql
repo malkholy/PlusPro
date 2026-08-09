@@ -465,7 +465,7 @@ BEGIN
                 from [PLS].[QJournalHeader]
                 where (@jeFrom is null or [JournalDate] >= @jeFrom)
                   and (@jeTo is null or [JournalDate] <= @jeTo)
-                  and (isnull(@jeJournalNo, '') = '' or [JournalNumber] LIKE '%' + @jeJournalNo + '%')
+                  and (isnull(@jeJournalNo, '''') = '''' or [JournalNumber] LIKE ''%'' + @jeJournalNo + ''%'')
                   and (' + @SQLFilter + N')
                 order by [JournalDate] desc, [JournalNumber] desc
             ';
