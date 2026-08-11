@@ -906,9 +906,9 @@ export default function AccountStatement({ user, def }) {
                                 style={{
                                   flex: 1,
                                   textAlign: 'left',
-                                  whiteSpace: 'nowrap',
-                                  overflow: 'hidden',
-                                  textOverflow: 'ellipsis',
+                                  whiteSpace: 'normal',
+                                  wordBreak: 'break-word',
+                                  lineHeight: '1.4',
                                   borderRight: cellBorder,
                                   paddingLeft: showBorders ? '8px' : '0',
                                   paddingRight: showBorders ? '8px' : '0'
@@ -1182,9 +1182,9 @@ export default function AccountStatement({ user, def }) {
                                     fontSize: '13.5px',
                                     fontWeight: '700',
                                     color: 'var(--text)',
-                                    whiteSpace: 'nowrap',
-                                    overflow: 'hidden',
-                                    textOverflow: 'ellipsis'
+                                    whiteSpace: 'normal',
+                                    wordBreak: 'break-word',
+                                    lineHeight: '1.4'
                                   }}>
                                   {item.LineDescription || 'No description provided'}
                                   {item.CustomerName && <span style={{ color: 'var(--orange-dark)', fontWeight: '700', marginLeft: 8 }}>({item.CustomerName})</span>}
