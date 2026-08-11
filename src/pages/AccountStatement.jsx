@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { apiCall } from '../shared/api.js';
 import FilterPanel from '../shared/FilterPanel.jsx';
+import EditJournalDrawer from './EditJournalDrawer.jsx';
 
 function fmtAmt(val) {
   if (val == null || val === '') return '0.00';
@@ -156,6 +157,11 @@ export default function AccountStatement({ user, def }) {
   const [balanceMode, setBalanceMode] = useState('both'); // 'book' | 'transaction' | 'both'
   const showBookCols = balanceMode !== 'transaction';
   const showTransCols = balanceMode !== 'book';
+  const [journalDrawerRow, setJournalDrawerRow] = useState(null);
+
+  const openJournalDrawer = (item) => {
+    setJournalDrawerRow({ JournalNumber: item.JournalNo, EventNumber: item.EventNo });
+  };
 
   // Instead of managing all state, we just keep track of the latest filters used for printing
   const [activeFilters, setActiveFilters] = useState({});
@@ -942,9 +948,12 @@ export default function AccountStatement({ user, def }) {
                                 background: idx % 2 === 0 ? 'transparent' : 'var(--soft)',
                                 fontSize: '12.5px',
                                 color: 'var(--text)',
-                                transition: 'background 0.1s ease'
+                                transition: 'background 0.1s ease',
+                                cursor: 'pointer'
                               }}
                               className="ledger-row-compact"
+                              title="Double-click to view journal"
+                              onDoubleClick={() => openJournalDrawer(item)}
                               onMouseEnter={(e) => e.currentTarget.style.background = 'var(--orange-glow)'}
                               onMouseLeave={(e) => e.currentTarget.style.background = idx % 2 === 0 ? 'transparent' : 'var(--soft)'}
                             >
@@ -1291,9 +1300,11 @@ export default function AccountStatement({ user, def }) {
                                 borderRadius: '12px',
                                 background: 'var(--surface)',
                                 transition: 'all 0.15s ease',
-                                cursor: 'default'
+                                cursor: 'pointer'
                               }}
                               className="statement-item-card"
+                              title="Double-click to view journal"
+                              onDoubleClick={() => openJournalDrawer(item)}
                             >
                               {/* Left Arrow Icon */}
                               <div style={{
@@ -1415,6 +1426,15 @@ export default function AccountStatement({ user, def }) {
         </div>
       )}
     </div>
+
+    {journalDrawerRow && (
+      <EditJournalDrawer
+        row={journalDrawerRow}
+        user={user}
+        onClose={() => setJournalDrawerRow(null)}
+        onSaveSuccess={() => { setJournalDrawerRow(null); fetchAccountStatement(activeFilters); }}
+      />
+    )}
   </div>
 );
 }
