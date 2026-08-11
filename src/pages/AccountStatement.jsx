@@ -153,6 +153,9 @@ export default function AccountStatement({ user, def }) {
   const [borderWidth, setBorderWidth] = useState(1);
   const showBorders = borderWidth > 0;
   const cellBorder = showBorders ? `${borderWidth}px solid var(--border)` : 'none';
+  const [balanceMode, setBalanceMode] = useState('both'); // 'book' | 'transaction' | 'both'
+  const showBookCols = balanceMode !== 'transaction';
+  const showTransCols = balanceMode !== 'book';
 
   // Instead of managing all state, we just keep track of the latest filters used for printing
   const [activeFilters, setActiveFilters] = useState({});
@@ -204,11 +207,16 @@ export default function AccountStatement({ user, def }) {
   // Calculate opening balance, filter, and append running balances per active grouping entity
   const statementData = useMemo(() => {
     if (!rawData.length) {
-      return { 
-        transactions: [], 
-        entityOpenings: {}, 
-        entityClosingBalances: {}, 
-        summary: { openingBalance: 0, totalDebit: 0, totalCredit: 0, totalDebitTransaction: 0, totalCreditTransaction: 0, netChange: 0, closingBalance: 0 }
+      return {
+        transactions: [],
+        entityOpenings: {},
+        entityClosingBalances: {},
+        entityOpeningsTransaction: {},
+        entityClosingBalancesTransaction: {},
+        summary: {
+          openingBalance: 0, totalDebit: 0, totalCredit: 0, totalDebitTransaction: 0, totalCreditTransaction: 0, netChange: 0, closingBalance: 0,
+          openingBalanceTransaction: 0, netChangeTransaction: 0, closingBalanceTransaction: 0
+        }
       };
     }
 
@@ -228,12 +236,16 @@ export default function AccountStatement({ user, def }) {
     const entityOpenings = {};
     const entityDebits = {};
     const entityCredits = {};
+    // Parallel running balance in transaction currency (mirrors the Book tracking above)
+    const entityTransBalances = {};
+    const entityTransOpenings = {};
 
     let accountOpeningBalance = 0;
     let accountTotalDebit = 0;
     let accountTotalCredit = 0;
     let accountTotalDebitTransaction = 0;
     let accountTotalCreditTransaction = 0;
+    let accountOpeningBalanceTransaction = 0;
 
     const processedTransactions = [];
 
@@ -241,6 +253,9 @@ export default function AccountStatement({ user, def }) {
       const debit = Number(row.DebitBook || 0);
       const credit = Number(row.CreditBook || 0);
       const net = debit - credit;
+      const debitTrans = Number(row.DebitTransaction || 0);
+      const creditTrans = Number(row.CreditTransaction || 0);
+      const netTrans = debitTrans - creditTrans;
 
       const {
         fromCustomer: selectedFromCust, toCustomer: selectedToCust,
@@ -311,25 +326,31 @@ export default function AccountStatement({ user, def }) {
         entityOpenings[entKey] = 0;
         entityDebits[entKey] = 0;
         entityCredits[entKey] = 0;
+        entityTransBalances[entKey] = 0;
+        entityTransOpenings[entKey] = 0;
       }
 
       entityBalances[entKey] += net;
+      entityTransBalances[entKey] += netTrans;
 
       const isBeforeStart = start && new Date(row.JournalDate) < start;
 
       if (isBeforeStart) {
         entityOpenings[entKey] += net;
         accountOpeningBalance += net;
+        entityTransOpenings[entKey] += netTrans;
+        accountOpeningBalanceTransaction += netTrans;
       } else {
         accountTotalDebit += debit;
         accountTotalCredit += credit;
-        accountTotalDebitTransaction += Number(row.DebitTransaction || 0);
-        accountTotalCreditTransaction += Number(row.CreditTransaction || 0);
+        accountTotalDebitTransaction += debitTrans;
+        accountTotalCreditTransaction += creditTrans;
         entityDebits[entKey] += debit;
         entityCredits[entKey] += credit;
         processedTransactions.push({
           ...row,
           runningBalance: entityBalances[entKey],
+          runningTransactionBalance: entityTransBalances[entKey],
           entKey,
           sectionKey
         });
@@ -353,6 +374,8 @@ export default function AccountStatement({ user, def }) {
       entityDebits,
       entityCredits,
       entityClosingBalances: entityBalances,
+      entityOpeningsTransaction: entityTransOpenings,
+      entityClosingBalancesTransaction: entityTransBalances,
       summary: {
         openingBalance: accountOpeningBalance,
         totalDebit: accountTotalDebit,
@@ -360,7 +383,10 @@ export default function AccountStatement({ user, def }) {
         totalDebitTransaction: accountTotalDebitTransaction,
         totalCreditTransaction: accountTotalCreditTransaction,
         netChange: accountTotalDebit - accountTotalCredit,
-        closingBalance: accountOpeningBalance + accountTotalDebit - accountTotalCredit
+        closingBalance: accountOpeningBalance + accountTotalDebit - accountTotalCredit,
+        openingBalanceTransaction: accountOpeningBalanceTransaction,
+        netChangeTransaction: accountTotalDebitTransaction - accountTotalCreditTransaction,
+        closingBalanceTransaction: accountOpeningBalanceTransaction + accountTotalDebitTransaction - accountTotalCreditTransaction
       }
     };
   }, [rawData, activeFilters, searchTerm]);
@@ -599,6 +625,40 @@ export default function AccountStatement({ user, def }) {
               {/* View Toggle Buttons */}
               <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                 {displayMode === 'compact' && (
+                  <div style={{ display: 'flex', background: 'var(--soft)', border: '1px solid var(--border)', borderRadius: '10px', padding: '3px', gap: '3px' }}>
+                    {[
+                      { id: 'book', label: '📘 Book' },
+                      { id: 'transaction', label: '💱 Transaction' },
+                      { id: 'both', label: '🔀 Both' }
+                    ].map(opt => {
+                      const isActive = balanceMode === opt.id;
+                      return (
+                        <button
+                          key={opt.id}
+                          onClick={() => setBalanceMode(opt.id)}
+                          style={{
+                            height: '32px',
+                            padding: '0 14px',
+                            border: 'none',
+                            borderRadius: '8px',
+                            fontSize: '12px',
+                            fontWeight: '700',
+                            cursor: 'pointer',
+                            background: isActive ? 'var(--surface)' : 'transparent',
+                            color: isActive ? 'var(--orange2)' : 'var(--muted)',
+                            boxShadow: isActive ? '0 2px 5px rgba(0,0,0,0.05)' : 'none',
+                            transition: 'all 0.15s ease',
+                            fontFamily: 'var(--font)',
+                            whiteSpace: 'nowrap'
+                          }}
+                        >
+                          {opt.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+                {displayMode === 'compact' && (
                   <div style={{
                     display: 'flex',
                     alignItems: 'center',
@@ -779,19 +839,22 @@ export default function AccountStatement({ user, def }) {
                     <div style={{ width: '90px', borderRight: cellBorder, paddingRight: showBorders ? '8px' : '0' }}>Date</div>
                     <div style={{ width: '190px', borderRight: cellBorder, paddingLeft: showBorders ? '8px' : '0', paddingRight: showBorders ? '8px' : '0' }}>Ref / Journal</div>
                     <div style={{ flex: 1, textAlign: 'center', borderRight: cellBorder, paddingLeft: showBorders ? '8px' : '0', paddingRight: showBorders ? '8px' : '0' }}>Description</div>
-                    <div style={{ width: '110px', textAlign: 'right', borderRight: cellBorder, paddingRight: showBorders ? '8px' : '0' }}>Debit Trans</div>
-                    <div style={{ width: '110px', textAlign: 'right', borderRight: cellBorder, paddingRight: showBorders ? '8px' : '0' }}>Credit Trans</div>
-                    <div style={{ width: '70px', textAlign: 'center', borderRight: cellBorder, paddingLeft: showBorders ? '8px' : '0', paddingRight: showBorders ? '8px' : '0' }}>Currency</div>
-                    <div style={{ width: '80px', textAlign: 'right', borderRight: cellBorder, paddingRight: showBorders ? '8px' : '0' }}>Rate</div>
-                    <div style={{ width: '110px', textAlign: 'right', borderRight: cellBorder, paddingRight: showBorders ? '8px' : '0' }}>Debit Book</div>
-                    <div style={{ width: '110px', textAlign: 'right', borderRight: cellBorder, paddingRight: showBorders ? '8px' : '0' }}>Credit Book</div>
-                    <div style={{ width: '120px', textAlign: 'right', paddingLeft: showBorders ? '8px' : '0' }}>Balance</div>
+                    {showTransCols && <div style={{ width: '110px', textAlign: 'right', borderRight: cellBorder, paddingRight: showBorders ? '8px' : '0' }}>Debit Trans</div>}
+                    {showTransCols && <div style={{ width: '110px', textAlign: 'right', borderRight: cellBorder, paddingRight: showBorders ? '8px' : '0' }}>Credit Trans</div>}
+                    {showTransCols && <div style={{ width: '70px', textAlign: 'center', borderRight: cellBorder, paddingLeft: showBorders ? '8px' : '0', paddingRight: showBorders ? '8px' : '0' }}>Currency</div>}
+                    {showTransCols && <div style={{ width: '80px', textAlign: 'right', borderRight: cellBorder, paddingRight: showBorders ? '8px' : '0' }}>Rate</div>}
+                    {showBookCols && <div style={{ width: '110px', textAlign: 'right', borderRight: cellBorder, paddingRight: showBorders ? '8px' : '0' }}>Debit Book</div>}
+                    {showBookCols && <div style={{ width: '110px', textAlign: 'right', borderRight: cellBorder, paddingRight: showBorders ? '8px' : '0' }}>Credit Book</div>}
+                    {showBookCols && <div style={{ width: '120px', textAlign: 'right', borderRight: cellBorder, paddingLeft: showBorders ? '8px' : '0', paddingRight: showBorders ? '8px' : '0' }}>Balance</div>}
+                    {showTransCols && <div style={{ width: '120px', textAlign: 'right', paddingLeft: showBorders ? '8px' : '0' }}>Transaction Balance</div>}
                   </div>
 
                   {/* 2. Grouped Sections */}
                   {groupedSections.map((group, gIdx) => {
                     const groupDebit = group.items.reduce((sum, item) => sum + Number(item.DebitBook || 0), 0);
                     const groupCredit = group.items.reduce((sum, item) => sum + Number(item.CreditBook || 0), 0);
+                    const groupDebitTrans = group.items.reduce((sum, item) => sum + Number(item.DebitTransaction || 0), 0);
+                    const groupCreditTrans = group.items.reduce((sum, item) => sum + Number(item.CreditTransaction || 0), 0);
 
                     return (
                       <React.Fragment key={group.sectionKey}>
@@ -844,15 +907,22 @@ export default function AccountStatement({ user, def }) {
                           <div style={{ flex: 1, textAlign: 'center', borderRight: cellBorder, paddingLeft: showBorders ? '8px' : '0', paddingRight: showBorders ? '8px' : '0' }}>
                             Opening Balance for this section
                           </div>
-                          <div style={{ width: '110px', borderRight: cellBorder }}></div>
-                          <div style={{ width: '110px', borderRight: cellBorder }}></div>
-                          <div style={{ width: '70px', borderRight: cellBorder }}></div>
-                          <div style={{ width: '80px', borderRight: cellBorder }}></div>
-                          <div style={{ width: '110px', borderRight: cellBorder }}></div>
-                          <div style={{ width: '110px', borderRight: cellBorder }}></div>
-                          <div style={{ width: '120px', textAlign: 'right', fontFamily: 'var(--mono)', paddingLeft: showBorders ? '8px' : '0', color: balanceColor(statementData.entityOpenings[group.entityCode]) }}>
-                            {fmtAmt(statementData.entityOpenings[group.entityCode] || 0)}
-                          </div>
+                          {showTransCols && <div style={{ width: '110px', borderRight: cellBorder }}></div>}
+                          {showTransCols && <div style={{ width: '110px', borderRight: cellBorder }}></div>}
+                          {showTransCols && <div style={{ width: '70px', borderRight: cellBorder }}></div>}
+                          {showTransCols && <div style={{ width: '80px', borderRight: cellBorder }}></div>}
+                          {showBookCols && <div style={{ width: '110px', borderRight: cellBorder }}></div>}
+                          {showBookCols && <div style={{ width: '110px', borderRight: cellBorder }}></div>}
+                          {showBookCols && (
+                            <div style={{ width: '120px', textAlign: 'right', fontFamily: 'var(--mono)', borderRight: cellBorder, paddingLeft: showBorders ? '8px' : '0', paddingRight: showBorders ? '8px' : '0', color: balanceColor(statementData.entityOpenings[group.entityCode]) }}>
+                              {fmtAmt(statementData.entityOpenings[group.entityCode] || 0)}
+                            </div>
+                          )}
+                          {showTransCols && (
+                            <div style={{ width: '120px', textAlign: 'right', fontFamily: 'var(--mono)', paddingLeft: showBorders ? '8px' : '0', color: balanceColor(statementData.entityOpeningsTransaction[group.entityCode]) }}>
+                              {fmtAmt(statementData.entityOpeningsTransaction[group.entityCode] || 0)}
+                            </div>
+                          )}
                         </div>
 
                         {/* Group Items */}
@@ -925,97 +995,127 @@ export default function AccountStatement({ user, def }) {
                               </div>
                               
                               {/* Debit Trans (transaction currency) */}
-                              <div style={{
-                                width: '110px',
-                                textAlign: 'right',
-                                fontWeight: '600',
-                                color: Number(item.DebitTransaction || 0) > 0 ? 'var(--green)' : 'var(--muted)',
-                                fontFamily: 'var(--mono)',
-                                borderRight: cellBorder,
-                                paddingRight: showBorders ? '8px' : '0'
-                              }}>
-                                {fmtAmt(item.DebitTransaction)}
-                              </div>
+                              {showTransCols && (
+                                <div style={{
+                                  width: '110px',
+                                  textAlign: 'right',
+                                  fontWeight: '600',
+                                  color: Number(item.DebitTransaction || 0) > 0 ? 'var(--green)' : 'var(--muted)',
+                                  fontFamily: 'var(--mono)',
+                                  borderRight: cellBorder,
+                                  paddingRight: showBorders ? '8px' : '0'
+                                }}>
+                                  {fmtAmt(item.DebitTransaction)}
+                                </div>
+                              )}
 
                               {/* Credit Trans (transaction currency) */}
-                              <div style={{
-                                width: '110px',
-                                textAlign: 'right',
-                                fontWeight: '600',
-                                color: Number(item.CreditTransaction || 0) > 0 ? 'var(--red)' : 'var(--muted)',
-                                fontFamily: 'var(--mono)',
-                                borderRight: cellBorder,
-                                paddingRight: showBorders ? '8px' : '0'
-                              }}>
-                                {fmtAmt(item.CreditTransaction)}
-                              </div>
+                              {showTransCols && (
+                                <div style={{
+                                  width: '110px',
+                                  textAlign: 'right',
+                                  fontWeight: '600',
+                                  color: Number(item.CreditTransaction || 0) > 0 ? 'var(--red)' : 'var(--muted)',
+                                  fontFamily: 'var(--mono)',
+                                  borderRight: cellBorder,
+                                  paddingRight: showBorders ? '8px' : '0'
+                                }}>
+                                  {fmtAmt(item.CreditTransaction)}
+                                </div>
+                              )}
 
                               {/* Currency */}
-                              <div style={{
-                                width: '70px',
-                                textAlign: 'center',
-                                borderRight: cellBorder,
-                                paddingLeft: showBorders ? '8px' : '0',
-                                paddingRight: showBorders ? '8px' : '0'
-                              }}>
-                                {item.LineCurrency ? (
-                                  <span style={{
-                                    fontSize: '10.5px', fontWeight: '700', color: 'var(--muted)', fontFamily: 'var(--mono)',
-                                    padding: '2px 7px', borderRadius: '999px', background: 'var(--soft)', border: '1px solid var(--border)'
-                                  }}>{item.LineCurrency}</span>
-                                ) : <span style={{ color: 'var(--muted)' }}>—</span>}
-                              </div>
+                              {showTransCols && (
+                                <div style={{
+                                  width: '70px',
+                                  textAlign: 'center',
+                                  borderRight: cellBorder,
+                                  paddingLeft: showBorders ? '8px' : '0',
+                                  paddingRight: showBorders ? '8px' : '0'
+                                }}>
+                                  {item.LineCurrency ? (
+                                    <span style={{
+                                      fontSize: '10.5px', fontWeight: '700', color: 'var(--muted)', fontFamily: 'var(--mono)',
+                                      padding: '2px 7px', borderRadius: '999px', background: 'var(--soft)', border: '1px solid var(--border)'
+                                    }}>{item.LineCurrency}</span>
+                                  ) : <span style={{ color: 'var(--muted)' }}>—</span>}
+                                </div>
+                              )}
 
                               {/* Exchange Rate */}
-                              <div style={{
-                                width: '80px',
-                                textAlign: 'right',
-                                fontSize: '11.5px',
-                                color: 'var(--muted)',
-                                fontFamily: 'var(--mono)',
-                                borderRight: cellBorder,
-                                paddingRight: showBorders ? '8px' : '0'
-                              }}>
-                                {item.LineExchangeRate != null ? item.LineExchangeRate : '—'}
-                              </div>
+                              {showTransCols && (
+                                <div style={{
+                                  width: '80px',
+                                  textAlign: 'right',
+                                  fontSize: '11.5px',
+                                  color: 'var(--muted)',
+                                  fontFamily: 'var(--mono)',
+                                  borderRight: cellBorder,
+                                  paddingRight: showBorders ? '8px' : '0'
+                                }}>
+                                  {item.LineExchangeRate != null ? item.LineExchangeRate : '—'}
+                                </div>
+                              )}
 
                               {/* Debit Book */}
-                              <div style={{
-                                width: '110px',
-                                textAlign: 'right',
-                                fontWeight: '700',
-                                color: isDebit && amount > 0 ? 'var(--green)' : 'var(--muted)',
-                                fontFamily: 'var(--mono)',
-                                borderRight: cellBorder,
-                                paddingRight: showBorders ? '8px' : '0'
-                              }}>
-                                {fmtAmt(isDebit ? amount : 0)}
-                              </div>
+                              {showBookCols && (
+                                <div style={{
+                                  width: '110px',
+                                  textAlign: 'right',
+                                  fontWeight: '700',
+                                  color: isDebit && amount > 0 ? 'var(--green)' : 'var(--muted)',
+                                  fontFamily: 'var(--mono)',
+                                  borderRight: cellBorder,
+                                  paddingRight: showBorders ? '8px' : '0'
+                                }}>
+                                  {fmtAmt(isDebit ? amount : 0)}
+                                </div>
+                              )}
 
                               {/* Credit Book */}
-                              <div style={{
-                                width: '110px',
-                                textAlign: 'right',
-                                fontWeight: '700',
-                                color: !isDebit && amount > 0 ? 'var(--red)' : 'var(--muted)',
-                                fontFamily: 'var(--mono)',
-                                borderRight: cellBorder,
-                                paddingRight: showBorders ? '8px' : '0'
-                              }}>
-                                {fmtAmt(!isDebit ? amount : 0)}
-                              </div>
+                              {showBookCols && (
+                                <div style={{
+                                  width: '110px',
+                                  textAlign: 'right',
+                                  fontWeight: '700',
+                                  color: !isDebit && amount > 0 ? 'var(--red)' : 'var(--muted)',
+                                  fontFamily: 'var(--mono)',
+                                  borderRight: cellBorder,
+                                  paddingRight: showBorders ? '8px' : '0'
+                                }}>
+                                  {fmtAmt(!isDebit ? amount : 0)}
+                                </div>
+                              )}
 
-                              {/* Running Balance */}
-                              <div style={{
-                                width: '120px',
-                                textAlign: 'right',
-                                fontWeight: '700',
-                                fontFamily: 'var(--mono)',
-                                color: balanceColor(item.runningBalance),
-                                paddingLeft: showBorders ? '8px' : '0'
-                              }}>
-                                {fmtAmt(item.runningBalance)}
-                              </div>
+                              {/* Running Balance (Book) */}
+                              {showBookCols && (
+                                <div style={{
+                                  width: '120px',
+                                  textAlign: 'right',
+                                  fontWeight: '700',
+                                  fontFamily: 'var(--mono)',
+                                  color: balanceColor(item.runningBalance),
+                                  borderRight: cellBorder,
+                                  paddingLeft: showBorders ? '8px' : '0',
+                                  paddingRight: showBorders ? '8px' : '0'
+                                }}>
+                                  {fmtAmt(item.runningBalance)}
+                                </div>
+                              )}
+
+                              {/* Running Transaction Balance */}
+                              {showTransCols && (
+                                <div style={{
+                                  width: '120px',
+                                  textAlign: 'right',
+                                  fontWeight: '700',
+                                  fontFamily: 'var(--mono)',
+                                  color: balanceColor(item.runningTransactionBalance),
+                                  paddingLeft: showBorders ? '8px' : '0'
+                                }}>
+                                  {fmtAmt(item.runningTransactionBalance)}
+                                </div>
+                              )}
                             </div>
                           );
                         })}
@@ -1035,20 +1135,40 @@ export default function AccountStatement({ user, def }) {
                           <div style={{ width: '90px', borderRight: cellBorder, paddingRight: showBorders ? '8px' : '0' }}>—</div>
                           <div style={{ width: '190px', borderRight: cellBorder, paddingLeft: showBorders ? '8px' : '0', paddingRight: showBorders ? '8px' : '0' }}></div>
                           <div style={{ flex: 1, textAlign: 'right', borderRight: cellBorder, paddingRight: '12px', textTransform: 'uppercase', letterSpacing: '0.4px' }}>Subtotal:</div>
-                          <div style={{ width: '110px', borderRight: cellBorder }}></div>
-                          <div style={{ width: '110px', borderRight: cellBorder }}></div>
-                          <div style={{ width: '70px', borderRight: cellBorder }}></div>
-                          <div style={{ width: '80px', borderRight: cellBorder }}></div>
-                          <div style={{ width: '110px', textAlign: 'right', color: groupDebit > 0 ? 'var(--green)' : 'var(--muted)', fontFamily: 'var(--mono)', borderRight: cellBorder, paddingRight: showBorders ? '8px' : '0' }}>
-                            {groupDebit > 0 ? '+' : ''}{fmtAmt(groupDebit)}
-                          </div>
-                          <div style={{ width: '110px', textAlign: 'right', color: groupCredit > 0 ? 'var(--red)' : 'var(--muted)', fontFamily: 'var(--mono)', borderRight: cellBorder, paddingRight: showBorders ? '8px' : '0' }}>
-                            {groupCredit > 0 ? '-' : ''}{fmtAmt(groupCredit)}
-                          </div>
-                          <div style={{ width: '120px', textAlign: 'right', fontFamily: 'var(--mono)', paddingLeft: showBorders ? '8px' : '0', color: 'var(--orange-dark)', fontWeight: '800' }}>
-                            <span style={{ fontSize: '10px', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.3px', marginRight: 6, color: 'var(--muted)' }}>Closing</span>
-                            {fmtAmt(statementData.entityClosingBalances[group.entityCode] || 0)}
-                          </div>
+                          {showTransCols && (
+                            <div style={{ width: '110px', textAlign: 'right', color: groupDebitTrans > 0 ? 'var(--green)' : 'var(--muted)', fontFamily: 'var(--mono)', borderRight: cellBorder, paddingRight: showBorders ? '8px' : '0' }}>
+                              {groupDebitTrans > 0 ? '+' : ''}{fmtAmt(groupDebitTrans)}
+                            </div>
+                          )}
+                          {showTransCols && (
+                            <div style={{ width: '110px', textAlign: 'right', color: groupCreditTrans > 0 ? 'var(--red)' : 'var(--muted)', fontFamily: 'var(--mono)', borderRight: cellBorder, paddingRight: showBorders ? '8px' : '0' }}>
+                              {groupCreditTrans > 0 ? '-' : ''}{fmtAmt(groupCreditTrans)}
+                            </div>
+                          )}
+                          {showTransCols && <div style={{ width: '70px', borderRight: cellBorder }}></div>}
+                          {showTransCols && <div style={{ width: '80px', borderRight: cellBorder }}></div>}
+                          {showBookCols && (
+                            <div style={{ width: '110px', textAlign: 'right', color: groupDebit > 0 ? 'var(--green)' : 'var(--muted)', fontFamily: 'var(--mono)', borderRight: cellBorder, paddingRight: showBorders ? '8px' : '0' }}>
+                              {groupDebit > 0 ? '+' : ''}{fmtAmt(groupDebit)}
+                            </div>
+                          )}
+                          {showBookCols && (
+                            <div style={{ width: '110px', textAlign: 'right', color: groupCredit > 0 ? 'var(--red)' : 'var(--muted)', fontFamily: 'var(--mono)', borderRight: cellBorder, paddingRight: showBorders ? '8px' : '0' }}>
+                              {groupCredit > 0 ? '-' : ''}{fmtAmt(groupCredit)}
+                            </div>
+                          )}
+                          {showBookCols && (
+                            <div style={{ width: '120px', textAlign: 'right', fontFamily: 'var(--mono)', borderRight: cellBorder, paddingLeft: showBorders ? '8px' : '0', paddingRight: showBorders ? '8px' : '0', color: 'var(--orange-dark)', fontWeight: '800' }}>
+                              <span style={{ fontSize: '10px', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.3px', marginRight: 6, color: 'var(--muted)' }}>Closing</span>
+                              {fmtAmt(statementData.entityClosingBalances[group.entityCode] || 0)}
+                            </div>
+                          )}
+                          {showTransCols && (
+                            <div style={{ width: '120px', textAlign: 'right', fontFamily: 'var(--mono)', paddingLeft: showBorders ? '8px' : '0', color: 'var(--orange-dark)', fontWeight: '800' }}>
+                              <span style={{ fontSize: '10px', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.3px', marginRight: 6, color: 'var(--muted)' }}>Closing</span>
+                              {fmtAmt(statementData.entityClosingBalancesTransaction[group.entityCode] || 0)}
+                            </div>
+                          )}
                         </div>
                       </React.Fragment>
                     );
@@ -1074,19 +1194,38 @@ export default function AccountStatement({ user, def }) {
                       }}>CLOSING</span>
                     </div>
                     <div style={{ flex: 1, textAlign: 'center', borderRight: cellBorder, paddingLeft: showBorders ? '8px' : '0', paddingRight: showBorders ? '8px' : '0', color: 'var(--muted)', fontWeight: '600' }}>Closing Balance period summary</div>
-                    <div style={{ width: '110px', borderRight: cellBorder }}></div>
-                    <div style={{ width: '110px', borderRight: cellBorder }}></div>
-                    <div style={{ width: '70px', borderRight: cellBorder }}></div>
-                    <div style={{ width: '80px', borderRight: cellBorder }}></div>
-                    <div style={{ width: '110px', textAlign: 'right', color: 'var(--green)', fontFamily: 'var(--mono)', borderRight: cellBorder, paddingRight: showBorders ? '8px' : '0' }}>
-                      +{fmtAmt(statementData.summary.totalDebit)}
-                    </div>
-                    <div style={{ width: '110px', textAlign: 'right', color: 'var(--red)', fontFamily: 'var(--mono)', borderRight: cellBorder, paddingRight: showBorders ? '8px' : '0' }}>
-                      -{fmtAmt(statementData.summary.totalCredit)}
-                    </div>
-                    <div style={{ width: '120px', textAlign: 'right', fontFamily: 'var(--mono)', color: balanceColor(statementData.summary.closingBalance), fontSize: '14px', fontWeight: '800', paddingLeft: showBorders ? '8px' : '0' }}>
-                      {fmtAmt(statementData.summary.closingBalance)}
-                    </div>
+                    {showTransCols && (
+                      <div style={{ width: '110px', textAlign: 'right', color: 'var(--green)', fontFamily: 'var(--mono)', borderRight: cellBorder, paddingRight: showBorders ? '8px' : '0' }}>
+                        +{fmtAmt(statementData.summary.totalDebitTransaction)}
+                      </div>
+                    )}
+                    {showTransCols && (
+                      <div style={{ width: '110px', textAlign: 'right', color: 'var(--red)', fontFamily: 'var(--mono)', borderRight: cellBorder, paddingRight: showBorders ? '8px' : '0' }}>
+                        -{fmtAmt(statementData.summary.totalCreditTransaction)}
+                      </div>
+                    )}
+                    {showTransCols && <div style={{ width: '70px', borderRight: cellBorder }}></div>}
+                    {showTransCols && <div style={{ width: '80px', borderRight: cellBorder }}></div>}
+                    {showBookCols && (
+                      <div style={{ width: '110px', textAlign: 'right', color: 'var(--green)', fontFamily: 'var(--mono)', borderRight: cellBorder, paddingRight: showBorders ? '8px' : '0' }}>
+                        +{fmtAmt(statementData.summary.totalDebit)}
+                      </div>
+                    )}
+                    {showBookCols && (
+                      <div style={{ width: '110px', textAlign: 'right', color: 'var(--red)', fontFamily: 'var(--mono)', borderRight: cellBorder, paddingRight: showBorders ? '8px' : '0' }}>
+                        -{fmtAmt(statementData.summary.totalCredit)}
+                      </div>
+                    )}
+                    {showBookCols && (
+                      <div style={{ width: '120px', textAlign: 'right', fontFamily: 'var(--mono)', color: balanceColor(statementData.summary.closingBalance), fontSize: '14px', fontWeight: '800', borderRight: cellBorder, paddingLeft: showBorders ? '8px' : '0', paddingRight: showBorders ? '8px' : '0' }}>
+                        {fmtAmt(statementData.summary.closingBalance)}
+                      </div>
+                    )}
+                    {showTransCols && (
+                      <div style={{ width: '120px', textAlign: 'right', fontFamily: 'var(--mono)', color: balanceColor(statementData.summary.closingBalanceTransaction), fontSize: '14px', fontWeight: '800', paddingLeft: showBorders ? '8px' : '0' }}>
+                        {fmtAmt(statementData.summary.closingBalanceTransaction)}
+                      </div>
+                    )}
                   </div>
                 </div>
               ) : (
