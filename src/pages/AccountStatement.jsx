@@ -15,6 +15,15 @@ function balanceColor(val) {
   return 'var(--text)';
 }
 
+function fullDescriptionText(item) {
+  const parts = [item.LineDescription || 'No description'];
+  ['CustomerName', 'VendorName', 'BankName', 'EmployeeName', 'AssetName', 'ExpenseName', 'DebitorCreditorName'].forEach(key => {
+    if (item[key]) parts.push(`(${item[key]})`);
+  });
+  if (item.Reference1) parts.push(`Ref: ${item.Reference1}`);
+  return parts.join(' ');
+}
+
 function fmtDate(val) {
   if (!val) return '—';
   try {
@@ -865,16 +874,19 @@ export default function AccountStatement({ user, def }) {
                               </div>
                               
                               {/* Description */}
-                              <div style={{ 
-                                flex: 1, 
-                                textAlign: 'center',
-                                whiteSpace: 'nowrap',
-                                overflow: 'hidden',
-                                textOverflow: 'ellipsis',
-                                borderRight: showBorders ? '1px solid var(--border)' : 'none',
-                                paddingLeft: showBorders ? '8px' : '0',
-                                paddingRight: showBorders ? '8px' : '0'
-                              }}>
+                              <div
+                                dir="auto"
+                                title={fullDescriptionText(item)}
+                                style={{
+                                  flex: 1,
+                                  textAlign: 'left',
+                                  whiteSpace: 'nowrap',
+                                  overflow: 'hidden',
+                                  textOverflow: 'ellipsis',
+                                  borderRight: showBorders ? '1px solid var(--border)' : 'none',
+                                  paddingLeft: showBorders ? '8px' : '0',
+                                  paddingRight: showBorders ? '8px' : '0'
+                                }}>
                                 {item.LineDescription || 'No description'}
                                 {item.CustomerName && <span style={{ color: 'var(--orange-dark)', fontWeight: '700', marginLeft: 8 }}>({item.CustomerName})</span>}
                                 {item.VendorName && <span style={{ color: 'var(--orange-dark)', fontWeight: '700', marginLeft: 8 }}>({item.VendorName})</span>}
@@ -1137,20 +1149,25 @@ export default function AccountStatement({ user, def }) {
 
                               {/* Center Meta Info */}
                               <div style={{ flex: 1, minWidth: 0 }}>
-                                <div style={{ 
-                                  fontSize: '13.5px', 
-                                  fontWeight: '700', 
-                                  color: 'var(--text)',
-                                  whiteSpace: 'nowrap',
-                                  overflow: 'hidden',
-                                  textOverflow: 'ellipsis' 
-                                }}>
+                                <div
+                                  dir="auto"
+                                  title={fullDescriptionText(item)}
+                                  style={{
+                                    fontSize: '13.5px',
+                                    fontWeight: '700',
+                                    color: 'var(--text)',
+                                    whiteSpace: 'nowrap',
+                                    overflow: 'hidden',
+                                    textOverflow: 'ellipsis'
+                                  }}>
                                   {item.LineDescription || 'No description provided'}
                                   {item.CustomerName && <span style={{ color: 'var(--orange-dark)', fontWeight: '700', marginLeft: 8 }}>({item.CustomerName})</span>}
                                   {item.VendorName && <span style={{ color: 'var(--orange-dark)', fontWeight: '700', marginLeft: 8 }}>({item.VendorName})</span>}
+                                  {item.BankName && <span style={{ color: 'var(--orange-dark)', fontWeight: '700', marginLeft: 8 }}>({item.BankName})</span>}
                                   {item.EmployeeName && <span style={{ color: 'var(--orange-dark)', fontWeight: '700', marginLeft: 8 }}>({item.EmployeeName})</span>}
                                   {item.AssetName && <span style={{ color: 'var(--orange-dark)', fontWeight: '700', marginLeft: 8 }}>({item.AssetName})</span>}
                                   {item.ExpenseName && <span style={{ color: 'var(--orange-dark)', fontWeight: '700', marginLeft: 8 }}>({item.ExpenseName})</span>}
+                                  {item.DebitorCreditorName && <span style={{ color: 'var(--orange-dark)', fontWeight: '700', marginLeft: 8 }}>({item.DebitorCreditorName})</span>}
                                 </div>
                                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, marginTop: 4, alignItems: 'center' }}>
                                   <span style={{ fontSize: '11px', color: 'var(--muted)', background: 'var(--soft)', padding: '2px 6px', borderRadius: '4px' }}>
@@ -1176,9 +1193,11 @@ export default function AccountStatement({ user, def }) {
                                   {/* Contextual Sub-labels */}
                                   {item.CustomerName && <span style={{ color: 'var(--orange-dark)', fontWeight: '700', marginLeft: 8 }}>({item.CustomerName})</span>}
                                   {item.VendorName && <span style={{ color: 'var(--orange-dark)', fontWeight: '700', marginLeft: 8 }}>({item.VendorName})</span>}
+                                  {item.BankName && <span style={{ color: 'var(--orange-dark)', fontWeight: '700', marginLeft: 8 }}>({item.BankName})</span>}
                                   {item.EmployeeName && <span style={{ color: 'var(--orange-dark)', fontWeight: '700', marginLeft: 8 }}>({item.EmployeeName})</span>}
                                   {item.AssetName && <span style={{ color: 'var(--orange-dark)', fontWeight: '700', marginLeft: 8 }}>({item.AssetName})</span>}
                                   {item.ExpenseName && <span style={{ color: 'var(--orange-dark)', fontWeight: '700', marginLeft: 8 }}>({item.ExpenseName})</span>}
+                                  {item.DebitorCreditorName && <span style={{ color: 'var(--orange-dark)', fontWeight: '700', marginLeft: 8 }}>({item.DebitorCreditorName})</span>}
                                 </div>
                               )}
 
