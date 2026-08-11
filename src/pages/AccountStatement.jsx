@@ -929,12 +929,12 @@ export default function AccountStatement({ user, def }) {
                                 width: '110px',
                                 textAlign: 'right',
                                 fontWeight: '600',
-                                color: 'var(--green)',
+                                color: Number(item.DebitTransaction || 0) > 0 ? 'var(--green)' : 'var(--muted)',
                                 fontFamily: 'var(--mono)',
                                 borderRight: cellBorder,
                                 paddingRight: showBorders ? '8px' : '0'
                               }}>
-                                {Number(item.DebitTransaction || 0) > 0 ? fmtAmt(item.DebitTransaction) : ''}
+                                {fmtAmt(item.DebitTransaction)}
                               </div>
 
                               {/* Credit Trans (transaction currency) */}
@@ -942,12 +942,12 @@ export default function AccountStatement({ user, def }) {
                                 width: '110px',
                                 textAlign: 'right',
                                 fontWeight: '600',
-                                color: 'var(--red)',
+                                color: Number(item.CreditTransaction || 0) > 0 ? 'var(--red)' : 'var(--muted)',
                                 fontFamily: 'var(--mono)',
                                 borderRight: cellBorder,
                                 paddingRight: showBorders ? '8px' : '0'
                               }}>
-                                {Number(item.CreditTransaction || 0) > 0 ? fmtAmt(item.CreditTransaction) : ''}
+                                {fmtAmt(item.CreditTransaction)}
                               </div>
 
                               {/* Currency */}
@@ -984,12 +984,12 @@ export default function AccountStatement({ user, def }) {
                                 width: '110px',
                                 textAlign: 'right',
                                 fontWeight: '700',
-                                color: 'var(--green)',
+                                color: isDebit && amount > 0 ? 'var(--green)' : 'var(--muted)',
                                 fontFamily: 'var(--mono)',
                                 borderRight: cellBorder,
                                 paddingRight: showBorders ? '8px' : '0'
                               }}>
-                                {isDebit ? fmtAmt(amount) : ''}
+                                {fmtAmt(isDebit ? amount : 0)}
                               </div>
 
                               {/* Credit Book */}
@@ -997,12 +997,12 @@ export default function AccountStatement({ user, def }) {
                                 width: '110px',
                                 textAlign: 'right',
                                 fontWeight: '700',
-                                color: 'var(--red)',
+                                color: !isDebit && amount > 0 ? 'var(--red)' : 'var(--muted)',
                                 fontFamily: 'var(--mono)',
                                 borderRight: cellBorder,
                                 paddingRight: showBorders ? '8px' : '0'
                               }}>
-                                {!isDebit ? fmtAmt(amount) : ''}
+                                {fmtAmt(!isDebit ? amount : 0)}
                               </div>
 
                               {/* Running Balance */}
@@ -1039,11 +1039,11 @@ export default function AccountStatement({ user, def }) {
                           <div style={{ width: '110px', borderRight: cellBorder }}></div>
                           <div style={{ width: '70px', borderRight: cellBorder }}></div>
                           <div style={{ width: '80px', borderRight: cellBorder }}></div>
-                          <div style={{ width: '110px', textAlign: 'right', color: 'var(--green)', fontFamily: 'var(--mono)', borderRight: cellBorder, paddingRight: showBorders ? '8px' : '0' }}>
-                            {groupDebit > 0 ? `+${fmtAmt(groupDebit)}` : ''}
+                          <div style={{ width: '110px', textAlign: 'right', color: groupDebit > 0 ? 'var(--green)' : 'var(--muted)', fontFamily: 'var(--mono)', borderRight: cellBorder, paddingRight: showBorders ? '8px' : '0' }}>
+                            {groupDebit > 0 ? '+' : ''}{fmtAmt(groupDebit)}
                           </div>
-                          <div style={{ width: '110px', textAlign: 'right', color: 'var(--red)', fontFamily: 'var(--mono)', borderRight: cellBorder, paddingRight: showBorders ? '8px' : '0' }}>
-                            {groupCredit > 0 ? `-${fmtAmt(groupCredit)}` : ''}
+                          <div style={{ width: '110px', textAlign: 'right', color: groupCredit > 0 ? 'var(--red)' : 'var(--muted)', fontFamily: 'var(--mono)', borderRight: cellBorder, paddingRight: showBorders ? '8px' : '0' }}>
+                            {groupCredit > 0 ? '-' : ''}{fmtAmt(groupCredit)}
                           </div>
                           <div style={{ width: '120px', textAlign: 'right', fontFamily: 'var(--mono)', paddingLeft: showBorders ? '8px' : '0', color: 'var(--orange-dark)', fontWeight: '800' }}>
                             <span style={{ fontSize: '10px', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.3px', marginRight: 6, color: 'var(--muted)' }}>Closing</span>
