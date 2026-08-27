@@ -52,11 +52,16 @@ export default function PlanningItemMasterDrawer({ user, editRow, onClose, onSav
       if (d.State === 0) {
         setFormulaOptions((d.List0 || []).map(f => ({
           label: `${f.ParentItemCode} (Formula ${f.FormulaID})`,
-          value: f.FormulaID
+          value: f.FormulaID,
+          parentItemID: f.ParentItemID
         })));
       }
     });
   }, [user]);
+
+  // Formulas (BOM headers) belong to a specific item -- only offer the
+  // ones tied to the currently selected item, not all of them.
+  const itemFormulaOptions = formulaOptions.filter(f => String(f.parentItemID) === String(itemID));
 
   const handleItemChange = (id) => {
     setItemID(id);
@@ -66,6 +71,8 @@ export default function PlanningItemMasterDrawer({ user, editRow, onClose, onSav
       setItemType(opt.itemType || '');
       setItemDescription(opt.itemName || '');
     }
+    // Previously selected formula almost certainly doesn't belong to the newly picked item.
+    setDefaultFormula('');
   };
 
   const handleSave = async () => {
@@ -179,9 +186,13 @@ export default function PlanningItemMasterDrawer({ user, editRow, onClose, onSav
                   <SearchableSelect
                     value={defaultFormula}
                     onChange={setDefaultFormula}
-                    options={formulaOptions}
-                    placeholder="Search formula..."
+                    options={itemFormulaOptions}
+                    placeholder={itemID ? 'Search formula...' : 'Select an item first'}
+                    disabled={!itemID}
                   />
+                  {itemID && itemFormulaOptions.length === 0 && (
+                    <div style={{ fontSize: 11, color: '#94A3B8', marginTop: 4 }}>No BOM formula found for this item.</div>
+                  )}
                 </div>
                 <div>
                   <label style={labelStyle}>Safety Stock</label>
