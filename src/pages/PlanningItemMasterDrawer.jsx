@@ -10,6 +10,7 @@ export default function PlanningItemMasterDrawer({ user, editRow, onClose, onSav
 
   const [itemOptions, setItemOptions] = useState([]);
   const [machineOptions, setMachineOptions] = useState([]);
+  const [formulaOptions, setFormulaOptions] = useState([]);
   const [itemID, setItemID] = useState(editRow?.ItemID || '');
   const [itemCode, setItemCode] = useState(editRow?.ItemCode || '');
   const [itemType, setItemType] = useState(editRow?.ItemType || '');
@@ -44,6 +45,14 @@ export default function PlanningItemMasterDrawer({ user, editRow, onClose, onSav
         setMachineOptions((d.List0 || []).map(m => ({
           label: `${m.MachineCode} - ${m.MachineDescription}`,
           value: m.MachineID
+        })));
+      }
+    });
+    apiCall('Formula Master All', null, { User: user?.Username }, 'lookup').then(d => {
+      if (d.State === 0) {
+        setFormulaOptions((d.List0 || []).map(f => ({
+          label: `${f.ParentItemCode} (Formula ${f.FormulaID})`,
+          value: f.FormulaID
         })));
       }
     });
@@ -167,7 +176,12 @@ export default function PlanningItemMasterDrawer({ user, editRow, onClose, onSav
                 </div>
                 <div>
                   <label style={labelStyle}>Default Formula</label>
-                  <input type="number" value={defaultFormula} onChange={e => setDefaultFormula(e.target.value)} style={inputStyle} />
+                  <SearchableSelect
+                    value={defaultFormula}
+                    onChange={setDefaultFormula}
+                    options={formulaOptions}
+                    placeholder="Search formula..."
+                  />
                 </div>
                 <div>
                   <label style={labelStyle}>Safety Stock</label>
