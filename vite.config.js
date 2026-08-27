@@ -149,6 +149,19 @@ export default defineConfig({
           })
         }
       },
+      '/planning-api': {
+        target: 'https://sila.silasystem.com:7103',
+        changeOrigin: true,
+        secure: false,
+        rewrite: (path) => path.replace(/^\/planning-api/, ''),
+        configure: (proxy) => {
+          proxy.on('proxyReq', (proxyReq) => {
+            proxyReq.setHeader('SP_Name', '[PRO].[APIPlusPlanningOperation]')
+            proxyReq.setHeader('Accept', 'application/json')
+            proxyReq.setHeader('Content-Type', 'application/json')
+          })
+        }
+      },
       '/api': {
         target: 'https://sila.silasystem.com:7103',
         changeOrigin: true,

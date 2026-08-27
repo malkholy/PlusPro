@@ -52,6 +52,8 @@ export async function apiCall(operation, lineData = null, extraParams = {}, apiT
     target = 'customer_order_price';
   } else if (apiType === 'acp') {
     target = 'acp';
+  } else if (apiType === 'planning') {
+    target = 'planning';
   }
 
   let url = '';
@@ -106,6 +108,9 @@ export async function apiCall(operation, lineData = null, extraParams = {}, apiT
   } else if (target === 'acp') {
     url = IS_DEV ? '/acp-api/General/GeneralAPI/' : 'https://sila.silasystem.com:7103/General/GeneralAPI/';
     spName = 'APIPlusACPOperation';
+  } else if (target === 'planning') {
+    url = IS_DEV ? '/planning-api/General/GeneralAPI/' : 'https://sila.silasystem.com:7103/General/GeneralAPI/';
+    spName = '[PRO].[APIPlusPlanningOperation]';
   } else {
     url = IS_DEV ? '/api/General/GeneralAPI/' : 'https://sila.silasystem.com:7103/General/GeneralAPI/';
     spName = 'APIPlusOperation';
