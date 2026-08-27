@@ -72,6 +72,7 @@ import VendorInvoicePayment from './pages/VendorInvoicePayment.jsx';
 import CashFlow from './pages/CashFlow.jsx';
 import CustomerStatus from './pages/CustomerStatus.jsx';
 import PlanningItemMaster from './pages/PlanningItemMaster.jsx';
+import PlanningItemHistory from './pages/PlanningItemHistory.jsx';
 import {
   Calculator, Layers, Coins, Settings, Truck, Package2, FolderTree, FileText, Scale, ListTree,
   BookOpen, FileStack, Sparkles, CalendarClock, Banknote, Link2, Zap, ClipboardList, KeyRound,
@@ -382,7 +383,8 @@ const PAGE_COMPONENTS = {
   vendor_invoice_payment: VendorInvoicePayment,
   cash_flow: CashFlow,
   customer_status: CustomerStatus,
-  planning_item_master: PlanningItemMaster
+  planning_item_master: PlanningItemMaster,
+  planning_item_history: PlanningItemHistory
 };
 
 // The sidebar is built live from PLS.PagesAndGroups at login instead of a
