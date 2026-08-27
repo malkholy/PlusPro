@@ -203,11 +203,11 @@ export default function PlanningItemMasterDrawer({ user, editRow, onClose, onSav
                   <input type="number" value={leadTime} onChange={e => setLeadTime(e.target.value)} style={inputStyle} />
                 </div>
                 <div>
-                  <label style={labelStyle}>Net Weight</label>
+                  <label style={labelStyle}>Net Weight (Kg)</label>
                   <input type="number" step="0.00001" value={netWeight} onChange={e => setNetWeight(e.target.value)} style={inputStyle} />
                 </div>
                 <div>
-                  <label style={labelStyle}>Production Time</label>
+                  <label style={labelStyle}>Production Time (seconds)</label>
                   <input type="number" value={producationTime} onChange={e => setProducationTime(e.target.value)} style={inputStyle} />
                 </div>
                 <div>

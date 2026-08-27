@@ -57,10 +57,10 @@ export default function PlanningItemMaster({ user }) {
     { key: 'DefaultFormulaCode', label: 'Default Formula', width: 150, render: (row) => row?.DefaultFormulaCode || '—' },
     { key: 'SaftyStock', label: 'Safety Stock', width: 110, align: 'right' },
     { key: 'LeadTime', label: 'Lead Time', width: 100, align: 'right' },
-    { key: 'NetWeight', label: 'Net Weight', width: 110, align: 'right', render: (row) => Number(row?.NetWeight || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 5 }) },
+    { key: 'NetWeight', label: 'Net Weight (Kg)', width: 130, align: 'right', render: (row) => Number(row?.NetWeight || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 5 }) },
     { key: 'ColorName', label: 'Color', width: 130 },
     { key: 'ColorPriority', label: 'Color Priority', width: 110, align: 'right' },
-    { key: 'ProducationTime', label: 'Production Time', width: 130, align: 'right' }
+    { key: 'ProducationTime', label: 'Production Time (sec)', width: 150, align: 'right' }
   ];
 
   return (
