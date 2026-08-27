@@ -9,6 +9,7 @@ export default function PlanningItemMasterDrawer({ user, editRow, onClose, onSav
   const isEditMode = !!editRow;
 
   const [itemOptions, setItemOptions] = useState([]);
+  const [machineOptions, setMachineOptions] = useState([]);
   const [itemID, setItemID] = useState(editRow?.ItemID || '');
   const [itemCode, setItemCode] = useState(editRow?.ItemCode || '');
   const [itemType, setItemType] = useState(editRow?.ItemType || '');
@@ -35,6 +36,14 @@ export default function PlanningItemMasterDrawer({ user, editRow, onClose, onSav
           itemCode: i.ItemCode,
           itemType: i.ItemType,
           itemName: i.ItemName
+        })));
+      }
+    });
+    apiCall('Machine Master All', null, { User: user?.Username }, 'lookup').then(d => {
+      if (d.State === 0) {
+        setMachineOptions((d.List0 || []).map(m => ({
+          label: `${m.MachineCode} - ${m.MachineDescription}`,
+          value: m.MachineID
         })));
       }
     });
@@ -149,7 +158,12 @@ export default function PlanningItemMasterDrawer({ user, editRow, onClose, onSav
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
                 <div>
                   <label style={labelStyle}>Default Machine</label>
-                  <input type="number" value={defaultMachine} onChange={e => setDefaultMachine(e.target.value)} style={inputStyle} />
+                  <SearchableSelect
+                    value={defaultMachine}
+                    onChange={setDefaultMachine}
+                    options={machineOptions}
+                    placeholder="Search machine..."
+                  />
                 </div>
                 <div>
                   <label style={labelStyle}>Default Formula</label>

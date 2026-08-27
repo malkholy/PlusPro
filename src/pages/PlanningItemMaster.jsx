@@ -53,7 +53,7 @@ export default function PlanningItemMaster({ user }) {
     { key: 'ItemCode', label: 'Item Code', width: 130 },
     { key: 'ItemDescription', label: 'Description', flex: 1 },
     { key: 'ItemType', label: 'Type', width: 90 },
-    { key: 'DefaultMachine', label: 'Default Machine', width: 130, align: 'right' },
+    { key: 'DefaultMachineCode', label: 'Default Machine', width: 150, render: (row) => row?.DefaultMachineCode || '—' },
     { key: 'DefaultFormula', label: 'Default Formula', width: 130, align: 'right' },
     { key: 'SaftyStock', label: 'Safety Stock', width: 110, align: 'right' },
     { key: 'LeadTime', label: 'Lead Time', width: 100, align: 'right' },
