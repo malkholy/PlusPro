@@ -216,7 +216,12 @@ export default function PlanningItemMasterDrawer({ user, editRow, onClose, onSav
                 </div>
                 <div>
                   <label style={labelStyle}>Color Priority</label>
-                  <input type="number" value={colorPriority} onChange={e => setColorPriority(e.target.value)} style={inputStyle} />
+                  <select value={colorPriority} onChange={e => setColorPriority(e.target.value)} style={{ ...inputStyle, background: '#fff' }}>
+                    <option value="">—</option>
+                    {Array.from({ length: 12 }, (_, i) => i + 1).map(n => (
+                      <option key={n} value={n}>{n}</option>
+                    ))}
+                  </select>
                 </div>
               </div>
             </div>
