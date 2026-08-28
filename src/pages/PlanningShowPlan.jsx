@@ -41,6 +41,22 @@ function shiftStartHour(shiftNo) {
   return Number(shiftNo) === 2 ? 19 : 7;
 }
 
+// "8h 30m" from a qty, a formula's batch qty, and per-batch production
+// time (seconds) -- null when there isn't enough info to compute it
+// (e.g. manually-assigned slots, which don't carry a production time).
+function formatDuration(qty, formulaBatch, productionTime) {
+  const batchQty = Number(formulaBatch || 0);
+  const prodTime = Number(productionTime || 0);
+  if (batchQty <= 0 || prodTime <= 0 || !qty) return null;
+  const totalSeconds = (qty / batchQty) * prodTime;
+  const totalMinutes = Math.round(totalSeconds / 60);
+  const h = Math.floor(totalMinutes / 60);
+  const m = totalMinutes % 60;
+  if (h <= 0) return `${m}m`;
+  if (m === 0) return `${h}h`;
+  return `${h}h ${m}m`;
+}
+
 const inputStyle = {
   padding: '8px 12px', border: '1px solid var(--border2)', borderRadius: 'var(--radius-xs)',
   boxSizing: 'border-box', background: 'var(--surface)', color: 'var(--text)', fontFamily: 'var(--font)', fontSize: 13
@@ -156,7 +172,8 @@ export default function PlanningShowPlan({ user, onClose }) {
         if (!map[key]) map[key] = [];
         map[key].push({
           itemCode: r.ItemCode, itemDescription: r.ItemDescription || '', qty: Number(r.PlannedQty || 0),
-          formulaID: r.FormulaID || null, formulaCode: r.FormulaCode || ''
+          formulaID: r.FormulaID || null, formulaCode: r.FormulaCode || '',
+          formulaBatch: Number(r.FormulaBatch || 0), productionTime: Number(r.ProductionTime || 0)
         });
       });
 
@@ -343,8 +360,15 @@ export default function PlanningShowPlan({ user, onClose }) {
                 {c.itemDescription}
               </div>
             )}
-            <div style={{ color: 'var(--muted)', fontFamily: 'var(--mono)' }}>
-              {c.qty.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
+              <span style={{ color: 'var(--muted)', fontFamily: 'var(--mono)' }}>
+                {c.qty.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+              </span>
+              {formatDuration(c.qty, c.formulaBatch, c.productionTime) && (
+                <span style={{ color: accent.fg, fontSize: 10, fontWeight: 700, fontFamily: 'var(--mono)' }}>
+                  {formatDuration(c.qty, c.formulaBatch, c.productionTime)}
+                </span>
+              )}
             </div>
           </div>
         ))}
