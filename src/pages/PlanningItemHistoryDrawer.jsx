@@ -234,6 +234,26 @@ export default function PlanningItemHistoryDrawer({ user, editRow, onClose, onSa
       setError('Please select an item.');
       return;
     }
+    if (!formulaID) {
+      setError('Please select a formula.');
+      return;
+    }
+    if (!machineID) {
+      setError('Please select a machine.');
+      return;
+    }
+    if (!plannedQty || Number(plannedQty) <= 0) {
+      setError('Please enter a Planned Qty greater than 0.');
+      return;
+    }
+    if (!productionTime || Number(productionTime) <= 0) {
+      setError('Please enter a Production Time greater than 0.');
+      return;
+    }
+    if (!startDate) {
+      setError('Please select a Start Date.');
+      return;
+    }
 
     setSaving(true);
 
