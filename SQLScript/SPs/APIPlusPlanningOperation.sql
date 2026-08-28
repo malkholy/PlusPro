@@ -148,6 +148,40 @@ BEGIN
     END
 
     -- =============================================
+    -- DELETE PLANNING HISTORY
+    -- =============================================
+    -- Only draft plans (PlanningState = 0) can be deleted -- once a plan
+    -- moves past draft it's part of the committed production record.
+    IF @Operation = 'Delete Planning History'
+    BEGIN
+        DECLARE @DPH_PlanningID int, @DPH_State int
+
+        SELECT @DPH_PlanningID = CAST(@LineData AS int)
+
+        SELECT @DPH_State = PlanningState
+        FROM [PRO].[PrdItemPlanningHistory]
+        WHERE PlanningID = @DPH_PlanningID
+
+        IF @DPH_State IS NULL
+        BEGIN
+            SET @State = 1
+            SET @Message = 'Planning record not found'
+            RETURN
+        END
+
+        IF @DPH_State <> 0
+        BEGIN
+            SET @State = 1
+            SET @Message = 'Only draft plans can be deleted'
+            RETURN
+        END
+
+        DELETE FROM [PRO].[PrdItemPlanningShiftPlan] WHERE PlanningID = @DPH_PlanningID
+        DELETE FROM [PRO].[PrdItemPlanningHistory] WHERE PlanningID = @DPH_PlanningID
+        RETURN
+    END
+
+    -- =============================================
     -- NEW PLANNING HISTORY
     -- =============================================
     IF @Operation = 'New Planning History'
