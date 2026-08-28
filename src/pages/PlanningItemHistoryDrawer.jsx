@@ -337,10 +337,6 @@ export default function PlanningItemHistoryDrawer({ user, onClose, onSaveSuccess
                     placeholder="Search machine..."
                   />
                 </div>
-                <div>
-                  <label style={labelStyle}>Shift No</label>
-                  <input type="number" value={shiftNo} onChange={e => setShiftNo(e.target.value)} style={inputStyle} />
-                </div>
               </div>
             </div>
 
@@ -429,10 +425,18 @@ export default function PlanningItemHistoryDrawer({ user, onClose, onSaveSuccess
             <div style={{ backgroundColor: '#fff', padding: 20, borderRadius: 8, border: '1px solid #E2E8F0' }}>
               <h3 style={{ margin: '0 0 4px 0', fontSize: 16, color: '#334155', fontWeight: 600 }}>Shift Plan</h3>
               <p style={{ margin: '0 0 16px 0', fontSize: 12.5, color: '#64748B' }}>
-                Day-by-day breakdown across 12-hour shifts (Shift {shiftNo || '—'}), from Start Date to the calculated End Date.
+                Day-by-day breakdown across 12-hour shifts, from Start Date to the calculated End Date.
               </p>
+              <div style={{ maxWidth: 280, marginBottom: 20 }}>
+                <label style={labelStyle}>Shift No</label>
+                <select value={shiftNo} onChange={e => setShiftNo(e.target.value)} style={{ ...inputStyle, background: '#fff' }}>
+                  <option value="">Select shift...</option>
+                  <option value="1">1 (07:00 AM - 07:00 PM)</option>
+                  <option value="2">2 (07:00 PM - 07:00 AM)</option>
+                </select>
+              </div>
               {shiftPlan.length === 0 ? (
-                <div style={{ fontSize: 13, color: '#94A3B8' }}>Fill in Formula, Machine/Shift No, Production Time, Planned Qty, and Start Date to see the shift plan.</div>
+                <div style={{ fontSize: 13, color: '#94A3B8' }}>Fill in Formula, Production Time, Planned Qty, and Start Date to see the shift plan.</div>
               ) : (
                 <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                   <thead>
