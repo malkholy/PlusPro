@@ -19,6 +19,7 @@ export default function PlanningItemHistoryDrawer({ user, onClose, onSaveSuccess
   const [plannedQty, setPlannedQty] = useState('');
   const [formulaID, setFormulaID] = useState('');
   const [machineID, setMachineID] = useState('');
+  const [shiftNo, setShiftNo] = useState('');
 
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -92,7 +93,10 @@ export default function PlanningItemHistoryDrawer({ user, onClose, onSaveSuccess
       EndDate: endDate || null,
       PlannedQty: plannedQty === '' ? 0 : Number(plannedQty),
       FormulaID: formulaID === '' ? 0 : Number(formulaID),
-      MachineID: machineID === '' ? 0 : Number(machineID)
+      MachineID: machineID === '' ? 0 : Number(machineID),
+      FormulaBatch: selectedFormula?.batchQuantity ?? 0,
+      ProductionTime: selectedItemPlanning?.ProducationTime ?? 0,
+      ShiftNo: shiftNo === '' ? 0 : Number(shiftNo)
     };
 
     try {
@@ -159,6 +163,10 @@ export default function PlanningItemHistoryDrawer({ user, onClose, onSaveSuccess
                 <div>
                   <label style={labelStyle}>Planned Qty</label>
                   <input type="number" step="0.00001" value={plannedQty} onChange={e => setPlannedQty(e.target.value)} style={inputStyle} />
+                </div>
+                <div>
+                  <label style={labelStyle}>Shift No</label>
+                  <input type="number" value={shiftNo} onChange={e => setShiftNo(e.target.value)} style={inputStyle} />
                 </div>
                 <div>
                   <label style={labelStyle}>Machine</label>

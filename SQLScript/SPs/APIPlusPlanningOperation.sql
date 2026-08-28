@@ -153,11 +153,13 @@ BEGIN
     IF @Operation = 'New Planning History'
     BEGIN
         DECLARE @PH_ItemID int, @PH_ItemCode nvarchar(50), @PH_StartDate date, @PH_EndDate date,
-                @PH_PlannedQty decimal(18,5), @PH_FormulaID int, @PH_MachineID int, @PH_PlanningID int
+                @PH_PlannedQty decimal(18,5), @PH_FormulaID int, @PH_MachineID int, @PH_PlanningID int,
+                @PH_FormulaBatch decimal(18,5), @PH_ProductionTime int, @PH_ShiftNo int
 
         SELECT
             @PH_ItemID = ItemID, @PH_ItemCode = ItemCode, @PH_StartDate = StartDate, @PH_EndDate = EndDate,
-            @PH_PlannedQty = PlannedQty, @PH_FormulaID = FormulaID, @PH_MachineID = MachineID
+            @PH_PlannedQty = PlannedQty, @PH_FormulaID = FormulaID, @PH_MachineID = MachineID,
+            @PH_FormulaBatch = FormulaBatch, @PH_ProductionTime = ProductionTime, @PH_ShiftNo = ShiftNo
         FROM OPENJSON(@LineData) WITH (
             ItemID int '$.ItemID',
             ItemCode nvarchar(50) '$.ItemCode',
@@ -165,15 +167,17 @@ BEGIN
             EndDate date '$.EndDate',
             PlannedQty decimal(18,5) '$.PlannedQty',
             FormulaID int '$.FormulaID',
-            MachineID int '$.MachineID'
+            MachineID int '$.MachineID',
+            FormulaBatch decimal(18,5) '$.FormulaBatch',
+            ProductionTime int '$.ProductionTime',
+            ShiftNo int '$.ShiftNo'
         )
 
-        -- PlanningState and FormulaBatch aren't collected on this form yet;
-        -- defaulted to 0 until those are wired up.
+        -- PlanningState isn't collected on this form yet; defaulted to 0 until it's wired up.
         INSERT INTO [PRO].[PrdItemPlanningHistory]
-            (ItemID, ItemCode, PlanningState, PlannedQty, StartDate, EndDate, MachineID, FormulaID, FormulaBatch, CreatedBy, CreatedDate, LastMaintBy, LastMaintDate)
+            (ItemID, ItemCode, PlanningState, PlannedQty, StartDate, EndDate, MachineID, FormulaID, FormulaBatch, ProductionTime, ShiftNo, CreatedBy, CreatedDate, LastMaintBy, LastMaintDate)
         VALUES
-            (@PH_ItemID, @PH_ItemCode, 0, @PH_PlannedQty, @PH_StartDate, @PH_EndDate, @PH_MachineID, @PH_FormulaID, 0, @User, GETDATE(), @User, GETDATE())
+            (@PH_ItemID, @PH_ItemCode, 0, @PH_PlannedQty, @PH_StartDate, @PH_EndDate, @PH_MachineID, @PH_FormulaID, ISNULL(@PH_FormulaBatch, 0), ISNULL(@PH_ProductionTime, 0), ISNULL(@PH_ShiftNo, 0), @User, GETDATE(), @User, GETDATE())
 
         SET @PH_PlanningID = SCOPE_IDENTITY()
 
