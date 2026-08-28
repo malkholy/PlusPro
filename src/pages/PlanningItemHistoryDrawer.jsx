@@ -37,6 +37,10 @@ export default function PlanningItemHistoryDrawer({ user, onClose, onSaveSuccess
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
 
+  const [activeTab, setActiveTab] = useState('details');
+  const [formulaLines, setFormulaLines] = useState([]);
+  const [formulaLinesLoading, setFormulaLinesLoading] = useState(false);
+
   useEffect(() => {
     apiCall('Item Master All', null, { User: user?.Username }, 'lookup').then(d => {
       if (d.State === 0) {
@@ -73,6 +77,20 @@ export default function PlanningItemHistoryDrawer({ user, onClose, onSaveSuccess
     });
   }, [user]);
 
+  useEffect(() => {
+    if (!formulaID || !itemCode) {
+      setFormulaLines([]);
+      return;
+    }
+    setFormulaLinesLoading(true);
+    apiCall('BOM L1 Formula', { ParentItemCode: itemCode }, { User: user?.Username }, 'plus').then(d => {
+      if (d.State === 0) {
+        setFormulaLines((d.List0 || []).filter(l => String(l.LineFormulaID) === String(formulaID)));
+      }
+      setFormulaLinesLoading(false);
+    }).catch(() => setFormulaLinesLoading(false));
+  }, [formulaID, itemCode, user]);
+
   const itemFormulaOptions = formulaOptions.filter(f => String(f.parentItemID) === String(itemID));
   const selectedFormula = formulaOptions.find(f => String(f.value) === String(formulaID));
 
@@ -89,6 +107,35 @@ export default function PlanningItemHistoryDrawer({ user, onClose, onSaveSuccess
     const days = Math.max(1, Math.ceil(totalSeconds / SHIFT_SECONDS));
     return { endDate: addDays(startDate, days - 1), daysNeeded: days };
   }, [startDate, plannedQty, productionTime, selectedFormula]);
+
+  // How many formula batches the whole planned run needs -- scales each BOM
+  // line's per-batch quantity up to the total raw material required.
+  const totalBatches = useMemo(() => {
+    const batchQty = Number(selectedFormula?.batchQuantity || 0);
+    const qty = Number(plannedQty || 0);
+    return batchQty > 0 ? qty / batchQty : 0;
+  }, [plannedQty, selectedFormula]);
+
+  // Day-by-day shift schedule: same shift every day, running at capacity
+  // until the last (partial) day.
+  const shiftPlan = useMemo(() => {
+    const batchQty = Number(selectedFormula?.batchQuantity || 0);
+    const qty = Number(plannedQty || 0);
+    const prodTime = Number(productionTime || 0);
+    if (!startDate || batchQty <= 0 || qty <= 0 || prodTime <= 0 || daysNeeded <= 0) return [];
+
+    const unitsPerShift = (SHIFT_SECONDS / prodTime) * batchQty;
+    let remaining = qty;
+    let cumulative = 0;
+    const rows = [];
+    for (let i = 0; i < daysNeeded; i++) {
+      const dayQty = Math.min(remaining, unitsPerShift);
+      cumulative += dayQty;
+      rows.push({ day: i + 1, date: addDays(startDate, i), shift: shiftNo || '—', qty: dayQty, cumulative });
+      remaining -= dayQty;
+    }
+    return rows;
+  }, [startDate, plannedQty, productionTime, selectedFormula, shiftNo, daysNeeded]);
 
   const handleItemChange = (id) => {
     setItemID(id);
@@ -154,19 +201,40 @@ export default function PlanningItemHistoryDrawer({ user, onClose, onSaveSuccess
   const stepBadgeStyle = { width: 22, height: 22, borderRadius: '50%', background: '#2563EB', color: '#fff', fontSize: 12, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 };
   const stepTitleStyle = { fontSize: 16, color: '#334155', fontWeight: 600 };
 
+  const tabBtnStyle = (isActive) => ({
+    padding: '10px 18px',
+    border: 'none',
+    borderBottom: isActive ? '2px solid #2563EB' : '2px solid transparent',
+    background: 'none',
+    color: isActive ? '#2563EB' : '#64748B',
+    fontWeight: isActive ? 700 : 500,
+    fontSize: 13.5,
+    cursor: 'pointer'
+  });
+
+  const thStyle = { textAlign: 'left', padding: '8px 10px', fontSize: 11.5, fontWeight: 700, color: '#64748B', textTransform: 'uppercase', borderBottom: '1px solid #E2E8F0' };
+  const tdStyle = { padding: '8px 10px', fontSize: 13, color: '#334155', borderBottom: '1px solid #F1F5F9' };
+
   return (
     <>
-      <div style={{ position: 'fixed', top: 0, right: 0, bottom: 0, width: '680px', backgroundColor: '#fff', boxShadow: '-4px 0 15px rgba(0,0,0,0.1)', zIndex: 1000, display: 'flex', flexDirection: 'column' }}>
+      <div style={{ position: 'fixed', top: 0, right: 0, bottom: 0, width: '760px', backgroundColor: '#fff', boxShadow: '-4px 0 15px rgba(0,0,0,0.1)', zIndex: 1000, display: 'flex', flexDirection: 'column' }}>
         <div style={{ padding: '20px 24px', borderBottom: '1px solid #E2E8F0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <h2 style={{ margin: 0, fontSize: 20, fontWeight: 600, color: '#1E293B' }}>New Planning History</h2>
           <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 24, cursor: 'pointer', color: '#64748B' }}>×</button>
         </div>
 
-        <div style={{ flex: 1, overflowY: 'auto', padding: 24, backgroundColor: '#F8FAFC' }}>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
-            {error && <div style={{ padding: 12, backgroundColor: '#FEE2E2', color: '#B91C1C', borderRadius: 6, fontSize: 14 }}>{error}</div>}
-            {success && <div style={{ padding: 12, backgroundColor: '#DCFCE7', color: '#15803D', borderRadius: 6, fontSize: 14 }}>{success}</div>}
+        <div style={{ display: 'flex', borderBottom: '1px solid #E2E8F0', backgroundColor: '#fff', padding: '0 24px' }}>
+          <button style={tabBtnStyle(activeTab === 'details')} onClick={() => setActiveTab('details')}>Details</button>
+          <button style={tabBtnStyle(activeTab === 'formula')} onClick={() => setActiveTab('formula')}>Formula</button>
+          <button style={tabBtnStyle(activeTab === 'shift')} onClick={() => setActiveTab('shift')}>Shift Plan</button>
+        </div>
 
+        <div style={{ flex: 1, overflowY: 'auto', padding: 24, backgroundColor: '#F8FAFC' }}>
+          {error && <div style={{ padding: 12, backgroundColor: '#FEE2E2', color: '#B91C1C', borderRadius: 6, fontSize: 14, marginBottom: 16 }}>{error}</div>}
+          {success && <div style={{ padding: 12, backgroundColor: '#DCFCE7', color: '#15803D', borderRadius: 6, fontSize: 14, marginBottom: 16 }}>{success}</div>}
+
+          {activeTab === 'details' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
             {/* Step 1: Item */}
             <div style={{ backgroundColor: '#fff', padding: 20, borderRadius: 8, border: '1px solid #E2E8F0' }}>
               <h3 style={stepHeaderStyle}><span style={stepBadgeStyle}>1</span><span style={stepTitleStyle}>Item</span></h3>
@@ -262,6 +330,83 @@ export default function PlanningItemHistoryDrawer({ user, onClose, onSaveSuccess
               </div>
             </div>
           </div>
+          )}
+
+          {activeTab === 'formula' && (
+            <div style={{ backgroundColor: '#fff', padding: 20, borderRadius: 8, border: '1px solid #E2E8F0' }}>
+              <h3 style={{ margin: '0 0 4px 0', fontSize: 16, color: '#334155', fontWeight: 600 }}>Formula Components</h3>
+              <p style={{ margin: '0 0 16px 0', fontSize: 12.5, color: '#64748B' }}>
+                Raw materials from the selected formula's BOM (prd.BillOfMaterialLine), scaled to this run's {totalBatches > 0 ? totalBatches.toLocaleString(undefined, { maximumFractionDigits: 3 }) : '—'} batches.
+              </p>
+              {!formulaID ? (
+                <div style={{ fontSize: 13, color: '#94A3B8' }}>Select an item and formula first.</div>
+              ) : formulaLinesLoading ? (
+                <div style={{ fontSize: 13, color: '#94A3B8' }}>Loading...</div>
+              ) : formulaLines.length === 0 ? (
+                <div style={{ fontSize: 13, color: '#94A3B8' }}>No BOM lines found for this formula.</div>
+              ) : (
+                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                  <thead>
+                    <tr>
+                      <th style={thStyle}>#</th>
+                      <th style={thStyle}>Item Code</th>
+                      <th style={thStyle}>Description</th>
+                      <th style={{ ...thStyle, textAlign: 'right' }}>Qty / Batch</th>
+                      <th style={{ ...thStyle, textAlign: 'right' }}>Total Required</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {formulaLines.map(l => (
+                      <tr key={l.BLID || l.Line}>
+                        <td style={tdStyle}>{l.Line}</td>
+                        <td style={tdStyle}>{l.ChildItemCode}</td>
+                        <td style={tdStyle}>{l.ChildItemDescription}</td>
+                        <td style={{ ...tdStyle, textAlign: 'right', fontFamily: 'monospace' }}>{Number(l.Quantity || 0).toLocaleString(undefined, { maximumFractionDigits: 5 })}</td>
+                        <td style={{ ...tdStyle, textAlign: 'right', fontFamily: 'monospace', fontWeight: 700 }}>
+                          {(Number(l.Quantity || 0) * totalBatches).toLocaleString(undefined, { maximumFractionDigits: 3 })}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          )}
+
+          {activeTab === 'shift' && (
+            <div style={{ backgroundColor: '#fff', padding: 20, borderRadius: 8, border: '1px solid #E2E8F0' }}>
+              <h3 style={{ margin: '0 0 4px 0', fontSize: 16, color: '#334155', fontWeight: 600 }}>Shift Plan</h3>
+              <p style={{ margin: '0 0 16px 0', fontSize: 12.5, color: '#64748B' }}>
+                Day-by-day breakdown across 12-hour shifts (Shift {shiftNo || '—'}), from Start Date to the calculated End Date.
+              </p>
+              {shiftPlan.length === 0 ? (
+                <div style={{ fontSize: 13, color: '#94A3B8' }}>Fill in Formula, Machine/Shift No, Production Time, Planned Qty, and Start Date to see the shift plan.</div>
+              ) : (
+                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                  <thead>
+                    <tr>
+                      <th style={thStyle}>Day</th>
+                      <th style={thStyle}>Date</th>
+                      <th style={thStyle}>Shift</th>
+                      <th style={{ ...thStyle, textAlign: 'right' }}>Qty This Shift</th>
+                      <th style={{ ...thStyle, textAlign: 'right' }}>Cumulative</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {shiftPlan.map(r => (
+                      <tr key={r.day}>
+                        <td style={tdStyle}>{r.day}</td>
+                        <td style={tdStyle}>{r.date}</td>
+                        <td style={tdStyle}>{r.shift}</td>
+                        <td style={{ ...tdStyle, textAlign: 'right', fontFamily: 'monospace' }}>{r.qty.toLocaleString(undefined, { maximumFractionDigits: 3 })}</td>
+                        <td style={{ ...tdStyle, textAlign: 'right', fontFamily: 'monospace', fontWeight: 700 }}>{r.cumulative.toLocaleString(undefined, { maximumFractionDigits: 3 })}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          )}
         </div>
 
         <div style={{ padding: '16px 24px', borderTop: '1px solid #E2E8F0', backgroundColor: '#fff', display: 'flex', justifyContent: 'flex-end', gap: 12 }}>
