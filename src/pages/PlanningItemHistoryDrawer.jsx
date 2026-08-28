@@ -20,6 +20,7 @@ export default function PlanningItemHistoryDrawer({ user, onClose, onSaveSuccess
   const [formulaID, setFormulaID] = useState('');
   const [machineID, setMachineID] = useState('');
   const [shiftNo, setShiftNo] = useState('');
+  const [productionTime, setProductionTime] = useState('');
 
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -63,7 +64,6 @@ export default function PlanningItemHistoryDrawer({ user, onClose, onSaveSuccess
 
   const itemFormulaOptions = formulaOptions.filter(f => String(f.parentItemID) === String(itemID));
   const selectedFormula = formulaOptions.find(f => String(f.value) === String(formulaID));
-  const selectedItemPlanning = itemPlanningRows.find(r => String(r.ItemID) === String(itemID));
 
   const handleItemChange = (id) => {
     setItemID(id);
@@ -73,6 +73,14 @@ export default function PlanningItemHistoryDrawer({ user, onClose, onSaveSuccess
       setItemDescription(opt.itemName || '');
     }
     setFormulaID('');
+    setProductionTime('');
+  };
+
+  const handleFormulaChange = (id) => {
+    setFormulaID(id);
+    // Pre-fill from the item's planning default -- still editable afterward.
+    const planning = itemPlanningRows.find(r => String(r.ItemID) === String(itemID));
+    setProductionTime(planning?.ProducationTime ?? '');
   };
 
   const handleSave = async () => {
@@ -95,7 +103,7 @@ export default function PlanningItemHistoryDrawer({ user, onClose, onSaveSuccess
       FormulaID: formulaID === '' ? 0 : Number(formulaID),
       MachineID: machineID === '' ? 0 : Number(machineID),
       FormulaBatch: selectedFormula?.batchQuantity ?? 0,
-      ProductionTime: selectedItemPlanning?.ProducationTime ?? 0,
+      ProductionTime: productionTime === '' ? 0 : Number(productionTime),
       ShiftNo: shiftNo === '' ? 0 : Number(shiftNo)
     };
 
@@ -181,7 +189,7 @@ export default function PlanningItemHistoryDrawer({ user, onClose, onSaveSuccess
                   <label style={labelStyle}>Formula</label>
                   <SearchableSelect
                     value={formulaID}
-                    onChange={setFormulaID}
+                    onChange={handleFormulaChange}
                     options={itemFormulaOptions}
                     placeholder={itemID ? 'Search formula...' : 'Select an item first'}
                     disabled={!itemID}
@@ -198,7 +206,7 @@ export default function PlanningItemHistoryDrawer({ user, onClose, onSaveSuccess
                     </div>
                     <div>
                       <label style={labelStyle}>Production Time (seconds)</label>
-                      <input value={selectedItemPlanning?.ProducationTime ?? '—'} readOnly style={{ ...inputStyle, background: '#F1F5F9', color: '#64748B' }} />
+                      <input type="number" value={productionTime} onChange={e => setProductionTime(e.target.value)} style={inputStyle} />
                     </div>
                   </>
                 )}
