@@ -5,16 +5,25 @@ import SearchableSelect from '../shared/SearchableSelect.jsx';
 const inputStyle = { width: '100%', padding: '8px 12px', border: '1px solid #CBD5E1', borderRadius: 6, boxSizing: 'border-box' };
 const labelStyle = { display: 'block', fontSize: 12, fontWeight: 600, color: '#64748B', marginBottom: 6 };
 
-// Both shifts run 12 hours (07:00-19:00 or 19:00-07:00), so the number of
-// shift-days needed only depends on total seconds required, not which shift
-// is picked -- shift choice only affects which half of the clock it runs in.
+// Both shifts run 12 hours (07:00-19:00 or 19:00-07:00). Production runs
+// across BOTH shifts back to back (24h/day), alternating starting from
+// whichever shift is active when the plan is created.
 const SHIFT_SECONDS = 12 * 3600;
+
+// Local (not UTC) YYYY-MM-DD -- toISOString() would shift the date for any
+// timezone ahead of UTC (e.g. Egypt, UTC+2) once local midnight converts.
+function toLocalDateStr(date) {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
 
 function addDays(dateStr, days) {
   const d = new Date(dateStr + 'T00:00:00');
   if (isNaN(d.getTime())) return '';
   d.setDate(d.getDate() + days);
-  return d.toISOString().split('T')[0];
+  return toLocalDateStr(d);
 }
 
 // Shift 1: 07:00-19:00. Shift 2: 19:00-07:00 (next day). Anything else
@@ -115,20 +124,6 @@ export default function PlanningItemHistoryDrawer({ user, onClose, onSaveSuccess
   const itemFormulaOptions = formulaOptions.filter(f => String(f.parentItemID) === String(itemID));
   const selectedFormula = formulaOptions.find(f => String(f.value) === String(formulaID));
 
-  // End Date = Start Date + however many 12h shift-days it takes to produce
-  // PlannedQty, given this formula's Batch Qty and Production Time per batch.
-  const { endDate, daysNeeded } = useMemo(() => {
-    const batchQty = Number(selectedFormula?.batchQuantity || 0);
-    const qty = Number(plannedQty || 0);
-    const prodTime = Number(productionTime || 0);
-    if (!startDate || batchQty <= 0 || qty <= 0 || prodTime <= 0) {
-      return { endDate: '', daysNeeded: 0 };
-    }
-    const totalSeconds = (qty / batchQty) * prodTime;
-    const days = Math.max(1, Math.ceil(totalSeconds / SHIFT_SECONDS));
-    return { endDate: addDays(startDate, days - 1), daysNeeded: days };
-  }, [startDate, plannedQty, productionTime, selectedFormula]);
-
   // How many formula batches the whole planned run needs -- scales each BOM
   // line's per-batch quantity up to the total raw material required.
   const totalBatches = useMemo(() => {
@@ -137,41 +132,51 @@ export default function PlanningItemHistoryDrawer({ user, onClose, onSaveSuccess
     return batchQty > 0 ? qty / batchQty : 0;
   }, [plannedQty, selectedFormula]);
 
-  // Day-by-day shift schedule: same shift every day, running at capacity
-  // until the last (partial) day.
-  const shiftPlan = useMemo(() => {
+  // PlannedQty is distributed across BOTH shifts back to back (24h/day
+  // capacity), alternating starting from the calculated Shift No, until the
+  // last (partial) shift finishes the run. End Date is the calendar date
+  // that final shift actually completes on.
+  const { endDate, shiftPlan, shiftsNeeded } = useMemo(() => {
     const batchQty = Number(selectedFormula?.batchQuantity || 0);
     const qty = Number(plannedQty || 0);
     const prodTime = Number(productionTime || 0);
-    if (!startDate || batchQty <= 0 || qty <= 0 || prodTime <= 0 || daysNeeded <= 0) return [];
+    if (!startDate || batchQty <= 0 || qty <= 0 || prodTime <= 0) {
+      return { endDate: '', shiftPlan: [], shiftsNeeded: 0 };
+    }
 
     const unitsPerShift = (SHIFT_SECONDS / prodTime) * batchQty;
-    const startHour = shiftStartHour(shiftNo);
+    const totalSeconds = (qty / batchQty) * prodTime;
+    const shifts = Math.max(1, Math.ceil(totalSeconds / SHIFT_SECONDS));
+
+    const anchor = new Date(startDate + 'T00:00:00');
+    anchor.setHours(shiftStartHour(shiftNo), 0, 0, 0);
+
     let remaining = qty;
     let cumulative = 0;
+    let lastEnd = anchor;
     const rows = [];
-    for (let i = 0; i < daysNeeded; i++) {
-      const dayQty = Math.min(remaining, unitsPerShift);
-      cumulative += dayQty;
-
-      const shiftStart = new Date(addDays(startDate, i) + 'T00:00:00');
-      shiftStart.setHours(startHour, 0, 0, 0);
-      const fraction = unitsPerShift > 0 ? Math.min(1, dayQty / unitsPerShift) : 0;
+    for (let i = 0; i < shifts; i++) {
+      const shiftStart = new Date(anchor.getTime() + i * SHIFT_SECONDS * 1000);
+      const shiftQty = Math.min(remaining, unitsPerShift);
+      cumulative += shiftQty;
+      const fraction = unitsPerShift > 0 ? Math.min(1, shiftQty / unitsPerShift) : 0;
       const shiftEnd = new Date(shiftStart.getTime() + fraction * SHIFT_SECONDS * 1000);
 
       rows.push({
-        day: i + 1,
-        date: addDays(startDate, i),
-        shift: shiftNo || '—',
-        qty: dayQty,
+        index: i + 1,
+        date: toLocalDateStr(shiftStart),
+        shift: shiftStart.getHours() === 19 ? '2' : '1',
+        qty: shiftQty,
         cumulative,
         startTime: formatTime(shiftStart),
         endTime: formatTime(shiftEnd)
       });
-      remaining -= dayQty;
+
+      remaining -= shiftQty;
+      lastEnd = shiftEnd;
     }
-    return rows;
-  }, [startDate, plannedQty, productionTime, selectedFormula, shiftNo, daysNeeded]);
+    return { endDate: toLocalDateStr(lastEnd), shiftPlan: rows, shiftsNeeded: shifts };
+  }, [startDate, plannedQty, productionTime, selectedFormula, shiftNo]);
 
   const handleItemChange = (id) => {
     setItemID(id);
@@ -376,8 +381,8 @@ export default function PlanningItemHistoryDrawer({ user, onClose, onSaveSuccess
               <div>
                 <label style={labelStyle}>End Date</label>
                 <input value={endDate || '—'} readOnly style={{ ...inputStyle, background: '#fff', color: '#1E293B', fontWeight: 600 }} />
-                {daysNeeded > 0 ? (
-                  <div style={{ fontSize: 11, color: '#64748B', marginTop: 4 }}>{daysNeeded} shift-day{daysNeeded > 1 ? 's' : ''} @ 12h/day</div>
+                {shiftsNeeded > 0 ? (
+                  <div style={{ fontSize: 11, color: '#64748B', marginTop: 4 }}>{shiftsNeeded} shift{shiftsNeeded > 1 ? 's' : ''} across both day/night shifts, 12h each</div>
                 ) : (
                   <div style={{ fontSize: 11, color: '#94A3B8', marginTop: 4 }}>Fill in Formula, Production Time, Planned Qty, and Start Date to calculate.</div>
                 )}
@@ -431,10 +436,10 @@ export default function PlanningItemHistoryDrawer({ user, onClose, onSaveSuccess
             <div style={{ backgroundColor: '#fff', padding: 20, borderRadius: 8, border: '1px solid #E2E8F0' }}>
               <h3 style={{ margin: '0 0 4px 0', fontSize: 16, color: '#334155', fontWeight: 600 }}>Shift Plan</h3>
               <p style={{ margin: '0 0 16px 0', fontSize: 12.5, color: '#64748B' }}>
-                Day-by-day breakdown across 12-hour shifts, from Start Date to the calculated End Date.
+                Planned Qty is distributed across both shifts back to back (24h/day), starting from the calculated Shift No, until production completes.
               </p>
               <div style={{ maxWidth: 280, marginBottom: 20 }}>
-                <label style={labelStyle}>Shift No (calculated from current time)</label>
+                <label style={labelStyle}>Starting Shift (calculated from current time)</label>
                 <input
                   value={shiftNo === '2' ? '2 (07:00 PM - 07:00 AM)' : '1 (07:00 AM - 07:00 PM)'}
                   readOnly
@@ -447,7 +452,7 @@ export default function PlanningItemHistoryDrawer({ user, onClose, onSaveSuccess
                 <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                   <thead>
                     <tr>
-                      <th style={thStyle}>Day</th>
+                      <th style={thStyle}>#</th>
                       <th style={thStyle}>Date</th>
                       <th style={thStyle}>Shift</th>
                       <th style={thStyle}>Start Time</th>
@@ -458,8 +463,8 @@ export default function PlanningItemHistoryDrawer({ user, onClose, onSaveSuccess
                   </thead>
                   <tbody>
                     {shiftPlan.map(r => (
-                      <tr key={r.day}>
-                        <td style={tdStyle}>{r.day}</td>
+                      <tr key={r.index}>
+                        <td style={tdStyle}>{r.index}</td>
                         <td style={tdStyle}>{r.date}</td>
                         <td style={tdStyle}>{r.shift}</td>
                         <td style={{ ...tdStyle, fontFamily: 'monospace' }}>{r.startTime}</td>
