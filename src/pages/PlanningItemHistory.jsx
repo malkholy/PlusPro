@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { apiCall } from '../shared/api.js';
 import DataGrid from '../shared/DataGrid.jsx';
+import PlanningItemHistoryDrawer from './PlanningItemHistoryDrawer.jsx';
 
 export default function PlanningItemHistory({ user }) {
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [drawerOpen, setDrawerOpen] = useState(false);
 
   const loadData = async () => {
     setLoading(true);
@@ -56,9 +58,18 @@ export default function PlanningItemHistory({ user }) {
           columns={columns}
           rows={data}
           loading={loading}
+          onAdd={() => setDrawerOpen(true)}
           onRefresh={loadData}
         />
       </div>
+
+      {drawerOpen && (
+        <PlanningItemHistoryDrawer
+          user={user}
+          onClose={() => setDrawerOpen(false)}
+          onSaveSuccess={() => { setDrawerOpen(false); loadData(); }}
+        />
+      )}
     </div>
   );
 }

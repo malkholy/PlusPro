@@ -148,6 +148,42 @@ BEGIN
     END
 
     -- =============================================
+    -- NEW PLANNING HISTORY
+    -- =============================================
+    IF @Operation = 'New Planning History'
+    BEGIN
+        DECLARE @PH_ItemID int, @PH_ItemCode nvarchar(50), @PH_StartDate date, @PH_EndDate date,
+                @PH_PlannedQty decimal(18,5), @PH_FormulaID int, @PH_MachineID int, @PH_PlanningID int
+
+        SELECT
+            @PH_ItemID = ItemID, @PH_ItemCode = ItemCode, @PH_StartDate = StartDate, @PH_EndDate = EndDate,
+            @PH_PlannedQty = PlannedQty, @PH_FormulaID = FormulaID, @PH_MachineID = MachineID
+        FROM OPENJSON(@LineData) WITH (
+            ItemID int '$.ItemID',
+            ItemCode nvarchar(50) '$.ItemCode',
+            StartDate date '$.StartDate',
+            EndDate date '$.EndDate',
+            PlannedQty decimal(18,5) '$.PlannedQty',
+            FormulaID int '$.FormulaID',
+            MachineID int '$.MachineID'
+        )
+
+        -- PlanningState and FormulaBatch aren't collected on this form yet;
+        -- defaulted to 0 until those are wired up.
+        INSERT INTO [PRO].[PrdItemPlanningHistory]
+            (ItemID, ItemCode, PlanningState, PlannedQty, StartDate, EndDate, MachineID, FormulaID, FormulaBatch, CreatedBy, CreatedDate, LastMaintBy, LastMaintDate)
+        VALUES
+            (@PH_ItemID, @PH_ItemCode, 0, @PH_PlannedQty, @PH_StartDate, @PH_EndDate, @PH_MachineID, @PH_FormulaID, 0, @User, GETDATE(), @User, GETDATE())
+
+        SET @PH_PlanningID = SCOPE_IDENTITY()
+
+        SELECT *
+        FROM [PRO].[PrdItemPlanningHistory]
+        WHERE PlanningID = @PH_PlanningID
+        RETURN
+    END
+
+    -- =============================================
     -- INVALID OPERATION
     -- =============================================
     SET @State = 1
