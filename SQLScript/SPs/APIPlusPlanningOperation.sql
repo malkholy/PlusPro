@@ -278,6 +278,35 @@ BEGIN
     END
 
     -- =============================================
+    -- GET PLANNING SHIFT CALENDAR
+    -- =============================================
+    IF @Operation = 'Get Planning Shift Calendar'
+    BEGIN
+        DECLARE @PSC_FromDate date, @PSC_ToDate date
+
+        SELECT @PSC_FromDate = FromDate, @PSC_ToDate = ToDate
+        FROM OPENJSON(@LineData) WITH (
+            FromDate date '$.FromDate',
+            ToDate   date '$.ToDate'
+        )
+
+        SELECT
+            h.MachineID,
+            mm.MachineCode,
+            sp.ShiftDate,
+            sp.ShiftNo,
+            sp.ItemCode,
+            sp.PlannedQty
+        FROM [PRO].[PrdItemPlanningShiftPlan] sp
+        INNER JOIN [PRO].[PrdItemPlanningHistory] h ON sp.PlanningID = h.PlanningID
+        LEFT OUTER JOIN prd.MachineMaster mm ON h.MachineID = mm.MachineID
+        WHERE (@PSC_FromDate IS NULL OR sp.ShiftDate >= @PSC_FromDate)
+          AND (@PSC_ToDate IS NULL OR sp.ShiftDate <= @PSC_ToDate)
+        ORDER BY h.MachineID, sp.ShiftDate, sp.ShiftNo
+        RETURN
+    END
+
+    -- =============================================
     -- INVALID OPERATION
     -- =============================================
     SET @State = 1

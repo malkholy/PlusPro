@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { apiCall } from '../shared/api.js';
 import DataGrid from '../shared/DataGrid.jsx';
 import PlanningItemHistoryDrawer from './PlanningItemHistoryDrawer.jsx';
+import PlanningShowPlan from './PlanningShowPlan.jsx';
 
 export default function PlanningItemHistory({ user }) {
   const [data, setData] = useState([]);
@@ -9,6 +10,7 @@ export default function PlanningItemHistory({ user }) {
   const [error, setError] = useState('');
   const [drawerRow, setDrawerRow] = useState(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [showPlanOpen, setShowPlanOpen] = useState(false);
 
   const loadData = async () => {
     setLoading(true);
@@ -53,6 +55,14 @@ export default function PlanningItemHistory({ user }) {
           {error}
         </div>
       )}
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}>
+        <button
+          onClick={() => setShowPlanOpen(true)}
+          style={{ padding: '8px 16px', borderRadius: 8, border: '1px solid #CBD5E1', background: '#fff', color: '#334155', fontWeight: 600, fontSize: 13, cursor: 'pointer' }}
+        >
+          📅 Show Plan
+        </button>
+      </div>
       <div style={{ flex: 1, minHeight: 0 }}>
         <DataGrid
           title="Production Planning History"
@@ -72,6 +82,13 @@ export default function PlanningItemHistory({ user }) {
           editRow={drawerRow.isNew ? null : drawerRow}
           onClose={() => setDrawerOpen(false)}
           onSaveSuccess={() => { setDrawerOpen(false); loadData(); }}
+        />
+      )}
+
+      {showPlanOpen && (
+        <PlanningShowPlan
+          user={user}
+          onClose={() => setShowPlanOpen(false)}
         />
       )}
     </div>
