@@ -63,6 +63,7 @@ export default function PlanningItemHistoryDrawer({ user, editRow, onClose, onSa
   const [itemOptions, setItemOptions] = useState([]);
   const [machineOptions, setMachineOptions] = useState([]);
   const [formulaOptions, setFormulaOptions] = useState([]);
+  const [warehouseOptions, setWarehouseOptions] = useState([]);
   const [itemPlanningRows, setItemPlanningRows] = useState([]);
 
   const [itemID, setItemID] = useState(editRow?.ItemID || '');
@@ -72,6 +73,7 @@ export default function PlanningItemHistoryDrawer({ user, editRow, onClose, onSa
   const [plannedQty, setPlannedQty] = useState(editRow?.PlannedQty ?? '');
   const [formulaID, setFormulaID] = useState(editRow?.FormulaID || '');
   const [machineID, setMachineID] = useState(editRow?.MachineID || '');
+  const [warehouse, setWarehouse] = useState(editRow?.Warehouse || '');
   // ShiftNo isn't persisted on the header row (only per-shift, on each
   // PrdItemPlanningShiftPlan row) -- always starts from whichever shift is
   // active right now, including when re-generating an edited plan's schedule.
@@ -120,6 +122,11 @@ export default function PlanningItemHistoryDrawer({ user, editRow, onClose, onSa
     apiCall('GetGridData', { PageGroupID: 'planning_item_master' }, { User: user?.Username }, 'plus').then(d => {
       if (d.State === 0) {
         setItemPlanningRows(d.List0 || []);
+      }
+    });
+    apiCall('xx', null, { User: user?.Username }, 'lookup').then(d => {
+      if (d.State === 0) {
+        setWarehouseOptions((d.List0 || []).map(w => ({ label: `${w.Warehouse} - ${w.WarhouseDescription}`, value: w.Warehouse })));
       }
     });
   }, [user]);
@@ -245,6 +252,10 @@ export default function PlanningItemHistoryDrawer({ user, editRow, onClose, onSa
       setError('Please select a machine.');
       return;
     }
+    if (!warehouse) {
+      setError('Please select a warehouse.');
+      return;
+    }
     if (!plannedQty || Number(plannedQty) <= 0) {
       setError('Please enter a Planned Qty greater than 0.');
       return;
@@ -270,7 +281,8 @@ export default function PlanningItemHistoryDrawer({ user, editRow, onClose, onSa
       FormulaID: formulaID === '' ? 0 : Number(formulaID),
       MachineID: machineID === '' ? 0 : Number(machineID),
       FormulaBatch: selectedFormula?.batchQuantity ?? 0,
-      ProductionTime: productionTime === '' ? 0 : Number(productionTime)
+      ProductionTime: productionTime === '' ? 0 : Number(productionTime),
+      Warehouse: warehouse || ''
     };
 
     const shiftPlanLines = shiftPlan.map(r => ({
@@ -416,6 +428,15 @@ export default function PlanningItemHistoryDrawer({ user, editRow, onClose, onSa
                     onChange={setMachineID}
                     options={machineOptions}
                     placeholder="Search machine..."
+                  />
+                </div>
+                <div>
+                  <label style={labelStyle}>Warehouse</label>
+                  <SearchableSelect
+                    value={warehouse}
+                    onChange={setWarehouse}
+                    options={warehouseOptions}
+                    placeholder="Search warehouse..."
                   />
                 </div>
               </div>

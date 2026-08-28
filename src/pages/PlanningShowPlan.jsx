@@ -70,11 +70,13 @@ export default function PlanningShowPlan({ user, onClose }) {
   const [selectedSlots, setSelectedSlots] = useState({});
   const [itemOptions, setItemOptions] = useState([]);
   const [formulaOptions, setFormulaOptions] = useState([]);
+  const [warehouseOptions, setWarehouseOptions] = useState([]);
   const [assignModalOpen, setAssignModalOpen] = useState(false);
   const [assignItemID, setAssignItemID] = useState('');
   const [assignItemCode, setAssignItemCode] = useState('');
   const [assignItemDescription, setAssignItemDescription] = useState('');
   const [assignFormulaID, setAssignFormulaID] = useState('');
+  const [assignWarehouse, setAssignWarehouse] = useState('');
   const [assignQty, setAssignQty] = useState('');
   const [assignSaving, setAssignSaving] = useState(false);
   const [assignError, setAssignError] = useState('');
@@ -102,6 +104,11 @@ export default function PlanningShowPlan({ user, onClose }) {
           parentItemID: f.ParentItemID,
           batchQuantity: f.BatchQuantity
         })));
+      }
+    });
+    apiCall('xx', null, { User: user?.Username }, 'lookup').then(d => {
+      if (d.State === 0) {
+        setWarehouseOptions((d.List0 || []).map(w => ({ label: `${w.Warehouse} - ${w.WarhouseDescription}`, value: w.Warehouse })));
       }
     });
   }, [user]);
@@ -204,6 +211,7 @@ export default function PlanningShowPlan({ user, onClose }) {
     setAssignError('');
     if (!assignItemID) { setAssignError('Please select an item.'); return; }
     if (!assignFormulaID) { setAssignError('Please select a formula.'); return; }
+    if (!assignWarehouse) { setAssignError('Please select a warehouse.'); return; }
     const totalQty = Number(assignQty);
     if (!totalQty || totalQty <= 0) { setAssignError('Enter a Planned Qty greater than 0.'); return; }
     if (selectedCount === 0) { setAssignError('No slots selected.'); return; }
@@ -252,7 +260,8 @@ export default function PlanningShowPlan({ user, onClose }) {
           FormulaID: Number(assignFormulaID),
           MachineID: Number(machineID),
           FormulaBatch: selectedAssignFormula?.batchQuantity ?? 0,
-          ProductionTime: 0
+          ProductionTime: 0,
+          Warehouse: assignWarehouse
         };
 
         const res = await apiCall('New Planning History', payload, { User: user?.Username, LineMember: JSON.stringify(lines) }, 'planning');
@@ -261,7 +270,7 @@ export default function PlanningShowPlan({ user, onClose }) {
 
       setAssignModalOpen(false);
       setAssignItemID(''); setAssignItemCode(''); setAssignItemDescription('');
-      setAssignFormulaID(''); setAssignQty('');
+      setAssignFormulaID(''); setAssignWarehouse(''); setAssignQty('');
       setSelectedSlots({});
       await handleGenerate();
     } catch (e) {
@@ -598,6 +607,16 @@ export default function PlanningShowPlan({ user, onClose }) {
                     Batch Qty: {Number(selectedAssignFormula.batchQuantity || 0).toLocaleString(undefined, { maximumFractionDigits: 5 })}
                   </div>
                 )}
+              </div>
+
+              <div>
+                <label style={labelStyle}>Warehouse</label>
+                <SearchableSelect
+                  value={assignWarehouse}
+                  onChange={setAssignWarehouse}
+                  options={warehouseOptions}
+                  placeholder="Search warehouse..."
+                />
               </div>
 
               <div>

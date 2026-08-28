@@ -40,6 +40,7 @@ export default function PlanningItemHistory({ user }) {
     { key: 'PlannedQty', label: 'Planned Qty', width: 130, align: 'right', render: (val) => Number(val || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 5 }) },
     { key: 'MachineCode', label: 'Machine', width: 130, render: (val) => val || '—' },
     { key: 'FormulaCode', label: 'Formula', width: 130, render: (val) => val || '—' },
+    { key: 'Warehouse', label: 'Warehouse', width: 120, render: (val) => val || '—' },
     { key: 'FormulaBatch', label: 'Batch Qty', width: 110, align: 'right', render: (val) => Number(val || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 5 }) },
     { key: 'ProductionTime', label: 'Production Time (sec)', width: 170, align: 'right' },
     { key: 'StartDate', label: 'Start Date', width: 110, render: (val) => val ? val.split('T')[0] : '—' },
