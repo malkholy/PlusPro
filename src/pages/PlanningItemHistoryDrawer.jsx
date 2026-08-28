@@ -150,9 +150,13 @@ export default function PlanningItemHistoryDrawer({ user, onClose, onSaveSuccess
     }
   };
 
+  const stepHeaderStyle = { display: 'flex', alignItems: 'center', gap: 10, margin: '0 0 16px 0' };
+  const stepBadgeStyle = { width: 22, height: 22, borderRadius: '50%', background: '#2563EB', color: '#fff', fontSize: 12, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 };
+  const stepTitleStyle = { fontSize: 16, color: '#334155', fontWeight: 600 };
+
   return (
     <>
-      <div style={{ position: 'fixed', top: 0, right: 0, bottom: 0, width: '520px', backgroundColor: '#fff', boxShadow: '-4px 0 15px rgba(0,0,0,0.1)', zIndex: 1000, display: 'flex', flexDirection: 'column' }}>
+      <div style={{ position: 'fixed', top: 0, right: 0, bottom: 0, width: '680px', backgroundColor: '#fff', boxShadow: '-4px 0 15px rgba(0,0,0,0.1)', zIndex: 1000, display: 'flex', flexDirection: 'column' }}>
         <div style={{ padding: '20px 24px', borderBottom: '1px solid #E2E8F0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <h2 style={{ margin: 0, fontSize: 20, fontWeight: 600, color: '#1E293B' }}>New Planning History</h2>
           <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 24, cursor: 'pointer', color: '#64748B' }}>×</button>
@@ -163,9 +167,10 @@ export default function PlanningItemHistoryDrawer({ user, onClose, onSaveSuccess
             {error && <div style={{ padding: 12, backgroundColor: '#FEE2E2', color: '#B91C1C', borderRadius: 6, fontSize: 14 }}>{error}</div>}
             {success && <div style={{ padding: 12, backgroundColor: '#DCFCE7', color: '#15803D', borderRadius: 6, fontSize: 14 }}>{success}</div>}
 
+            {/* Step 1: Item */}
             <div style={{ backgroundColor: '#fff', padding: 20, borderRadius: 8, border: '1px solid #E2E8F0' }}>
-              <h3 style={{ margin: '0 0 16px 0', fontSize: 16, color: '#334155' }}>Item</h3>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+              <h3 style={stepHeaderStyle}><span style={stepBadgeStyle}>1</span><span style={stepTitleStyle}>Item</span></h3>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
                 <div>
                   <label style={labelStyle}>Item</label>
                   <SearchableSelect
@@ -182,38 +187,11 @@ export default function PlanningItemHistoryDrawer({ user, onClose, onSaveSuccess
               </div>
             </div>
 
+            {/* Step 2: Formula & Machine */}
             <div style={{ backgroundColor: '#fff', padding: 20, borderRadius: 8, border: '1px solid #E2E8F0' }}>
-              <h3 style={{ margin: '0 0 16px 0', fontSize: 16, color: '#334155' }}>Planning</h3>
+              <h3 style={stepHeaderStyle}><span style={stepBadgeStyle}>2</span><span style={stepTitleStyle}>Formula &amp; Machine</span></h3>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
                 <div>
-                  <label style={labelStyle}>Start Date</label>
-                  <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} style={inputStyle} />
-                </div>
-                <div>
-                  <label style={labelStyle}>End Date</label>
-                  <input value={endDate || '—'} readOnly style={{ ...inputStyle, background: '#F1F5F9', color: '#64748B' }} />
-                  {daysNeeded > 0 && (
-                    <div style={{ fontSize: 11, color: '#94A3B8', marginTop: 4 }}>{daysNeeded} shift-day{daysNeeded > 1 ? 's' : ''} @ 12h/day</div>
-                  )}
-                </div>
-                <div>
-                  <label style={labelStyle}>Planned Qty</label>
-                  <input type="number" step="0.00001" value={plannedQty} onChange={e => setPlannedQty(e.target.value)} style={inputStyle} />
-                </div>
-                <div>
-                  <label style={labelStyle}>Shift No</label>
-                  <input type="number" value={shiftNo} onChange={e => setShiftNo(e.target.value)} style={inputStyle} />
-                </div>
-                <div>
-                  <label style={labelStyle}>Machine</label>
-                  <SearchableSelect
-                    value={machineID}
-                    onChange={setMachineID}
-                    options={machineOptions}
-                    placeholder="Search machine..."
-                  />
-                </div>
-                <div style={{ gridColumn: '1 / -1' }}>
                   <label style={labelStyle}>Formula</label>
                   <SearchableSelect
                     value={formulaID}
@@ -226,17 +204,60 @@ export default function PlanningItemHistoryDrawer({ user, onClose, onSaveSuccess
                     <div style={{ fontSize: 11, color: '#94A3B8', marginTop: 4 }}>No BOM formula found for this item.</div>
                   )}
                 </div>
-                {formulaID && (
-                  <>
-                    <div>
-                      <label style={labelStyle}>Batch Qty</label>
-                      <input value={selectedFormula?.batchQuantity ?? '—'} readOnly style={{ ...inputStyle, background: '#F1F5F9', color: '#64748B' }} />
-                    </div>
-                    <div>
-                      <label style={labelStyle}>Production Time (seconds)</label>
-                      <input type="number" value={productionTime} onChange={e => setProductionTime(e.target.value)} style={inputStyle} />
-                    </div>
-                  </>
+                <div>
+                  <label style={labelStyle}>Batch Qty</label>
+                  <input value={selectedFormula?.batchQuantity ?? '—'} readOnly style={{ ...inputStyle, background: '#F1F5F9', color: '#64748B' }} />
+                </div>
+                <div>
+                  <label style={labelStyle}>Machine</label>
+                  <SearchableSelect
+                    value={machineID}
+                    onChange={setMachineID}
+                    options={machineOptions}
+                    placeholder="Search machine..."
+                  />
+                </div>
+                <div>
+                  <label style={labelStyle}>Shift No</label>
+                  <input type="number" value={shiftNo} onChange={e => setShiftNo(e.target.value)} style={inputStyle} />
+                </div>
+              </div>
+            </div>
+
+            {/* Step 3: Production Time */}
+            <div style={{ backgroundColor: '#fff', padding: 20, borderRadius: 8, border: '1px solid #E2E8F0' }}>
+              <h3 style={stepHeaderStyle}><span style={stepBadgeStyle}>3</span><span style={stepTitleStyle}>Production Time</span></h3>
+              <div>
+                <label style={labelStyle}>Production Time (seconds)</label>
+                <input type="number" value={productionTime} onChange={e => setProductionTime(e.target.value)} style={inputStyle} />
+              </div>
+            </div>
+
+            {/* Step 4: Planned Qty & Start Date */}
+            <div style={{ backgroundColor: '#fff', padding: 20, borderRadius: 8, border: '1px solid #E2E8F0' }}>
+              <h3 style={stepHeaderStyle}><span style={stepBadgeStyle}>4</span><span style={stepTitleStyle}>Planned Qty &amp; Start Date</span></h3>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                <div>
+                  <label style={labelStyle}>Planned Qty</label>
+                  <input type="number" step="0.00001" value={plannedQty} onChange={e => setPlannedQty(e.target.value)} style={inputStyle} />
+                </div>
+                <div>
+                  <label style={labelStyle}>Start Date</label>
+                  <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} style={inputStyle} />
+                </div>
+              </div>
+            </div>
+
+            {/* Step 5: Calculated */}
+            <div style={{ backgroundColor: '#EFF6FF', padding: 20, borderRadius: 8, border: '1px solid #BFDBFE' }}>
+              <h3 style={stepHeaderStyle}><span style={{ ...stepBadgeStyle, background: '#1D4ED8' }}>✓</span><span style={stepTitleStyle}>Calculated</span></h3>
+              <div>
+                <label style={labelStyle}>End Date</label>
+                <input value={endDate || '—'} readOnly style={{ ...inputStyle, background: '#fff', color: '#1E293B', fontWeight: 600 }} />
+                {daysNeeded > 0 ? (
+                  <div style={{ fontSize: 11, color: '#64748B', marginTop: 4 }}>{daysNeeded} shift-day{daysNeeded > 1 ? 's' : ''} @ 12h/day</div>
+                ) : (
+                  <div style={{ fontSize: 11, color: '#94A3B8', marginTop: 4 }}>Fill in Formula, Production Time, Planned Qty, and Start Date to calculate.</div>
                 )}
               </div>
             </div>
