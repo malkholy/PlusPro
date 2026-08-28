@@ -9,6 +9,7 @@ export default function PlanningItemHistoryDrawer({ user, onClose, onSaveSuccess
   const [itemOptions, setItemOptions] = useState([]);
   const [machineOptions, setMachineOptions] = useState([]);
   const [formulaOptions, setFormulaOptions] = useState([]);
+  const [itemPlanningRows, setItemPlanningRows] = useState([]);
 
   const [itemID, setItemID] = useState('');
   const [itemCode, setItemCode] = useState('');
@@ -47,13 +48,21 @@ export default function PlanningItemHistoryDrawer({ user, onClose, onSaveSuccess
         setFormulaOptions((d.List0 || []).map(f => ({
           label: `${f.ParentItemCode} (Formula ${f.FormulaID})`,
           value: f.FormulaID,
-          parentItemID: f.ParentItemID
+          parentItemID: f.ParentItemID,
+          batchQuantity: f.BatchQuantity
         })));
+      }
+    });
+    apiCall('GetGridData', { PageGroupID: 'planning_item_master' }, { User: user?.Username }, 'plus').then(d => {
+      if (d.State === 0) {
+        setItemPlanningRows(d.List0 || []);
       }
     });
   }, [user]);
 
   const itemFormulaOptions = formulaOptions.filter(f => String(f.parentItemID) === String(itemID));
+  const selectedFormula = formulaOptions.find(f => String(f.value) === String(formulaID));
+  const selectedItemPlanning = itemPlanningRows.find(r => String(r.ItemID) === String(itemID));
 
   const handleItemChange = (id) => {
     setItemID(id);
@@ -173,6 +182,18 @@ export default function PlanningItemHistoryDrawer({ user, onClose, onSaveSuccess
                     <div style={{ fontSize: 11, color: '#94A3B8', marginTop: 4 }}>No BOM formula found for this item.</div>
                   )}
                 </div>
+                {formulaID && (
+                  <>
+                    <div>
+                      <label style={labelStyle}>Batch Qty</label>
+                      <input value={selectedFormula?.batchQuantity ?? '—'} readOnly style={{ ...inputStyle, background: '#F1F5F9', color: '#64748B' }} />
+                    </div>
+                    <div>
+                      <label style={labelStyle}>Production Time (seconds)</label>
+                      <input value={selectedItemPlanning?.ProducationTime ?? '—'} readOnly style={{ ...inputStyle, background: '#F1F5F9', color: '#64748B' }} />
+                    </div>
+                  </>
+                )}
               </div>
             </div>
           </div>
