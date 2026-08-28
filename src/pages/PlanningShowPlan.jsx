@@ -1,11 +1,21 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { apiCall } from '../shared/api.js';
+import SearchableSelect from '../shared/SearchableSelect.jsx';
 
+// Local (not UTC) date/time helpers -- toISOString() would shift the
+// calendar date backward for any timezone ahead of UTC (Egypt, UTC+2).
 function toLocalDateStr(date) {
   const y = date.getFullYear();
   const m = String(date.getMonth() + 1).padStart(2, '0');
   const d = String(date.getDate()).padStart(2, '0');
   return `${y}-${m}-${d}`;
+}
+
+function toLocalDateTimeStr(date) {
+  const h = String(date.getHours()).padStart(2, '0');
+  const mi = String(date.getMinutes()).padStart(2, '0');
+  const s = String(date.getSeconds()).padStart(2, '0');
+  return `${toLocalDateStr(date)}T${h}:${mi}:${s}`;
 }
 
 function addDays(dateStr, days) {
@@ -23,6 +33,12 @@ function formatDateLabel(dateStr) {
 function formatDayName(dateStr) {
   const d = new Date(dateStr + 'T00:00:00');
   return d.toLocaleDateString(undefined, { weekday: 'short' });
+}
+
+// Shift 1: 07:00-19:00. Shift 2: 19:00-07:00 (next day).
+const SHIFT_SECONDS = 12 * 3600;
+function shiftStartHour(shiftNo) {
+  return Number(shiftNo) === 2 ? 19 : 7;
 }
 
 const inputStyle = {
@@ -49,6 +65,42 @@ export default function PlanningShowPlan({ user, onClose }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [generated, setGenerated] = useState(false);
+
+  // Manual "select empty slots, then assign an item" flow.
+  const [selectedSlots, setSelectedSlots] = useState({});
+  const [itemOptions, setItemOptions] = useState([]);
+  const [formulaOptions, setFormulaOptions] = useState([]);
+  const [assignModalOpen, setAssignModalOpen] = useState(false);
+  const [assignItemID, setAssignItemID] = useState('');
+  const [assignItemCode, setAssignItemCode] = useState('');
+  const [assignItemDescription, setAssignItemDescription] = useState('');
+  const [assignFormulaID, setAssignFormulaID] = useState('');
+  const [assignQty, setAssignQty] = useState('');
+  const [assignSaving, setAssignSaving] = useState(false);
+  const [assignError, setAssignError] = useState('');
+
+  useEffect(() => {
+    apiCall('Item Master All', null, { User: user?.Username }, 'lookup').then(d => {
+      if (d.State === 0) {
+        setItemOptions((d.List0 || []).map(i => ({
+          label: `${i.ItemCode} - ${i.ItemName}`,
+          value: i.ItemID,
+          itemCode: i.ItemCode,
+          itemName: i.ItemName
+        })));
+      }
+    });
+    apiCall('Formula Master All', null, { User: user?.Username }, 'lookup').then(d => {
+      if (d.State === 0) {
+        setFormulaOptions((d.List0 || []).map(f => ({
+          label: `${f.ParentItemCode} (Formula ${f.FormulaID})`,
+          value: f.FormulaID,
+          parentItemID: f.ParentItemID,
+          batchQuantity: f.BatchQuantity
+        })));
+      }
+    });
+  }, [user]);
 
   const handleGenerate = async () => {
     setError('');
@@ -103,6 +155,7 @@ export default function PlanningShowPlan({ user, onClose }) {
       setCellMap(map);
       setDays(dayList);
       setGenerated(true);
+      setSelectedSlots({});
     } catch (e) {
       setError(e.message);
     } finally {
@@ -110,18 +163,130 @@ export default function PlanningShowPlan({ user, onClose }) {
     }
   };
 
+  const toggleSlot = (machine, date, shiftNo) => {
+    const key = `${machine.MachineID}|${date}|${shiftNo}`;
+    if ((cellMap[key] || []).length > 0) return;
+    setSelectedSlots(prev => {
+      const next = { ...prev };
+      if (next[key]) {
+        delete next[key];
+      } else {
+        next[key] = { machineID: machine.MachineID, machineCode: machine.MachineCode, date, shiftNo };
+      }
+      return next;
+    });
+  };
+
+  const selectedList = Object.entries(selectedSlots);
+  const selectedCount = selectedList.length;
+  const selectedMachineCount = new Set(selectedList.map(([, s]) => s.machineID)).size;
+
+  const handleAssignItemChange = (id) => {
+    setAssignItemID(id);
+    const opt = itemOptions.find(o => String(o.value) === String(id));
+    setAssignItemCode(opt?.itemCode || '');
+    setAssignItemDescription(opt?.itemName || '');
+    setAssignFormulaID('');
+  };
+
+  const assignItemFormulaOptions = formulaOptions.filter(f => String(f.parentItemID) === String(assignItemID));
+  const selectedAssignFormula = formulaOptions.find(f => String(f.value) === String(assignFormulaID));
+  const qtyPerSlot = selectedCount > 0 && Number(assignQty) > 0 ? Number(assignQty) / selectedCount : 0;
+
+  const handleAssignSave = async () => {
+    setAssignError('');
+    if (!assignItemID) { setAssignError('Please select an item.'); return; }
+    if (!assignFormulaID) { setAssignError('Please select a formula.'); return; }
+    const totalQty = Number(assignQty);
+    if (!totalQty || totalQty <= 0) { setAssignError('Enter a Planned Qty greater than 0.'); return; }
+    if (selectedCount === 0) { setAssignError('No slots selected.'); return; }
+
+    setAssignSaving(true);
+    try {
+      const byMachine = {};
+      selectedList.forEach(([, s]) => {
+        if (!byMachine[s.machineID]) byMachine[s.machineID] = [];
+        byMachine[s.machineID].push(s);
+      });
+
+      for (const machineID of Object.keys(byMachine)) {
+        const slots = byMachine[machineID].slice().sort((a, b) => {
+          if (a.date !== b.date) return a.date < b.date ? -1 : 1;
+          return Number(a.shiftNo) - Number(b.shiftNo);
+        });
+
+        let cumulative = 0;
+        const lines = slots.map((s, idx) => {
+          const shiftStart = new Date(s.date + 'T00:00:00');
+          shiftStart.setHours(shiftStartHour(s.shiftNo), 0, 0, 0);
+          const shiftEnd = new Date(shiftStart.getTime() + SHIFT_SECONDS * 1000);
+          cumulative += qtyPerSlot;
+          return {
+            ShiftIndex: idx + 1,
+            ShiftDate: s.date,
+            ShiftNo: Number(s.shiftNo),
+            StartTime: toLocalDateTimeStr(shiftStart),
+            EndTime: toLocalDateTimeStr(shiftEnd),
+            PlannedQty: qtyPerSlot,
+            CumulativeQty: cumulative
+          };
+        });
+
+        const dates = slots.map(s => s.date);
+        const machineStartDate = dates.reduce((a, b) => (a < b ? a : b));
+        const machineEndDate = dates.reduce((a, b) => (a > b ? a : b));
+
+        const payload = {
+          ItemID: Number(assignItemID),
+          ItemCode: assignItemCode,
+          StartDate: machineStartDate,
+          EndDate: machineEndDate,
+          PlannedQty: qtyPerSlot * slots.length,
+          FormulaID: Number(assignFormulaID),
+          MachineID: Number(machineID),
+          FormulaBatch: selectedAssignFormula?.batchQuantity ?? 0,
+          ProductionTime: 0
+        };
+
+        const res = await apiCall('New Planning History', payload, { User: user?.Username, LineMember: JSON.stringify(lines) }, 'planning');
+        if (res.State !== 0) throw new Error(res.Message || 'Failed to assign.');
+      }
+
+      setAssignModalOpen(false);
+      setAssignItemID(''); setAssignItemCode(''); setAssignItemDescription('');
+      setAssignFormulaID(''); setAssignQty('');
+      setSelectedSlots({});
+      await handleGenerate();
+    } catch (e) {
+      setAssignError(e.message);
+    } finally {
+      setAssignSaving(false);
+    }
+  };
+
   const renderCell = (m, d, shiftNo) => {
-    const items = cellMap[`${m.MachineID}|${d}|${shiftNo}`] || [];
+    const key = `${m.MachineID}|${d}|${shiftNo}`;
+    const items = cellMap[key] || [];
     const accent = SHIFT_ACCENT[shiftNo];
     const isToday = d === todayStr;
+    const isEmpty = items.length === 0;
+    const isSelected = !!selectedSlots[key];
+
+    const baseBg = isSelected ? 'var(--orange-glow)' : (isToday ? 'var(--orange-glow)' : 'transparent');
+
     return (
       <td
         key={shiftNo}
+        onClick={isEmpty ? () => toggleSlot(m, d, shiftNo) : undefined}
+        onMouseEnter={isEmpty ? (e) => { if (!isSelected) e.currentTarget.style.background = 'var(--soft)'; } : undefined}
+        onMouseLeave={isEmpty ? (e) => { if (!isSelected) e.currentTarget.style.background = baseBg; } : undefined}
         style={{
-          padding: '6px 8px', fontSize: 11.5, verticalAlign: 'top',
+          padding: '6px 8px', fontSize: 11.5, verticalAlign: 'top', minHeight: 34,
           borderBottom: '1px solid var(--border)',
           borderLeft: shiftNo === 1 ? '1px solid var(--border)' : '1px solid var(--soft)',
-          background: isToday ? 'var(--orange-glow)' : 'transparent'
+          background: baseBg,
+          boxShadow: isSelected ? 'inset 0 0 0 2px var(--orange)' : 'none',
+          cursor: isEmpty ? 'pointer' : 'default'
         }}
       >
         {items.map((c, i) => (
@@ -146,6 +311,9 @@ export default function PlanningShowPlan({ user, onClose }) {
             </div>
           </div>
         ))}
+        {isEmpty && isSelected && (
+          <div style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--orange2)', textAlign: 'center' }}>✓ selected</div>
+        )}
       </td>
     );
   };
@@ -211,6 +379,11 @@ export default function PlanningShowPlan({ user, onClose }) {
               padding: '7px 12px', borderRadius: 'var(--radius-xs)', border: '1px solid rgba(220,38,38,0.15)'
             }}>
               {error}
+            </div>
+          )}
+          {generated && (
+            <div style={{ fontSize: 11.5, color: 'var(--hint)', maxWidth: 260 }}>
+              Click empty slots to select them, then assign an item to fill them.
             </div>
           )}
           <div style={{ display: 'flex', gap: 14, marginLeft: 'auto', fontSize: 11.5, fontWeight: 600, color: 'var(--muted)' }}>
@@ -306,9 +479,141 @@ export default function PlanningShowPlan({ user, onClose }) {
             </table>
           )}
         </div>
+
+        {selectedCount > 0 && (
+          <div style={{
+            position: 'absolute', bottom: 20, left: '50%', transform: 'translateX(-50%)',
+            background: 'var(--surface)', border: '1px solid var(--border)', boxShadow: 'var(--shadow-lg)',
+            borderRadius: 'var(--radius)', padding: '10px 14px', display: 'flex', alignItems: 'center', gap: 12, zIndex: 60
+          }}>
+            <span style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--text)' }}>
+              {selectedCount} slot{selectedCount > 1 ? 's' : ''} selected
+              {selectedMachineCount > 1 ? ` · ${selectedMachineCount} machines` : ''}
+            </span>
+            <button
+              onClick={() => setSelectedSlots({})}
+              style={{
+                padding: '7px 14px', borderRadius: 'var(--radius-xs)', border: '1px solid var(--border2)',
+                background: 'var(--surface)', color: 'var(--muted)', fontWeight: 600, fontSize: 12.5, cursor: 'pointer'
+              }}
+            >
+              Clear
+            </button>
+            <button
+              onClick={() => { setAssignError(''); setAssignModalOpen(true); }}
+              style={{
+                padding: '7px 16px', borderRadius: 'var(--radius-xs)', border: 'none',
+                background: 'linear-gradient(135deg, var(--orange), var(--orange2))', color: '#fff',
+                fontWeight: 700, fontSize: 12.5, cursor: 'pointer', boxShadow: '0 4px 14px var(--orange-glow)'
+              }}
+            >
+              Assign Item
+            </button>
+          </div>
+        )}
       </div>
 
       <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 999 }} onClick={onClose} />
+
+      {assignModalOpen && (
+        <>
+          <div style={{
+            position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%, -50%)',
+            width: 460, maxWidth: '92vw', background: 'var(--surface)', borderRadius: 'var(--radius)',
+            boxShadow: 'var(--shadow-lg)', border: '1px solid var(--border)', zIndex: 1200,
+            fontFamily: 'var(--font)', overflow: 'hidden'
+          }}>
+            <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)' }}>
+              <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: 'var(--text)' }}>Assign Item to Selected Slots</h3>
+              <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4 }}>
+                {selectedCount} slot{selectedCount > 1 ? 's' : ''} selected across {selectedMachineCount} machine{selectedMachineCount > 1 ? 's' : ''}
+              </div>
+            </div>
+
+            <div style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 16 }}>
+              {assignError && (
+                <div style={{
+                  color: 'var(--red)', background: 'var(--red-soft)', fontSize: 12.5, fontWeight: 600,
+                  padding: '8px 12px', borderRadius: 'var(--radius-xs)', border: '1px solid rgba(220,38,38,0.15)'
+                }}>
+                  {assignError}
+                </div>
+              )}
+
+              <div>
+                <label style={labelStyle}>Item</label>
+                <SearchableSelect
+                  value={assignItemID}
+                  onChange={handleAssignItemChange}
+                  options={itemOptions}
+                  placeholder="Search item code / description..."
+                />
+                {assignItemDescription && (
+                  <div style={{ fontSize: 11.5, color: 'var(--hint)', marginTop: 4 }}>{assignItemDescription}</div>
+                )}
+              </div>
+
+              <div>
+                <label style={labelStyle}>Formula</label>
+                <SearchableSelect
+                  value={assignFormulaID}
+                  onChange={setAssignFormulaID}
+                  options={assignItemFormulaOptions}
+                  placeholder={assignItemID ? 'Search formula...' : 'Select an item first'}
+                  disabled={!assignItemID}
+                />
+                {assignItemID && assignItemFormulaOptions.length === 0 && (
+                  <div style={{ fontSize: 11, color: 'var(--hint)', marginTop: 4 }}>No BOM formula found for this item.</div>
+                )}
+                {selectedAssignFormula && (
+                  <div style={{ fontSize: 11.5, color: 'var(--hint)', marginTop: 4 }}>
+                    Batch Qty: {Number(selectedAssignFormula.batchQuantity || 0).toLocaleString(undefined, { maximumFractionDigits: 5 })}
+                  </div>
+                )}
+              </div>
+
+              <div>
+                <label style={labelStyle}>Total Planned Qty</label>
+                <input
+                  type="number" step="0.00001" value={assignQty}
+                  onChange={e => setAssignQty(e.target.value)}
+                  style={{ ...inputStyle, width: '100%' }}
+                />
+                {qtyPerSlot > 0 && (
+                  <div style={{ fontSize: 11.5, color: 'var(--hint)', marginTop: 4 }}>
+                    = {qtyPerSlot.toLocaleString(undefined, { maximumFractionDigits: 3 })} per slot, split evenly across {selectedCount} slot{selectedCount > 1 ? 's' : ''}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div style={{ padding: '14px 20px', borderTop: '1px solid var(--border)', background: 'var(--soft)', display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+              <button
+                onClick={() => setAssignModalOpen(false)}
+                disabled={assignSaving}
+                style={{
+                  padding: '8px 16px', borderRadius: 'var(--radius-xs)', border: '1px solid var(--border2)',
+                  background: 'var(--surface)', color: 'var(--text)', fontWeight: 600, fontSize: 13, cursor: 'pointer'
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleAssignSave}
+                disabled={assignSaving}
+                style={{
+                  padding: '8px 20px', borderRadius: 'var(--radius-xs)', border: 'none',
+                  background: assignSaving ? 'var(--hint)' : 'linear-gradient(135deg, var(--orange), var(--orange2))',
+                  color: '#fff', fontWeight: 700, fontSize: 13, cursor: assignSaving ? 'not-allowed' : 'pointer'
+                }}
+              >
+                {assignSaving ? 'Assigning...' : 'Assign'}
+              </button>
+            </div>
+          </div>
+          <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 1150 }} onClick={() => !assignSaving && setAssignModalOpen(false)} />
+        </>
+      )}
     </>
   );
 }
