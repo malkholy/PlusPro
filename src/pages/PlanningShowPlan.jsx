@@ -173,7 +173,8 @@ export default function PlanningShowPlan({ user, onClose }) {
         map[key].push({
           itemCode: r.ItemCode, itemDescription: r.ItemDescription || '', qty: Number(r.PlannedQty || 0),
           formulaID: r.FormulaID || null, formulaCode: r.FormulaCode || '',
-          formulaBatch: Number(r.FormulaBatch || 0), productionTime: Number(r.ProductionTime || 0)
+          formulaBatch: Number(r.FormulaBatch || 0), productionTime: Number(r.ProductionTime || 0),
+          warehouse: r.Warehouse || ''
         });
       });
 
@@ -306,12 +307,24 @@ export default function PlanningShowPlan({ user, onClose }) {
     setFormulaModal({ item, lines: [], loading: true, error: '' });
     try {
       const d = await apiCall('BOM L1 Formula', { ParentItemCode: item.itemCode }, { User: user?.Username }, 'plus');
-      if (d.State === 0) {
-        const lines = (d.List0 || []).filter(l => String(l.LineFormulaID) === String(item.formulaID));
-        setFormulaModal({ item, lines, loading: false, error: '' });
-      } else {
+      if (d.State !== 0) {
         setFormulaModal({ item, lines: [], loading: false, error: d.Message || 'Failed to load formula.' });
+        return;
       }
+      const lines = (d.List0 || []).filter(l => String(l.LineFormulaID) === String(item.formulaID));
+
+      const balances = await Promise.all(lines.map(l =>
+        apiCall('GetGridData', { PageGroupID: 'item_balance', fromItem: l.ChildItemCode, toItem: l.ChildItemCode }, { User: user?.Username }, 'plus')
+          .then(bd => (bd.State === 0 ? (bd.List0 || []) : []))
+          .catch(() => [])
+      ));
+
+      const linesWithBalance = lines.map((l, i) => {
+        const row = balances[i].find(b => String(b.Warehouse || '').trim().toUpperCase() === String(item.warehouse || '').trim().toUpperCase());
+        return { ...l, balance: row ? Number(row.ItemBalance || 0) : null };
+      });
+
+      setFormulaModal({ item, lines: linesWithBalance, loading: false, error: '' });
     } catch (e) {
       setFormulaModal({ item, lines: [], loading: false, error: e.message });
     }
@@ -734,6 +747,11 @@ export default function PlanningShowPlan({ user, onClose }) {
                     Batch Qty {batchQty ? batchQty.toLocaleString(undefined, { maximumFractionDigits: 5 }) : '—'}
                     {totalBatches > 0 ? ` · ${totalBatches.toLocaleString(undefined, { maximumFractionDigits: 3 })} batches for this shift` : ''}
                   </div>
+                  <div style={{ fontSize: 11.5, color: 'var(--hint)', marginTop: 2 }}>
+                    Balance shown for production warehouse: {formulaModal.item.warehouse
+                      ? <span style={{ fontWeight: 700, color: 'var(--orange2)' }}>{formulaModal.item.warehouse}</span>
+                      : <span style={{ fontStyle: 'italic' }}>none set on this plan</span>}
+                  </div>
                 </div>
                 <button
                   onClick={() => setFormulaModal(null)}
@@ -768,22 +786,33 @@ export default function PlanningShowPlan({ user, onClose }) {
                         <th style={{ textAlign: 'left', padding: '8px 10px', fontSize: 11, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', borderBottom: '1px solid var(--border)' }}>Description</th>
                         <th style={{ textAlign: 'right', padding: '8px 10px', fontSize: 11, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', borderBottom: '1px solid var(--border)' }}>Qty / Batch</th>
                         <th style={{ textAlign: 'right', padding: '8px 10px', fontSize: 11, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', borderBottom: '1px solid var(--border)' }}>Total Required</th>
+                        <th style={{ textAlign: 'right', padding: '8px 10px', fontSize: 11, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', borderBottom: '1px solid var(--border)' }}>Balance</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {formulaModal.lines.map(l => (
-                        <tr key={l.BLID || l.Line}>
-                          <td style={{ padding: '8px 10px', fontSize: 13, color: 'var(--text)', borderBottom: '1px solid var(--border)' }}>{l.Line}</td>
-                          <td style={{ padding: '8px 10px', fontSize: 13, color: 'var(--text)', borderBottom: '1px solid var(--border)' }}>{l.ChildItemCode}</td>
-                          <td style={{ padding: '8px 10px', fontSize: 13, color: 'var(--text)', borderBottom: '1px solid var(--border)' }}>{l.ChildItemDescription}</td>
-                          <td style={{ padding: '8px 10px', fontSize: 13, color: 'var(--muted)', fontFamily: 'var(--mono)', textAlign: 'right', borderBottom: '1px solid var(--border)' }}>
-                            {Number(l.Quantity || 0).toLocaleString(undefined, { maximumFractionDigits: 5 })}
-                          </td>
-                          <td style={{ padding: '8px 10px', fontSize: 13, color: 'var(--text)', fontFamily: 'var(--mono)', fontWeight: 700, textAlign: 'right', borderBottom: '1px solid var(--border)' }}>
-                            {(Number(l.Quantity || 0) * totalBatches).toLocaleString(undefined, { maximumFractionDigits: 3 })}
-                          </td>
-                        </tr>
-                      ))}
+                      {formulaModal.lines.map(l => {
+                        const required = Number(l.Quantity || 0) * totalBatches;
+                        const short = l.balance !== null && l.balance < required;
+                        return (
+                          <tr key={l.BLID || l.Line}>
+                            <td style={{ padding: '8px 10px', fontSize: 13, color: 'var(--text)', borderBottom: '1px solid var(--border)' }}>{l.Line}</td>
+                            <td style={{ padding: '8px 10px', fontSize: 13, color: 'var(--text)', borderBottom: '1px solid var(--border)' }}>{l.ChildItemCode}</td>
+                            <td style={{ padding: '8px 10px', fontSize: 13, color: 'var(--text)', borderBottom: '1px solid var(--border)' }}>{l.ChildItemDescription}</td>
+                            <td style={{ padding: '8px 10px', fontSize: 13, color: 'var(--muted)', fontFamily: 'var(--mono)', textAlign: 'right', borderBottom: '1px solid var(--border)' }}>
+                              {Number(l.Quantity || 0).toLocaleString(undefined, { maximumFractionDigits: 5 })}
+                            </td>
+                            <td style={{ padding: '8px 10px', fontSize: 13, color: 'var(--text)', fontFamily: 'var(--mono)', fontWeight: 700, textAlign: 'right', borderBottom: '1px solid var(--border)' }}>
+                              {required.toLocaleString(undefined, { maximumFractionDigits: 3 })}
+                            </td>
+                            <td style={{
+                              padding: '8px 10px', fontSize: 13, fontFamily: 'var(--mono)', fontWeight: 700, textAlign: 'right',
+                              borderBottom: '1px solid var(--border)', color: l.balance === null ? 'var(--hint)' : (short ? 'var(--red)' : 'var(--green)')
+                            }}>
+                              {l.balance === null ? '—' : l.balance.toLocaleString(undefined, { maximumFractionDigits: 3 })}
+                            </td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 )}

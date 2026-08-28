@@ -304,7 +304,8 @@ BEGIN
             h.FormulaID,
             bh.ParentItemCode AS FormulaCode,
             h.FormulaBatch,
-            h.ProductionTime
+            h.ProductionTime,
+            h.Warehouse
         FROM [PRO].[PrdItemPlanningShiftPlan] sp
         INNER JOIN [PRO].[PrdItemPlanningHistory] h ON sp.PlanningID = h.PlanningID
         LEFT OUTER JOIN prd.MachineMaster mm ON h.MachineID = mm.MachineID
