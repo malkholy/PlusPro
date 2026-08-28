@@ -154,12 +154,12 @@ BEGIN
     BEGIN
         DECLARE @PH_ItemID int, @PH_ItemCode nvarchar(50), @PH_StartDate date, @PH_EndDate date,
                 @PH_PlannedQty decimal(18,5), @PH_FormulaID int, @PH_MachineID int, @PH_PlanningID int,
-                @PH_FormulaBatch decimal(18,5), @PH_ProductionTime int, @PH_ShiftNo int
+                @PH_FormulaBatch decimal(18,5), @PH_ProductionTime int
 
         SELECT
             @PH_ItemID = ItemID, @PH_ItemCode = ItemCode, @PH_StartDate = StartDate, @PH_EndDate = EndDate,
             @PH_PlannedQty = PlannedQty, @PH_FormulaID = FormulaID, @PH_MachineID = MachineID,
-            @PH_FormulaBatch = FormulaBatch, @PH_ProductionTime = ProductionTime, @PH_ShiftNo = ShiftNo
+            @PH_FormulaBatch = FormulaBatch, @PH_ProductionTime = ProductionTime
         FROM OPENJSON(@LineData) WITH (
             ItemID int '$.ItemID',
             ItemCode nvarchar(50) '$.ItemCode',
@@ -169,15 +169,14 @@ BEGIN
             FormulaID int '$.FormulaID',
             MachineID int '$.MachineID',
             FormulaBatch decimal(18,5) '$.FormulaBatch',
-            ProductionTime int '$.ProductionTime',
-            ShiftNo int '$.ShiftNo'
+            ProductionTime int '$.ProductionTime'
         )
 
         -- PlanningState isn't collected on this form yet; defaulted to 0 until it's wired up.
         INSERT INTO [PRO].[PrdItemPlanningHistory]
-            (ItemID, ItemCode, PlanningState, PlannedQty, StartDate, EndDate, MachineID, FormulaID, FormulaBatch, ProductionTime, ShiftNo, CreatedBy, CreatedDate, LastMaintBy, LastMaintDate)
+            (ItemID, ItemCode, PlanningState, PlannedQty, StartDate, EndDate, MachineID, FormulaID, FormulaBatch, ProductionTime, CreatedBy, CreatedDate, LastMaintBy, LastMaintDate)
         VALUES
-            (@PH_ItemID, @PH_ItemCode, 0, @PH_PlannedQty, @PH_StartDate, @PH_EndDate, @PH_MachineID, @PH_FormulaID, ISNULL(@PH_FormulaBatch, 0), ISNULL(@PH_ProductionTime, 0), ISNULL(@PH_ShiftNo, 0), @User, GETDATE(), @User, GETDATE())
+            (@PH_ItemID, @PH_ItemCode, 0, @PH_PlannedQty, @PH_StartDate, @PH_EndDate, @PH_MachineID, @PH_FormulaID, ISNULL(@PH_FormulaBatch, 0), ISNULL(@PH_ProductionTime, 0), @User, GETDATE(), @User, GETDATE())
 
         SET @PH_PlanningID = SCOPE_IDENTITY()
 
@@ -212,12 +211,12 @@ BEGIN
     BEGIN
         DECLARE @EPH_PlanningID int, @EPH_ItemID int, @EPH_ItemCode nvarchar(50), @EPH_StartDate date, @EPH_EndDate date,
                 @EPH_PlannedQty decimal(18,5), @EPH_FormulaID int, @EPH_MachineID int,
-                @EPH_FormulaBatch decimal(18,5), @EPH_ProductionTime int, @EPH_ShiftNo int
+                @EPH_FormulaBatch decimal(18,5), @EPH_ProductionTime int
 
         SELECT
             @EPH_PlanningID = PlanningID, @EPH_ItemID = ItemID, @EPH_ItemCode = ItemCode, @EPH_StartDate = StartDate, @EPH_EndDate = EndDate,
             @EPH_PlannedQty = PlannedQty, @EPH_FormulaID = FormulaID, @EPH_MachineID = MachineID,
-            @EPH_FormulaBatch = FormulaBatch, @EPH_ProductionTime = ProductionTime, @EPH_ShiftNo = ShiftNo
+            @EPH_FormulaBatch = FormulaBatch, @EPH_ProductionTime = ProductionTime
         FROM OPENJSON(@LineData) WITH (
             PlanningID int '$.PlanningID',
             ItemID int '$.ItemID',
@@ -228,8 +227,7 @@ BEGIN
             FormulaID int '$.FormulaID',
             MachineID int '$.MachineID',
             FormulaBatch decimal(18,5) '$.FormulaBatch',
-            ProductionTime int '$.ProductionTime',
-            ShiftNo int '$.ShiftNo'
+            ProductionTime int '$.ProductionTime'
         )
 
         IF @EPH_PlanningID IS NULL
@@ -249,7 +247,6 @@ BEGIN
             FormulaID = @EPH_FormulaID,
             FormulaBatch = ISNULL(@EPH_FormulaBatch, 0),
             ProductionTime = ISNULL(@EPH_ProductionTime, 0),
-            ShiftNo = ISNULL(@EPH_ShiftNo, 0),
             LastMaintBy = @User,
             LastMaintDate = GETDATE()
         WHERE PlanningID = @EPH_PlanningID

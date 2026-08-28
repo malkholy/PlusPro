@@ -72,7 +72,10 @@ export default function PlanningItemHistoryDrawer({ user, editRow, onClose, onSa
   const [plannedQty, setPlannedQty] = useState(editRow?.PlannedQty ?? '');
   const [formulaID, setFormulaID] = useState(editRow?.FormulaID || '');
   const [machineID, setMachineID] = useState(editRow?.MachineID || '');
-  const [shiftNo] = useState(() => (isEditMode ? String(editRow.ShiftNo || currentShift()) : currentShift()));
+  // ShiftNo isn't persisted on the header row (only per-shift, on each
+  // PrdItemPlanningShiftPlan row) -- always starts from whichever shift is
+  // active right now, including when re-generating an edited plan's schedule.
+  const [shiftNo] = useState(() => currentShift());
   const [productionTime, setProductionTime] = useState(editRow?.ProductionTime ?? '');
 
   const [saving, setSaving] = useState(false);
@@ -267,8 +270,7 @@ export default function PlanningItemHistoryDrawer({ user, editRow, onClose, onSa
       FormulaID: formulaID === '' ? 0 : Number(formulaID),
       MachineID: machineID === '' ? 0 : Number(machineID),
       FormulaBatch: selectedFormula?.batchQuantity ?? 0,
-      ProductionTime: productionTime === '' ? 0 : Number(productionTime),
-      ShiftNo: shiftNo === '' ? 0 : Number(shiftNo)
+      ProductionTime: productionTime === '' ? 0 : Number(productionTime)
     };
 
     const shiftPlanLines = shiftPlan.map(r => ({
