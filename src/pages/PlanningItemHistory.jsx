@@ -35,16 +35,16 @@ export default function PlanningItemHistory({ user }) {
     { key: 'ItemCode', label: 'Item Code', width: 130 },
     { key: 'ItemDescription', label: 'Description', flex: 1 },
     { key: 'PlanningState', label: 'State', width: 90, align: 'right' },
-    { key: 'PlannedQty', label: 'Planned Qty', width: 130, align: 'right', render: (row) => Number(row?.PlannedQty || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 5 }) },
-    { key: 'MachineCode', label: 'Machine', width: 130, render: (row) => row?.MachineCode || '—' },
-    { key: 'FormulaCode', label: 'Formula', width: 130, render: (row) => row?.FormulaCode || '—' },
-    { key: 'FormulaBatch', label: 'Batch Qty', width: 110, align: 'right', render: (row) => Number(row?.FormulaBatch || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 5 }) },
+    { key: 'PlannedQty', label: 'Planned Qty', width: 130, align: 'right', render: (val) => Number(val || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 5 }) },
+    { key: 'MachineCode', label: 'Machine', width: 130, render: (val) => val || '—' },
+    { key: 'FormulaCode', label: 'Formula', width: 130, render: (val) => val || '—' },
+    { key: 'FormulaBatch', label: 'Batch Qty', width: 110, align: 'right', render: (val) => Number(val || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 5 }) },
     { key: 'ProductionTime', label: 'Production Time (sec)', width: 170, align: 'right' },
     { key: 'ShiftNo', label: 'Shift No', width: 90, align: 'right' },
-    { key: 'StartDate', label: 'Start Date', width: 110, render: (row) => row?.StartDate ? row.StartDate.split('T')[0] : '—' },
-    { key: 'EndDate', label: 'End Date', width: 110, render: (row) => row?.EndDate ? row.EndDate.split('T')[0] : '—' },
+    { key: 'StartDate', label: 'Start Date', width: 110, render: (val) => val ? val.split('T')[0] : '—' },
+    { key: 'EndDate', label: 'End Date', width: 110, render: (val) => val ? val.split('T')[0] : '—' },
     { key: 'CreatedBy', label: 'Created By', width: 130 },
-    { key: 'CreatedDate', label: 'Created Date', width: 150, render: (row) => row?.CreatedDate ? row.CreatedDate.split('T')[0] : '—' }
+    { key: 'CreatedDate', label: 'Created Date', width: 150, render: (val) => val ? val.split('T')[0] : '—' }
   ];
 
   return (
