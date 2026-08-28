@@ -79,6 +79,10 @@ export default function PlanningShowPlan({ user, onClose }) {
   const [assignSaving, setAssignSaving] = useState(false);
   const [assignError, setAssignError] = useState('');
 
+  // Right-click on an assigned slot -> "Show Formula".
+  const [contextMenu, setContextMenu] = useState(null);
+  const [formulaModal, setFormulaModal] = useState(null);
+
   useEffect(() => {
     apiCall('Item Master All', null, { User: user?.Username }, 'lookup').then(d => {
       if (d.State === 0) {
@@ -143,7 +147,10 @@ export default function PlanningShowPlan({ user, onClose }) {
         const dateStr = r.ShiftDate ? r.ShiftDate.split('T')[0] : '';
         const key = `${r.MachineID}|${dateStr}|${r.ShiftNo}`;
         if (!map[key]) map[key] = [];
-        map[key].push({ itemCode: r.ItemCode, itemDescription: r.ItemDescription || '', qty: Number(r.PlannedQty || 0) });
+        map[key].push({
+          itemCode: r.ItemCode, itemDescription: r.ItemDescription || '', qty: Number(r.PlannedQty || 0),
+          formulaID: r.FormulaID || null, formulaCode: r.FormulaCode || ''
+        });
       });
 
       const dayList = [];
@@ -264,6 +271,26 @@ export default function PlanningShowPlan({ user, onClose }) {
     }
   };
 
+  const handleShowFormula = async (item) => {
+    setContextMenu(null);
+    if (!item.formulaID) {
+      setFormulaModal({ item, lines: [], loading: false, error: 'No formula linked to this slot.' });
+      return;
+    }
+    setFormulaModal({ item, lines: [], loading: true, error: '' });
+    try {
+      const d = await apiCall('BOM L1 Formula', { ParentItemCode: item.itemCode }, { User: user?.Username }, 'plus');
+      if (d.State === 0) {
+        const lines = (d.List0 || []).filter(l => String(l.LineFormulaID) === String(item.formulaID));
+        setFormulaModal({ item, lines, loading: false, error: '' });
+      } else {
+        setFormulaModal({ item, lines: [], loading: false, error: d.Message || 'Failed to load formula.' });
+      }
+    } catch (e) {
+      setFormulaModal({ item, lines: [], loading: false, error: e.message });
+    }
+  };
+
   const renderCell = (m, d, shiftNo) => {
     const key = `${m.MachineID}|${d}|${shiftNo}`;
     const items = cellMap[key] || [];
@@ -292,9 +319,10 @@ export default function PlanningShowPlan({ user, onClose }) {
         {items.map((c, i) => (
           <div
             key={i}
+            onContextMenu={(e) => { e.preventDefault(); setContextMenu({ x: e.clientX, y: e.clientY, item: c }); }}
             style={{
               marginBottom: 4, padding: '4px 6px 4px 8px', borderRadius: 'var(--radius-xs)',
-              borderLeft: `3px solid ${accent.bar}`, background: accent.soft
+              borderLeft: `3px solid ${accent.bar}`, background: accent.soft, cursor: 'context-menu'
             }}
           >
             <div style={{ fontWeight: 700, color: 'var(--text)' }}>{c.itemCode}</div>
@@ -614,6 +642,114 @@ export default function PlanningShowPlan({ user, onClose }) {
           <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 1150 }} onClick={() => !assignSaving && setAssignModalOpen(false)} />
         </>
       )}
+
+      {contextMenu && (
+        <>
+          <div
+            style={{ position: 'fixed', inset: 0, zIndex: 1250 }}
+            onClick={() => setContextMenu(null)}
+            onContextMenu={(e) => { e.preventDefault(); setContextMenu(null); }}
+          />
+          <div style={{
+            position: 'fixed', top: contextMenu.y, left: contextMenu.x, zIndex: 1260,
+            background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-xs)',
+            boxShadow: 'var(--shadow-lg)', minWidth: 170, overflow: 'hidden', fontFamily: 'var(--font)'
+          }}>
+            <button
+              onClick={() => handleShowFormula(contextMenu.item)}
+              style={{
+                display: 'block', width: '100%', textAlign: 'left', padding: '10px 14px', border: 'none',
+                background: 'none', fontSize: 12.5, fontWeight: 600, color: 'var(--text)', cursor: 'pointer'
+              }}
+              onMouseEnter={e => { e.currentTarget.style.background = 'var(--soft)'; e.currentTarget.style.color = 'var(--orange2)'; }}
+              onMouseLeave={e => { e.currentTarget.style.background = 'none'; e.currentTarget.style.color = 'var(--text)'; }}
+            >
+              Show Formula
+            </button>
+          </div>
+        </>
+      )}
+
+      {formulaModal && (() => {
+        const batchQty = Number(formulaOptions.find(f => String(f.value) === String(formulaModal.item.formulaID))?.batchQuantity || 0);
+        const totalBatches = batchQty > 0 ? formulaModal.item.qty / batchQty : 0;
+        return (
+          <>
+            <div style={{
+              position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%, -50%)',
+              width: 560, maxWidth: '92vw', maxHeight: '80vh', background: 'var(--surface)', borderRadius: 'var(--radius)',
+              boxShadow: 'var(--shadow-lg)', border: '1px solid var(--border)', zIndex: 1300,
+              fontFamily: 'var(--font)', overflow: 'hidden', display: 'flex', flexDirection: 'column'
+            }}>
+              <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: 'var(--text)' }}>
+                    Formula for {formulaModal.item.itemCode}
+                  </h3>
+                  <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4 }}>
+                    {formulaModal.item.formulaCode ? `${formulaModal.item.formulaCode} · ` : ''}
+                    Batch Qty {batchQty ? batchQty.toLocaleString(undefined, { maximumFractionDigits: 5 }) : '—'}
+                    {totalBatches > 0 ? ` · ${totalBatches.toLocaleString(undefined, { maximumFractionDigits: 3 })} batches for this shift` : ''}
+                  </div>
+                </div>
+                <button
+                  onClick={() => setFormulaModal(null)}
+                  style={{
+                    background: 'none', border: 'none', fontSize: 20, lineHeight: 1, cursor: 'pointer',
+                    color: 'var(--muted)', width: 28, height: 28, borderRadius: '999px', display: 'flex',
+                    alignItems: 'center', justifyContent: 'center', flexShrink: 0
+                  }}
+                  onMouseEnter={e => { e.currentTarget.style.background = 'var(--soft)'; e.currentTarget.style.color = 'var(--red)'; }}
+                  onMouseLeave={e => { e.currentTarget.style.background = 'none'; e.currentTarget.style.color = 'var(--muted)'; }}
+                >×</button>
+              </div>
+
+              <div style={{ padding: 20, overflowY: 'auto' }}>
+                {formulaModal.error ? (
+                  <div style={{
+                    color: 'var(--red)', background: 'var(--red-soft)', fontSize: 12.5, fontWeight: 600,
+                    padding: '8px 12px', borderRadius: 'var(--radius-xs)', border: '1px solid rgba(220,38,38,0.15)'
+                  }}>
+                    {formulaModal.error}
+                  </div>
+                ) : formulaModal.loading ? (
+                  <div style={{ fontSize: 13, color: 'var(--hint)' }}>Loading...</div>
+                ) : formulaModal.lines.length === 0 ? (
+                  <div style={{ fontSize: 13, color: 'var(--hint)' }}>No BOM lines found for this formula.</div>
+                ) : (
+                  <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                    <thead>
+                      <tr>
+                        <th style={{ textAlign: 'left', padding: '8px 10px', fontSize: 11, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', borderBottom: '1px solid var(--border)' }}>#</th>
+                        <th style={{ textAlign: 'left', padding: '8px 10px', fontSize: 11, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', borderBottom: '1px solid var(--border)' }}>Item Code</th>
+                        <th style={{ textAlign: 'left', padding: '8px 10px', fontSize: 11, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', borderBottom: '1px solid var(--border)' }}>Description</th>
+                        <th style={{ textAlign: 'right', padding: '8px 10px', fontSize: 11, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', borderBottom: '1px solid var(--border)' }}>Qty / Batch</th>
+                        <th style={{ textAlign: 'right', padding: '8px 10px', fontSize: 11, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', borderBottom: '1px solid var(--border)' }}>Total Required</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {formulaModal.lines.map(l => (
+                        <tr key={l.BLID || l.Line}>
+                          <td style={{ padding: '8px 10px', fontSize: 13, color: 'var(--text)', borderBottom: '1px solid var(--border)' }}>{l.Line}</td>
+                          <td style={{ padding: '8px 10px', fontSize: 13, color: 'var(--text)', borderBottom: '1px solid var(--border)' }}>{l.ChildItemCode}</td>
+                          <td style={{ padding: '8px 10px', fontSize: 13, color: 'var(--text)', borderBottom: '1px solid var(--border)' }}>{l.ChildItemDescription}</td>
+                          <td style={{ padding: '8px 10px', fontSize: 13, color: 'var(--muted)', fontFamily: 'var(--mono)', textAlign: 'right', borderBottom: '1px solid var(--border)' }}>
+                            {Number(l.Quantity || 0).toLocaleString(undefined, { maximumFractionDigits: 5 })}
+                          </td>
+                          <td style={{ padding: '8px 10px', fontSize: 13, color: 'var(--text)', fontFamily: 'var(--mono)', fontWeight: 700, textAlign: 'right', borderBottom: '1px solid var(--border)' }}>
+                            {(Number(l.Quantity || 0) * totalBatches).toLocaleString(undefined, { maximumFractionDigits: 3 })}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+            </div>
+            <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 1290 }} onClick={() => setFormulaModal(null)} />
+          </>
+        );
+      })()}
     </>
   );
 }
