@@ -1,9 +1,21 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { apiCall } from '../shared/api.js';
 import SearchableSelect from '../shared/SearchableSelect.jsx';
 
 const inputStyle = { width: '100%', padding: '8px 12px', border: '1px solid #CBD5E1', borderRadius: 6, boxSizing: 'border-box' };
 const labelStyle = { display: 'block', fontSize: 12, fontWeight: 600, color: '#64748B', marginBottom: 6 };
+
+// Both shifts run 12 hours (07:00-19:00 or 19:00-07:00), so the number of
+// shift-days needed only depends on total seconds required, not which shift
+// is picked -- shift choice only affects which half of the clock it runs in.
+const SHIFT_SECONDS = 12 * 3600;
+
+function addDays(dateStr, days) {
+  const d = new Date(dateStr + 'T00:00:00');
+  if (isNaN(d.getTime())) return '';
+  d.setDate(d.getDate() + days);
+  return d.toISOString().split('T')[0];
+}
 
 export default function PlanningItemHistoryDrawer({ user, onClose, onSaveSuccess }) {
   const [itemOptions, setItemOptions] = useState([]);
@@ -15,7 +27,6 @@ export default function PlanningItemHistoryDrawer({ user, onClose, onSaveSuccess
   const [itemCode, setItemCode] = useState('');
   const [itemDescription, setItemDescription] = useState('');
   const [startDate, setStartDate] = useState('');
-  const [endDate, setEndDate] = useState('');
   const [plannedQty, setPlannedQty] = useState('');
   const [formulaID, setFormulaID] = useState('');
   const [machineID, setMachineID] = useState('');
@@ -64,6 +75,20 @@ export default function PlanningItemHistoryDrawer({ user, onClose, onSaveSuccess
 
   const itemFormulaOptions = formulaOptions.filter(f => String(f.parentItemID) === String(itemID));
   const selectedFormula = formulaOptions.find(f => String(f.value) === String(formulaID));
+
+  // End Date = Start Date + however many 12h shift-days it takes to produce
+  // PlannedQty, given this formula's Batch Qty and Production Time per batch.
+  const { endDate, daysNeeded } = useMemo(() => {
+    const batchQty = Number(selectedFormula?.batchQuantity || 0);
+    const qty = Number(plannedQty || 0);
+    const prodTime = Number(productionTime || 0);
+    if (!startDate || batchQty <= 0 || qty <= 0 || prodTime <= 0) {
+      return { endDate: '', daysNeeded: 0 };
+    }
+    const totalSeconds = (qty / batchQty) * prodTime;
+    const days = Math.max(1, Math.ceil(totalSeconds / SHIFT_SECONDS));
+    return { endDate: addDays(startDate, days - 1), daysNeeded: days };
+  }, [startDate, plannedQty, productionTime, selectedFormula]);
 
   const handleItemChange = (id) => {
     setItemID(id);
@@ -166,7 +191,10 @@ export default function PlanningItemHistoryDrawer({ user, onClose, onSaveSuccess
                 </div>
                 <div>
                   <label style={labelStyle}>End Date</label>
-                  <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} style={inputStyle} />
+                  <input value={endDate || '—'} readOnly style={{ ...inputStyle, background: '#F1F5F9', color: '#64748B' }} />
+                  {daysNeeded > 0 && (
+                    <div style={{ fontSize: 11, color: '#94A3B8', marginTop: 4 }}>{daysNeeded} shift-day{daysNeeded > 1 ? 's' : ''} @ 12h/day</div>
+                  )}
                 </div>
                 <div>
                   <label style={labelStyle}>Planned Qty</label>
