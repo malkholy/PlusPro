@@ -202,15 +202,20 @@ export default function PlanningItemHistoryDrawer({ user, onClose, onSaveSuccess
   const stepTitleStyle = { fontSize: 16, color: '#334155', fontWeight: 600 };
 
   const tabBtnStyle = (isActive) => ({
-    padding: '10px 18px',
+    padding: '12px 16px',
     border: 'none',
-    borderBottom: isActive ? '2px solid #2563EB' : '2px solid transparent',
-    background: 'none',
+    borderLeft: isActive ? '3px solid #2563EB' : '3px solid transparent',
+    background: isActive ? '#EFF6FF' : 'none',
     color: isActive ? '#2563EB' : '#64748B',
     fontWeight: isActive ? 700 : 500,
     fontSize: 13.5,
-    cursor: 'pointer'
+    textAlign: 'left',
+    cursor: 'pointer',
+    width: '100%'
   });
+
+  const summaryLabelStyle = { fontSize: 10, fontWeight: 700, color: '#94A3B8', textTransform: 'uppercase', letterSpacing: 0.3 };
+  const summaryValueStyle = { fontSize: 13, fontWeight: 600, color: '#1E293B', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' };
 
   const thStyle = { textAlign: 'left', padding: '8px 10px', fontSize: 11.5, fontWeight: 700, color: '#64748B', textTransform: 'uppercase', borderBottom: '1px solid #E2E8F0' };
   const tdStyle = { padding: '8px 10px', fontSize: 13, color: '#334155', borderBottom: '1px solid #F1F5F9' };
@@ -218,18 +223,35 @@ export default function PlanningItemHistoryDrawer({ user, onClose, onSaveSuccess
   return (
     <>
       <div style={{ position: 'fixed', top: 0, right: 0, bottom: 0, width: '760px', backgroundColor: '#fff', boxShadow: '-4px 0 15px rgba(0,0,0,0.1)', zIndex: 1000, display: 'flex', flexDirection: 'column' }}>
-        <div style={{ padding: '20px 24px', borderBottom: '1px solid #E2E8F0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <h2 style={{ margin: 0, fontSize: 20, fontWeight: 600, color: '#1E293B' }}>New Planning History</h2>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 24, cursor: 'pointer', color: '#64748B' }}>×</button>
+        <div style={{ padding: '16px 24px', borderBottom: '1px solid #E2E8F0' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+            <h2 style={{ margin: 0, fontSize: 20, fontWeight: 600, color: '#1E293B' }}>New Planning History</h2>
+            <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 24, cursor: 'pointer', color: '#64748B' }}>×</button>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr 1fr', gap: 16, background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: 8, padding: '10px 14px' }}>
+            <div>
+              <div style={summaryLabelStyle}>Item Code</div>
+              <div style={summaryValueStyle}>{itemCode || '—'}</div>
+            </div>
+            <div>
+              <div style={summaryLabelStyle}>Item Description</div>
+              <div style={summaryValueStyle}>{itemDescription || '—'}</div>
+            </div>
+            <div>
+              <div style={summaryLabelStyle}>Planned Qty</div>
+              <div style={summaryValueStyle}>{plannedQty || '—'}</div>
+            </div>
+          </div>
         </div>
 
-        <div style={{ display: 'flex', borderBottom: '1px solid #E2E8F0', backgroundColor: '#fff', padding: '0 24px' }}>
-          <button style={tabBtnStyle(activeTab === 'details')} onClick={() => setActiveTab('details')}>Details</button>
-          <button style={tabBtnStyle(activeTab === 'formula')} onClick={() => setActiveTab('formula')}>Formula</button>
-          <button style={tabBtnStyle(activeTab === 'shift')} onClick={() => setActiveTab('shift')}>Shift Plan</button>
-        </div>
+        <div style={{ flex: 1, display: 'flex', minHeight: 0 }}>
+          <div style={{ width: 160, flexShrink: 0, borderRight: '1px solid #E2E8F0', backgroundColor: '#fff', padding: '16px 0', display: 'flex', flexDirection: 'column' }}>
+            <button style={tabBtnStyle(activeTab === 'details')} onClick={() => setActiveTab('details')}>Details</button>
+            <button style={tabBtnStyle(activeTab === 'formula')} onClick={() => setActiveTab('formula')}>Formula</button>
+            <button style={tabBtnStyle(activeTab === 'shift')} onClick={() => setActiveTab('shift')}>Shift Plan</button>
+          </div>
 
-        <div style={{ flex: 1, overflowY: 'auto', padding: 24, backgroundColor: '#F8FAFC' }}>
+          <div style={{ flex: 1, overflowY: 'auto', padding: 24, backgroundColor: '#F8FAFC' }}>
           {error && <div style={{ padding: 12, backgroundColor: '#FEE2E2', color: '#B91C1C', borderRadius: 6, fontSize: 14, marginBottom: 16 }}>{error}</div>}
           {success && <div style={{ padding: 12, backgroundColor: '#DCFCE7', color: '#15803D', borderRadius: 6, fontSize: 14, marginBottom: 16 }}>{success}</div>}
 
@@ -407,6 +429,7 @@ export default function PlanningItemHistoryDrawer({ user, onClose, onSaveSuccess
               )}
             </div>
           )}
+          </div>
         </div>
 
         <div style={{ padding: '16px 24px', borderTop: '1px solid #E2E8F0', backgroundColor: '#fff', display: 'flex', justifyContent: 'flex-end', gap: 12 }}>
