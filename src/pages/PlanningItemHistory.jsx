@@ -51,14 +51,16 @@ export default function PlanningItemHistory({ user }) {
   return (
     <div style={{ padding: 24, height: '100%', display: 'flex', flexDirection: 'column' }}>
       {error && (
-        <div style={{ background: '#FEE2E2', border: '1px solid rgba(220,38,38,0.2)', color: '#B91C1C', padding: 10, borderRadius: 8, fontSize: 12.5, marginBottom: 16 }}>
+        <div style={{ background: 'var(--red-soft)', border: '1px solid rgba(220,38,38,0.2)', color: 'var(--red)', padding: 10, borderRadius: 'var(--radius-xs)', fontSize: 12.5, marginBottom: 16 }}>
           {error}
         </div>
       )}
       <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}>
         <button
           onClick={() => setShowPlanOpen(true)}
-          style={{ padding: '8px 16px', borderRadius: 8, border: '1px solid #CBD5E1', background: '#fff', color: '#334155', fontWeight: 600, fontSize: 13, cursor: 'pointer' }}
+          style={{ padding: '8px 16px', borderRadius: 'var(--radius-xs)', border: '1px solid var(--border2)', background: 'var(--surface)', color: 'var(--text)', fontWeight: 600, fontSize: 13, cursor: 'pointer' }}
+          onMouseEnter={e => { e.currentTarget.style.background = 'var(--soft)'; e.currentTarget.style.borderColor = 'var(--orange)'; e.currentTarget.style.color = 'var(--orange2)'; }}
+          onMouseLeave={e => { e.currentTarget.style.background = 'var(--surface)'; e.currentTarget.style.borderColor = 'var(--border2)'; e.currentTarget.style.color = 'var(--text)'; }}
         >
           📅 Show Plan
         </button>
