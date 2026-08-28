@@ -173,6 +173,37 @@ BEGIN
             Warehouse nvarchar(50) '$.Warehouse'
         )
 
+        -- Reject if the incoming shift plan double-books this machine: either
+        -- against another plan already on the machine, or against itself
+        -- (duplicate slot sent twice in the same payload).
+        IF @LineMember IS NOT NULL AND LTRIM(RTRIM(@LineMember)) <> ''
+        BEGIN
+            IF EXISTS (
+                SELECT ShiftDate, ShiftNo
+                FROM OPENJSON(@LineMember) WITH (ShiftDate date '$.ShiftDate', ShiftNo int '$.ShiftNo')
+                GROUP BY ShiftDate, ShiftNo
+                HAVING COUNT(*) > 1
+            )
+            BEGIN
+                SET @State = 1
+                SET @Message = 'Duplicate time slots in the submitted shift plan.'
+                RETURN
+            END
+
+            IF EXISTS (
+                SELECT 1
+                FROM OPENJSON(@LineMember) WITH (ShiftDate date '$.ShiftDate', ShiftNo int '$.ShiftNo') nl
+                INNER JOIN [PRO].[PrdItemPlanningShiftPlan] sp ON sp.ShiftDate = nl.ShiftDate AND sp.ShiftNo = nl.ShiftNo
+                INNER JOIN [PRO].[PrdItemPlanningHistory] h2 ON sp.PlanningID = h2.PlanningID
+                WHERE h2.MachineID = @PH_MachineID
+            )
+            BEGIN
+                SET @State = 1
+                SET @Message = 'One or more selected time slots are already assigned to another item on this machine.'
+                RETURN
+            END
+        END
+
         -- PlanningState isn't collected on this form yet; defaulted to 0 until it's wired up.
         INSERT INTO [PRO].[PrdItemPlanningHistory]
             (ItemID, ItemCode, PlanningState, PlannedQty, StartDate, EndDate, MachineID, FormulaID, FormulaBatch, ProductionTime, Warehouse, CreatedBy, CreatedDate, LastMaintBy, LastMaintDate)
@@ -237,6 +268,39 @@ BEGIN
             SET @State = 1
             SET @Message = 'PlanningID is required'
             RETURN
+        END
+
+        -- Reject if the incoming shift plan double-books this machine: either
+        -- against another plan already on the machine, or against itself
+        -- (duplicate slot sent twice in the same payload). This plan's own
+        -- existing shift rows are excluded since they're being replaced.
+        IF @LineMember IS NOT NULL AND LTRIM(RTRIM(@LineMember)) <> ''
+        BEGIN
+            IF EXISTS (
+                SELECT ShiftDate, ShiftNo
+                FROM OPENJSON(@LineMember) WITH (ShiftDate date '$.ShiftDate', ShiftNo int '$.ShiftNo')
+                GROUP BY ShiftDate, ShiftNo
+                HAVING COUNT(*) > 1
+            )
+            BEGIN
+                SET @State = 1
+                SET @Message = 'Duplicate time slots in the submitted shift plan.'
+                RETURN
+            END
+
+            IF EXISTS (
+                SELECT 1
+                FROM OPENJSON(@LineMember) WITH (ShiftDate date '$.ShiftDate', ShiftNo int '$.ShiftNo') nl
+                INNER JOIN [PRO].[PrdItemPlanningShiftPlan] sp ON sp.ShiftDate = nl.ShiftDate AND sp.ShiftNo = nl.ShiftNo
+                INNER JOIN [PRO].[PrdItemPlanningHistory] h2 ON sp.PlanningID = h2.PlanningID
+                WHERE h2.MachineID = @EPH_MachineID
+                  AND sp.PlanningID <> @EPH_PlanningID
+            )
+            BEGIN
+                SET @State = 1
+                SET @Message = 'One or more selected time slots are already assigned to another item on this machine.'
+                RETURN
+            END
         END
 
         UPDATE [PRO].[PrdItemPlanningHistory]
