@@ -20,6 +20,11 @@ function formatDateLabel(dateStr) {
   return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 }
 
+function formatDayName(dateStr) {
+  const d = new Date(dateStr + 'T00:00:00');
+  return d.toLocaleDateString(undefined, { weekday: 'short' });
+}
+
 const inputStyle = { padding: '8px 12px', border: '1px solid #CBD5E1', borderRadius: 6, boxSizing: 'border-box' };
 const labelStyle = { display: 'block', fontSize: 12, fontWeight: 600, color: '#64748B', marginBottom: 6 };
 
@@ -74,7 +79,7 @@ export default function PlanningShowPlan({ user, onClose }) {
         const dateStr = r.ShiftDate ? r.ShiftDate.split('T')[0] : '';
         const key = `${r.MachineID}|${dateStr}|${r.ShiftNo}`;
         if (!map[key]) map[key] = [];
-        map[key].push({ itemCode: r.ItemCode, qty: Number(r.PlannedQty || 0) });
+        map[key].push({ itemCode: r.ItemCode, itemDescription: r.ItemDescription || '', qty: Number(r.PlannedQty || 0) });
       });
 
       const dayList = [];
@@ -147,23 +152,24 @@ export default function PlanningShowPlan({ user, onClose }) {
                       borderBottom: '1px solid #E2E8F0', borderLeft: '1px solid #E2E8F0'
                     }}>
                       {formatDateLabel(d)}
+                      <div style={{ fontSize: 10, fontWeight: 700, color: '#94A3B8', textTransform: 'uppercase', marginTop: 1 }}>{formatDayName(d)}</div>
                     </th>
                   ))}
                 </tr>
                 <tr>
                   <th style={{
-                    position: 'sticky', left: 0, top: 33, zIndex: 3, background: '#fff',
+                    position: 'sticky', left: 0, top: 46, zIndex: 3, background: '#fff',
                     borderBottom: '2px solid #E2E8F0', borderRight: '2px solid #E2E8F0'
                   }}></th>
                   {days.map(d => (
                     <React.Fragment key={d}>
                       <th style={{
-                        position: 'sticky', top: 33, zIndex: 2, background: '#F8FAFC',
+                        position: 'sticky', top: 46, zIndex: 2, background: '#F8FAFC',
                         padding: '4px 8px', fontSize: 10.5, fontWeight: 700, color: '#94A3B8',
                         borderBottom: '2px solid #E2E8F0', borderLeft: '1px solid #E2E8F0', minWidth: 110
                       }}>Shift 1</th>
                       <th style={{
-                        position: 'sticky', top: 33, zIndex: 2, background: '#F8FAFC',
+                        position: 'sticky', top: 46, zIndex: 2, background: '#F8FAFC',
                         padding: '4px 8px', fontSize: 10.5, fontWeight: 700, color: '#94A3B8',
                         borderBottom: '2px solid #E2E8F0', minWidth: 110
                       }}>Shift 2</th>
@@ -188,16 +194,22 @@ export default function PlanningShowPlan({ user, onClose }) {
                         <React.Fragment key={d}>
                           <td style={{ padding: '6px 8px', fontSize: 11.5, borderBottom: '1px solid #F1F5F9', borderLeft: '1px solid #E2E8F0', verticalAlign: 'top' }}>
                             {cell1.map((c, i) => (
-                              <div key={i} style={{ marginBottom: 2 }}>
+                              <div key={i} style={{ marginBottom: 4 }}>
                                 <div style={{ fontWeight: 700, color: '#1E293B' }}>{c.itemCode}</div>
+                                {c.itemDescription && (
+                                  <div style={{ color: '#94A3B8', fontSize: 10.5, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 110 }}>{c.itemDescription}</div>
+                                )}
                                 <div style={{ color: '#64748B' }}>{c.qty.toLocaleString(undefined, { maximumFractionDigits: 2 })}</div>
                               </div>
                             ))}
                           </td>
                           <td style={{ padding: '6px 8px', fontSize: 11.5, borderBottom: '1px solid #F1F5F9', verticalAlign: 'top' }}>
                             {cell2.map((c, i) => (
-                              <div key={i} style={{ marginBottom: 2 }}>
+                              <div key={i} style={{ marginBottom: 4 }}>
                                 <div style={{ fontWeight: 700, color: '#1E293B' }}>{c.itemCode}</div>
+                                {c.itemDescription && (
+                                  <div style={{ color: '#94A3B8', fontSize: 10.5, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 110 }}>{c.itemDescription}</div>
+                                )}
                                 <div style={{ color: '#64748B' }}>{c.qty.toLocaleString(undefined, { maximumFractionDigits: 2 })}</div>
                               </div>
                             ))}

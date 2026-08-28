@@ -296,10 +296,12 @@ BEGIN
             sp.ShiftDate,
             sp.ShiftNo,
             sp.ItemCode,
+            im.ItemDescription,
             sp.PlannedQty
         FROM [PRO].[PrdItemPlanningShiftPlan] sp
         INNER JOIN [PRO].[PrdItemPlanningHistory] h ON sp.PlanningID = h.PlanningID
         LEFT OUTER JOIN prd.MachineMaster mm ON h.MachineID = mm.MachineID
+        LEFT OUTER JOIN inv.ItemMaster im ON h.ItemID = im.ItemID
         WHERE (@PSC_FromDate IS NULL OR sp.ShiftDate >= @PSC_FromDate)
           AND (@PSC_ToDate IS NULL OR sp.ShiftDate <= @PSC_ToDate)
         ORDER BY h.MachineID, sp.ShiftDate, sp.ShiftNo
