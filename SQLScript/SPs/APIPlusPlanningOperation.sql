@@ -181,6 +181,24 @@ BEGIN
 
         SET @PH_PlanningID = SCOPE_IDENTITY()
 
+        -- Persist the computed shift-by-shift schedule, if the caller sent one.
+        IF @LineMember IS NOT NULL AND LTRIM(RTRIM(@LineMember)) <> ''
+        BEGIN
+            INSERT INTO [PRO].[PrdItemPlanningShiftPlan]
+                (PlanningID, ItemCode, ShiftIndex, ShiftDate, ShiftNo, StartTime, EndTime, PlannedQty, CumulativeQty, CreatedBy, CreatedDate)
+            SELECT
+                @PH_PlanningID, @PH_ItemCode, ShiftIndex, ShiftDate, ShiftNo, StartTime, EndTime, PlannedQty, CumulativeQty, @User, GETDATE()
+            FROM OPENJSON(@LineMember) WITH (
+                ShiftIndex   int          '$.ShiftIndex',
+                ShiftDate    date         '$.ShiftDate',
+                ShiftNo      int          '$.ShiftNo',
+                StartTime    datetime     '$.StartTime',
+                EndTime      datetime     '$.EndTime',
+                PlannedQty   decimal(18,5) '$.PlannedQty',
+                CumulativeQty decimal(18,5) '$.CumulativeQty'
+            )
+        END
+
         SELECT *
         FROM [PRO].[PrdItemPlanningHistory]
         WHERE PlanningID = @PH_PlanningID

@@ -41,6 +41,16 @@ function formatTime(date) {
   return `${h}:${String(m).padStart(2, '0')} ${ampm}`;
 }
 
+// Local (not UTC) "YYYY-MM-DDTHH:mm:ss" for sending a datetime to the
+// server as a literal wall-clock value -- toISOString() would convert to
+// UTC and shift it for timezones ahead of UTC.
+function toLocalDateTimeStr(date) {
+  const h = String(date.getHours()).padStart(2, '0');
+  const mi = String(date.getMinutes()).padStart(2, '0');
+  const s = String(date.getSeconds()).padStart(2, '0');
+  return `${toLocalDateStr(date)}T${h}:${mi}:${s}`;
+}
+
 // Whichever shift is active right now: Shift 1 (07:00-19:00) or Shift 2 (19:00-07:00).
 function currentShift() {
   const h = new Date().getHours();
@@ -169,7 +179,9 @@ export default function PlanningItemHistoryDrawer({ user, onClose, onSaveSuccess
         qty: shiftQty,
         cumulative,
         startTime: formatTime(shiftStart),
-        endTime: formatTime(shiftEnd)
+        endTime: formatTime(shiftEnd),
+        startTimeRaw: toLocalDateTimeStr(shiftStart),
+        endTimeRaw: toLocalDateTimeStr(shiftEnd)
       });
 
       remaining -= shiftQty;
@@ -220,8 +232,23 @@ export default function PlanningItemHistoryDrawer({ user, onClose, onSaveSuccess
       ShiftNo: shiftNo === '' ? 0 : Number(shiftNo)
     };
 
+    const shiftPlanLines = shiftPlan.map(r => ({
+      ShiftIndex: r.index,
+      ShiftDate: r.date,
+      ShiftNo: Number(r.shift),
+      StartTime: r.startTimeRaw,
+      EndTime: r.endTimeRaw,
+      PlannedQty: r.qty,
+      CumulativeQty: r.cumulative
+    }));
+
     try {
-      const res = await apiCall('New Planning History', payload, { User: user?.Username }, 'planning');
+      const res = await apiCall(
+        'New Planning History',
+        payload,
+        { User: user?.Username, LineMember: JSON.stringify(shiftPlanLines) },
+        'planning'
+      );
       if (res.State === 0) {
         setSuccess('Saved successfully!');
         setTimeout(() => {
