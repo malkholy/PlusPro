@@ -32,6 +32,12 @@ function formatTime(date) {
   return `${h}:${String(m).padStart(2, '0')} ${ampm}`;
 }
 
+// Whichever shift is active right now: Shift 1 (07:00-19:00) or Shift 2 (19:00-07:00).
+function currentShift() {
+  const h = new Date().getHours();
+  return (h >= 7 && h < 19) ? '1' : '2';
+}
+
 export default function PlanningItemHistoryDrawer({ user, onClose, onSaveSuccess }) {
   const [itemOptions, setItemOptions] = useState([]);
   const [machineOptions, setMachineOptions] = useState([]);
@@ -45,7 +51,7 @@ export default function PlanningItemHistoryDrawer({ user, onClose, onSaveSuccess
   const [plannedQty, setPlannedQty] = useState('');
   const [formulaID, setFormulaID] = useState('');
   const [machineID, setMachineID] = useState('');
-  const [shiftNo, setShiftNo] = useState('');
+  const [shiftNo] = useState(() => currentShift());
   const [productionTime, setProductionTime] = useState('');
 
   const [saving, setSaving] = useState(false);
@@ -428,12 +434,12 @@ export default function PlanningItemHistoryDrawer({ user, onClose, onSaveSuccess
                 Day-by-day breakdown across 12-hour shifts, from Start Date to the calculated End Date.
               </p>
               <div style={{ maxWidth: 280, marginBottom: 20 }}>
-                <label style={labelStyle}>Shift No</label>
-                <select value={shiftNo} onChange={e => setShiftNo(e.target.value)} style={{ ...inputStyle, background: '#fff' }}>
-                  <option value="">Select shift...</option>
-                  <option value="1">1 (07:00 AM - 07:00 PM)</option>
-                  <option value="2">2 (07:00 PM - 07:00 AM)</option>
-                </select>
+                <label style={labelStyle}>Shift No (calculated from current time)</label>
+                <input
+                  value={shiftNo === '2' ? '2 (07:00 PM - 07:00 AM)' : '1 (07:00 AM - 07:00 PM)'}
+                  readOnly
+                  style={{ ...inputStyle, background: '#F1F5F9', color: '#64748B' }}
+                />
               </div>
               {shiftPlan.length === 0 ? (
                 <div style={{ fontSize: 13, color: '#94A3B8' }}>Fill in Formula, Production Time, Planned Qty, and Start Date to see the shift plan.</div>
