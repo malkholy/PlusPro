@@ -98,6 +98,52 @@ const PANEL_GROUPS = [
   ]}
 ];
 
+// Actual-vs-target rows for the Segment Targets panel. actualKey is null for
+// Collection rows until per-segment actual columns exist on the view (only
+// an overall TotalCollection is available today) -- those rows show Target
+// only, with no progress bar.
+const SEGMENT_TARGETS = [
+  { label: 'Wholesale Sales', actualKey: 'WholeSales', targetKey: 'WholeSalesTarget' },
+  { label: 'Modern Trade Sales', actualKey: 'CustomerModernSales', targetKey: 'ModernTradeTarget' },
+  { label: 'Wholesale Collection', actualKey: null, targetKey: 'WholeCollectionTarget' },
+  { label: 'Modern Trade Collection', actualKey: null, targetKey: 'ModernTradeCollectionTarget' }
+];
+
+function achievementColor(pct) {
+  if (pct >= 100) return 'var(--green, #16a34a)';
+  if (pct >= 75) return 'var(--orange, #f97316)';
+  return 'var(--red)';
+}
+
+function SegmentTargetRow({ label, actualKey, targetKey, row }) {
+  const target = Number(row[targetKey]) || 0;
+  const hasActual = actualKey !== null;
+  const actual = hasActual ? (Number(row[actualKey]) || 0) : null;
+  const pct = hasActual && target > 0 ? (actual / target) * 100 : null;
+  const barColor = pct !== null ? achievementColor(pct) : 'var(--border)';
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 12 }}>
+        <span style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--text)' }}>{label}</span>
+        <span style={{ fontSize: 11.5, color: 'var(--muted)', whiteSpace: 'nowrap' }}>
+          {hasActual ? <>{fmtMoney(actual)} <span style={{ opacity: 0.6 }}>/</span> {fmtMoney(target)}</> : <>Target: {fmtMoney(target)}</>}
+        </span>
+      </div>
+      <div style={{ height: 8, borderRadius: 999, background: 'var(--soft)', border: '1px solid var(--border)', overflow: 'hidden' }}>
+        {pct !== null && (
+          <div style={{ height: '100%', width: `${Math.min(100, Math.max(0, pct))}%`, background: barColor, borderRadius: 999, transition: 'width 0.2s ease' }} />
+        )}
+      </div>
+      {pct !== null ? (
+        <span style={{ fontSize: 11, fontWeight: 700, color: barColor, alignSelf: 'flex-end' }}>{pct.toFixed(1)}% of target</span>
+      ) : (
+        <span style={{ fontSize: 11, color: 'var(--hint, var(--muted))', alignSelf: 'flex-end', fontStyle: 'italic' }}>No per-segment actual yet</span>
+      )}
+    </div>
+  );
+}
+
 function MonthSection({ row, open, onToggle, onPrint, printing }) {
   const label = `${MONTHS.find(m => m.value === Number(row.Month))?.label || row.Month} ${row.Year}`;
   return (
@@ -147,6 +193,25 @@ function MonthSection({ row, open, onToggle, onPrint, printing }) {
                 <div style={{ fontSize: 18, fontWeight: 800 }}>{(formatter || fmtMoney)(typeof key === 'function' ? key(row) : row[key])}</div>
               </div>
             ))}
+          </div>
+
+          {/* Segment Targets: actual-vs-target comparison per segment (Wholesale / Modern Trade). */}
+          <div className="cf-panel-card" style={{
+            background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 14,
+            borderLeft: '4px solid var(--orange)', overflow: 'hidden'
+          }}>
+            <div style={{
+              padding: '10px 16px', borderBottom: '1px solid var(--border)',
+              fontSize: 11, fontWeight: 800, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: 0.4,
+              display: 'flex', alignItems: 'center', gap: 6
+            }}>
+              <span>🎯</span> Segment Targets
+            </div>
+            <div style={{ padding: '16px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 18 }}>
+              {SEGMENT_TARGETS.map(t => (
+                <SegmentTargetRow key={t.label} label={t.label} actualKey={t.actualKey} targetKey={t.targetKey} row={row} />
+              ))}
+            </div>
           </div>
 
           {/* Detail panels */}
