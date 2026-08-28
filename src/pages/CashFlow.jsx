@@ -98,15 +98,12 @@ const PANEL_GROUPS = [
   ]}
 ];
 
-// Actual-vs-target rows for the Segment Targets panel. actualKey is null for
-// Collection rows until per-segment actual columns exist on the view (only
-// an overall TotalCollection is available today) -- those rows show Target
-// only, with no progress bar.
+// Actual-vs-target rows for the Segment Targets panel.
 const SEGMENT_TARGETS = [
   { label: 'Wholesale Sales', actualKey: 'WholeSales', targetKey: 'WholeSalesTarget' },
   { label: 'Modern Trade Sales', actualKey: 'CustomerModernSales', targetKey: 'ModernTradeTarget' },
-  { label: 'Wholesale Collection', actualKey: null, targetKey: 'WholeCollectionTarget' },
-  { label: 'Modern Trade Collection', actualKey: null, targetKey: 'ModernTradeCollectionTarget' }
+  { label: 'Wholesale Collection', actualKey: 'TotalCustomerCollectionWhole', targetKey: 'WholeCollectionTarget' },
+  { label: 'Modern Trade Collection', actualKey: 'TotalCustomerCollectionModer', targetKey: 'ModernTradeCollectionTarget' }
 ];
 
 function achievementColor(pct) {
