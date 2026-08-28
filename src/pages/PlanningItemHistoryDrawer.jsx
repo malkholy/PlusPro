@@ -82,6 +82,8 @@ export default function PlanningItemHistoryDrawer({ user, editRow, onClose, onSa
   const [activeTab, setActiveTab] = useState('details');
   const [formulaLines, setFormulaLines] = useState([]);
   const [formulaLinesLoading, setFormulaLinesLoading] = useState(false);
+  const [balanceRows, setBalanceRows] = useState([]);
+  const [balanceLoading, setBalanceLoading] = useState(false);
 
   useEffect(() => {
     apiCall('Item Master All', null, { User: user?.Username }, 'lookup').then(d => {
@@ -132,6 +134,20 @@ export default function PlanningItemHistoryDrawer({ user, editRow, onClose, onSa
       setFormulaLinesLoading(false);
     }).catch(() => setFormulaLinesLoading(false));
   }, [formulaID, itemCode, user]);
+
+  useEffect(() => {
+    if (!itemCode) {
+      setBalanceRows([]);
+      return;
+    }
+    setBalanceLoading(true);
+    apiCall('GetGridData', { PageGroupID: 'item_balance', fromItem: itemCode, toItem: itemCode }, { User: user?.Username }, 'plus').then(d => {
+      if (d.State === 0) {
+        setBalanceRows(d.List0 || []);
+      }
+      setBalanceLoading(false);
+    }).catch(() => setBalanceLoading(false));
+  }, [itemCode, user]);
 
   const itemFormulaOptions = formulaOptions.filter(f => String(f.parentItemID) === String(itemID));
   const selectedFormula = formulaOptions.find(f => String(f.value) === String(formulaID));
@@ -320,6 +336,7 @@ export default function PlanningItemHistoryDrawer({ user, editRow, onClose, onSa
             <button style={tabBtnStyle(activeTab === 'details')} onClick={() => setActiveTab('details')}>Details</button>
             <button style={tabBtnStyle(activeTab === 'formula')} onClick={() => setActiveTab('formula')}>Formula</button>
             <button style={tabBtnStyle(activeTab === 'shift')} onClick={() => setActiveTab('shift')}>Shift Plan</button>
+            <button style={tabBtnStyle(activeTab === 'balance')} onClick={() => setActiveTab('balance')}>Balance</button>
           </div>
 
           <div style={{ flex: 1, overflowY: 'auto', padding: 24, backgroundColor: '#F8FAFC' }}>
@@ -506,6 +523,55 @@ export default function PlanningItemHistoryDrawer({ user, editRow, onClose, onSa
                     ))}
                   </tbody>
                 </table>
+              )}
+            </div>
+          )}
+
+          {activeTab === 'balance' && (
+            <div style={{ backgroundColor: '#fff', padding: 20, borderRadius: 8, border: '1px solid #E2E8F0' }}>
+              <h3 style={{ margin: '0 0 4px 0', fontSize: 16, color: '#334155', fontWeight: 600 }}>Item Balance</h3>
+              <p style={{ margin: '0 0 16px 0', fontSize: 12.5, color: '#64748B' }}>
+                Current on-hand stock for {itemCode || 'the selected item'}, by warehouse.
+              </p>
+              {!itemCode ? (
+                <div style={{ fontSize: 13, color: '#94A3B8' }}>Select an item first.</div>
+              ) : balanceLoading ? (
+                <div style={{ fontSize: 13, color: '#94A3B8' }}>Loading...</div>
+              ) : balanceRows.length === 0 ? (
+                <div style={{ fontSize: 13, color: '#94A3B8' }}>No balance found for this item.</div>
+              ) : (
+                <>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 20 }}>
+                    <div style={{ background: '#EFF6FF', border: '1px solid #BFDBFE', borderRadius: 8, padding: '12px 16px' }}>
+                      <div style={summaryLabelStyle}>Total On-Hand</div>
+                      <div style={{ fontSize: 20, fontWeight: 700, color: '#1D4ED8' }}>
+                        {balanceRows.reduce((s, r) => s + Number(r.ItemBalance || 0), 0).toLocaleString(undefined, { maximumFractionDigits: 3 })}
+                      </div>
+                    </div>
+                    <div style={{ background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: 8, padding: '12px 16px' }}>
+                      <div style={summaryLabelStyle}>Planned Qty for This Run</div>
+                      <div style={{ fontSize: 20, fontWeight: 700, color: '#334155' }}>
+                        {plannedQty ? Number(plannedQty).toLocaleString(undefined, { maximumFractionDigits: 3 }) : '—'}
+                      </div>
+                    </div>
+                  </div>
+                  <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                    <thead>
+                      <tr>
+                        <th style={thStyle}>Warehouse</th>
+                        <th style={{ ...thStyle, textAlign: 'right' }}>Balance</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {balanceRows.map((r, i) => (
+                        <tr key={i}>
+                          <td style={tdStyle}>{r.Warehouse}</td>
+                          <td style={{ ...tdStyle, textAlign: 'right', fontFamily: 'monospace' }}>{Number(r.ItemBalance || 0).toLocaleString(undefined, { maximumFractionDigits: 3 })}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </>
               )}
             </div>
           )}
