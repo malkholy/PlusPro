@@ -206,6 +206,81 @@ BEGIN
     END
 
     -- =============================================
+    -- EDIT PLANNING HISTORY
+    -- =============================================
+    IF @Operation = 'Edit Planning History'
+    BEGIN
+        DECLARE @EPH_PlanningID int, @EPH_ItemID int, @EPH_ItemCode nvarchar(50), @EPH_StartDate date, @EPH_EndDate date,
+                @EPH_PlannedQty decimal(18,5), @EPH_FormulaID int, @EPH_MachineID int,
+                @EPH_FormulaBatch decimal(18,5), @EPH_ProductionTime int, @EPH_ShiftNo int
+
+        SELECT
+            @EPH_PlanningID = PlanningID, @EPH_ItemID = ItemID, @EPH_ItemCode = ItemCode, @EPH_StartDate = StartDate, @EPH_EndDate = EndDate,
+            @EPH_PlannedQty = PlannedQty, @EPH_FormulaID = FormulaID, @EPH_MachineID = MachineID,
+            @EPH_FormulaBatch = FormulaBatch, @EPH_ProductionTime = ProductionTime, @EPH_ShiftNo = ShiftNo
+        FROM OPENJSON(@LineData) WITH (
+            PlanningID int '$.PlanningID',
+            ItemID int '$.ItemID',
+            ItemCode nvarchar(50) '$.ItemCode',
+            StartDate date '$.StartDate',
+            EndDate date '$.EndDate',
+            PlannedQty decimal(18,5) '$.PlannedQty',
+            FormulaID int '$.FormulaID',
+            MachineID int '$.MachineID',
+            FormulaBatch decimal(18,5) '$.FormulaBatch',
+            ProductionTime int '$.ProductionTime',
+            ShiftNo int '$.ShiftNo'
+        )
+
+        IF @EPH_PlanningID IS NULL
+        BEGIN
+            SET @State = 1
+            SET @Message = 'PlanningID is required'
+            RETURN
+        END
+
+        UPDATE [PRO].[PrdItemPlanningHistory]
+        SET ItemID = @EPH_ItemID,
+            ItemCode = @EPH_ItemCode,
+            PlannedQty = @EPH_PlannedQty,
+            StartDate = @EPH_StartDate,
+            EndDate = @EPH_EndDate,
+            MachineID = @EPH_MachineID,
+            FormulaID = @EPH_FormulaID,
+            FormulaBatch = ISNULL(@EPH_FormulaBatch, 0),
+            ProductionTime = ISNULL(@EPH_ProductionTime, 0),
+            ShiftNo = ISNULL(@EPH_ShiftNo, 0),
+            LastMaintBy = @User,
+            LastMaintDate = GETDATE()
+        WHERE PlanningID = @EPH_PlanningID
+
+        -- Replace the shift plan wholesale with the recalculated one.
+        DELETE FROM [PRO].[PrdItemPlanningShiftPlan] WHERE PlanningID = @EPH_PlanningID
+
+        IF @LineMember IS NOT NULL AND LTRIM(RTRIM(@LineMember)) <> ''
+        BEGIN
+            INSERT INTO [PRO].[PrdItemPlanningShiftPlan]
+                (PlanningID, ItemCode, ShiftIndex, ShiftDate, ShiftNo, StartTime, EndTime, PlannedQty, CumulativeQty, CreatedBy, CreatedDate)
+            SELECT
+                @EPH_PlanningID, @EPH_ItemCode, ShiftIndex, ShiftDate, ShiftNo, StartTime, EndTime, PlannedQty, CumulativeQty, @User, GETDATE()
+            FROM OPENJSON(@LineMember) WITH (
+                ShiftIndex   int          '$.ShiftIndex',
+                ShiftDate    date         '$.ShiftDate',
+                ShiftNo      int          '$.ShiftNo',
+                StartTime    datetime     '$.StartTime',
+                EndTime      datetime     '$.EndTime',
+                PlannedQty   decimal(18,5) '$.PlannedQty',
+                CumulativeQty decimal(18,5) '$.CumulativeQty'
+            )
+        END
+
+        SELECT *
+        FROM [PRO].[PrdItemPlanningHistory]
+        WHERE PlanningID = @EPH_PlanningID
+        RETURN
+    END
+
+    -- =============================================
     -- INVALID OPERATION
     -- =============================================
     SET @State = 1

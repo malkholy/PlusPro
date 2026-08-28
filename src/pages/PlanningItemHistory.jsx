@@ -7,6 +7,7 @@ export default function PlanningItemHistory({ user }) {
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [drawerRow, setDrawerRow] = useState(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
 
   const loadData = async () => {
@@ -60,7 +61,8 @@ export default function PlanningItemHistory({ user }) {
           columns={columns}
           rows={data}
           loading={loading}
-          onAdd={() => setDrawerOpen(true)}
+          onAdd={() => { setDrawerRow({ isNew: true }); setDrawerOpen(true); }}
+          onEdit={(row) => { setDrawerRow(row); setDrawerOpen(true); }}
           onRefresh={loadData}
         />
       </div>
@@ -68,6 +70,7 @@ export default function PlanningItemHistory({ user }) {
       {drawerOpen && (
         <PlanningItemHistoryDrawer
           user={user}
+          editRow={drawerRow.isNew ? null : drawerRow}
           onClose={() => setDrawerOpen(false)}
           onSaveSuccess={() => { setDrawerOpen(false); loadData(); }}
         />

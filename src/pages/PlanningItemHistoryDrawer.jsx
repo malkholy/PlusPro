@@ -57,21 +57,23 @@ function currentShift() {
   return (h >= 7 && h < 19) ? '1' : '2';
 }
 
-export default function PlanningItemHistoryDrawer({ user, onClose, onSaveSuccess }) {
+export default function PlanningItemHistoryDrawer({ user, editRow, onClose, onSaveSuccess }) {
+  const isEditMode = !!editRow;
+
   const [itemOptions, setItemOptions] = useState([]);
   const [machineOptions, setMachineOptions] = useState([]);
   const [formulaOptions, setFormulaOptions] = useState([]);
   const [itemPlanningRows, setItemPlanningRows] = useState([]);
 
-  const [itemID, setItemID] = useState('');
-  const [itemCode, setItemCode] = useState('');
-  const [itemDescription, setItemDescription] = useState('');
-  const [startDate, setStartDate] = useState('');
-  const [plannedQty, setPlannedQty] = useState('');
-  const [formulaID, setFormulaID] = useState('');
-  const [machineID, setMachineID] = useState('');
-  const [shiftNo] = useState(() => currentShift());
-  const [productionTime, setProductionTime] = useState('');
+  const [itemID, setItemID] = useState(editRow?.ItemID || '');
+  const [itemCode, setItemCode] = useState(editRow?.ItemCode || '');
+  const [itemDescription, setItemDescription] = useState(editRow?.ItemDescription || '');
+  const [startDate, setStartDate] = useState(editRow?.StartDate ? editRow.StartDate.split('T')[0] : '');
+  const [plannedQty, setPlannedQty] = useState(editRow?.PlannedQty ?? '');
+  const [formulaID, setFormulaID] = useState(editRow?.FormulaID || '');
+  const [machineID, setMachineID] = useState(editRow?.MachineID || '');
+  const [shiftNo] = useState(() => (isEditMode ? String(editRow.ShiftNo || currentShift()) : currentShift()));
+  const [productionTime, setProductionTime] = useState(editRow?.ProductionTime ?? '');
 
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -220,6 +222,7 @@ export default function PlanningItemHistoryDrawer({ user, onClose, onSaveSuccess
     setSaving(true);
 
     const payload = {
+      ...(isEditMode ? { PlanningID: editRow.PlanningID } : {}),
       ItemID: Number(itemID),
       ItemCode: itemCode,
       StartDate: startDate || null,
@@ -244,7 +247,7 @@ export default function PlanningItemHistoryDrawer({ user, onClose, onSaveSuccess
 
     try {
       const res = await apiCall(
-        'New Planning History',
+        isEditMode ? 'Edit Planning History' : 'New Planning History',
         payload,
         { User: user?.Username, LineMember: JSON.stringify(shiftPlanLines) },
         'planning'
@@ -293,7 +296,7 @@ export default function PlanningItemHistoryDrawer({ user, onClose, onSaveSuccess
       <div style={{ position: 'fixed', top: 0, right: 0, bottom: 0, width: '960px', maxWidth: '95vw', backgroundColor: '#fff', boxShadow: '-4px 0 15px rgba(0,0,0,0.1)', zIndex: 1000, display: 'flex', flexDirection: 'column' }}>
         <div style={{ padding: '16px 24px', borderBottom: '1px solid #E2E8F0' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-            <h2 style={{ margin: 0, fontSize: 20, fontWeight: 600, color: '#1E293B' }}>New Planning History</h2>
+            <h2 style={{ margin: 0, fontSize: 20, fontWeight: 600, color: '#1E293B' }}>{isEditMode ? `Edit Planning History: ${editRow.ItemCode}` : 'New Planning History'}</h2>
             <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 24, cursor: 'pointer', color: '#64748B' }}>×</button>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr 1fr', gap: 16, background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: 8, padding: '10px 14px' }}>
@@ -336,6 +339,7 @@ export default function PlanningItemHistoryDrawer({ user, onClose, onSaveSuccess
                     onChange={handleItemChange}
                     options={itemOptions}
                     placeholder="Search item code / description..."
+                    disabled={isEditMode}
                   />
                 </div>
                 <div>
