@@ -17,6 +17,21 @@ function addDays(dateStr, days) {
   return d.toISOString().split('T')[0];
 }
 
+// Shift 1: 07:00-19:00. Shift 2: 19:00-07:00 (next day). Anything else
+// (no shift picked yet) falls back to Shift 1's window.
+function shiftStartHour(shift) {
+  return String(shift) === '2' ? 19 : 7;
+}
+
+function formatTime(date) {
+  let h = date.getHours();
+  const m = date.getMinutes();
+  const ampm = h >= 12 ? 'PM' : 'AM';
+  h = h % 12;
+  if (h === 0) h = 12;
+  return `${h}:${String(m).padStart(2, '0')} ${ampm}`;
+}
+
 export default function PlanningItemHistoryDrawer({ user, onClose, onSaveSuccess }) {
   const [itemOptions, setItemOptions] = useState([]);
   const [machineOptions, setMachineOptions] = useState([]);
@@ -125,13 +140,28 @@ export default function PlanningItemHistoryDrawer({ user, onClose, onSaveSuccess
     if (!startDate || batchQty <= 0 || qty <= 0 || prodTime <= 0 || daysNeeded <= 0) return [];
 
     const unitsPerShift = (SHIFT_SECONDS / prodTime) * batchQty;
+    const startHour = shiftStartHour(shiftNo);
     let remaining = qty;
     let cumulative = 0;
     const rows = [];
     for (let i = 0; i < daysNeeded; i++) {
       const dayQty = Math.min(remaining, unitsPerShift);
       cumulative += dayQty;
-      rows.push({ day: i + 1, date: addDays(startDate, i), shift: shiftNo || '—', qty: dayQty, cumulative });
+
+      const shiftStart = new Date(addDays(startDate, i) + 'T00:00:00');
+      shiftStart.setHours(startHour, 0, 0, 0);
+      const fraction = unitsPerShift > 0 ? Math.min(1, dayQty / unitsPerShift) : 0;
+      const shiftEnd = new Date(shiftStart.getTime() + fraction * SHIFT_SECONDS * 1000);
+
+      rows.push({
+        day: i + 1,
+        date: addDays(startDate, i),
+        shift: shiftNo || '—',
+        qty: dayQty,
+        cumulative,
+        startTime: formatTime(shiftStart),
+        endTime: formatTime(shiftEnd)
+      });
       remaining -= dayQty;
     }
     return rows;
@@ -410,6 +440,8 @@ export default function PlanningItemHistoryDrawer({ user, onClose, onSaveSuccess
                       <th style={thStyle}>Day</th>
                       <th style={thStyle}>Date</th>
                       <th style={thStyle}>Shift</th>
+                      <th style={thStyle}>Start Time</th>
+                      <th style={thStyle}>End Time</th>
                       <th style={{ ...thStyle, textAlign: 'right' }}>Qty This Shift</th>
                       <th style={{ ...thStyle, textAlign: 'right' }}>Cumulative</th>
                     </tr>
@@ -420,6 +452,8 @@ export default function PlanningItemHistoryDrawer({ user, onClose, onSaveSuccess
                         <td style={tdStyle}>{r.day}</td>
                         <td style={tdStyle}>{r.date}</td>
                         <td style={tdStyle}>{r.shift}</td>
+                        <td style={{ ...tdStyle, fontFamily: 'monospace' }}>{r.startTime}</td>
+                        <td style={{ ...tdStyle, fontFamily: 'monospace' }}>{r.endTime}</td>
                         <td style={{ ...tdStyle, textAlign: 'right', fontFamily: 'monospace' }}>{r.qty.toLocaleString(undefined, { maximumFractionDigits: 3 })}</td>
                         <td style={{ ...tdStyle, textAlign: 'right', fontFamily: 'monospace', fontWeight: 700 }}>{r.cumulative.toLocaleString(undefined, { maximumFractionDigits: 3 })}</td>
                       </tr>
