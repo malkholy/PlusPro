@@ -144,5 +144,49 @@ BEGIN
 		SELECT * FROM pro.ShopOrderHeader WHERE ShopOrderNumber = @ShopOrderNumber
 
 	end
+
+	-- =============================================
+	-- ISSUE SHOP ORDER (Producation button): records actual IssuedQty on the
+	-- header and ChildIssued per line, matched by Line number.
+	-- =============================================
+	if @operation='Issue Shop Order'
+	begin
+		DECLARE @ISO_ShopOrderNumber int, @ISO_IssuedQty dec(18,5)
+
+		SELECT @ISO_ShopOrderNumber = ShopOrderNo, @ISO_IssuedQty = IssuedQty
+		FROM OPENJSON(@LineData) WITH (ShopOrderNo int '$.ShopOrderNo', IssuedQty dec(18,5) '$.IssuedQty')
+
+		IF @ISO_ShopOrderNumber IS NULL
+		BEGIN
+			SET @State = 1
+			SET @Message = 'ShopOrderNo is required'
+			RETURN
+		END
+
+		IF NOT EXISTS (SELECT 1 FROM pro.ShopOrderHeader WHERE ShopOrderNumber = @ISO_ShopOrderNumber)
+		BEGIN
+			SET @State = 1
+			SET @Message = 'Shop Order not found'
+			RETURN
+		END
+
+		UPDATE pro.ShopOrderHeader
+		SET QuantiftyIssued = @ISO_IssuedQty, OrderLastMaintBy = @User, OrderLastMaintDate = GETDATE()
+		WHERE ShopOrderNumber = @ISO_ShopOrderNumber
+
+		IF @LineMember IS NOT NULL AND LTRIM(RTRIM(@LineMember)) <> ''
+		BEGIN
+			UPDATE l
+			SET l.ChildQuantityIssued = nl.ChildIssued, l.LineLastMaintBy = @User, l.LineLastMaintDate = GETDATE()
+			FROM PRO.ShopOrderLine l
+			INNER JOIN OPENJSON(@LineMember) WITH (
+				Line        int            '$.Line',
+				ChildIssued decimal(18,5)  '$.ChildIssued'
+			) nl ON nl.Line = l.Line
+			WHERE l.ShopOrderNumber = @ISO_ShopOrderNumber
+		END
+
+		SELECT * FROM pro.ShopOrderHeader WHERE ShopOrderNumber = @ISO_ShopOrderNumber
+	end
 end
 GO

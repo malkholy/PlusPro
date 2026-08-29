@@ -3,6 +3,7 @@ import { apiCall } from '../shared/api.js';
 import DataGrid from '../shared/DataGrid.jsx';
 import ShopOrderFormDrawer from './ShopOrderFormDrawer.jsx';
 import ShopOrderViewDrawer from './ShopOrderViewDrawer.jsx';
+import ShopOrderProductionDrawer from './ShopOrderProductionDrawer.jsx';
 
 export default function ShopOrders({ user }) {
   const [data, setData] = useState([]);
@@ -10,6 +11,7 @@ export default function ShopOrders({ user }) {
   const [error, setError] = useState('');
   const [viewRow, setViewRow] = useState(null);
   const [formRow, setFormRow] = useState(null);
+  const [productionRow, setProductionRow] = useState(null);
 
   const loadData = async () => {
     setLoading(true);
@@ -74,6 +76,7 @@ export default function ShopOrders({ user }) {
           row={viewRow}
           onClose={() => setViewRow(null)}
           onEdit={(row) => { setViewRow(null); setFormRow(row); }}
+          onProduce={(row) => { setViewRow(null); setProductionRow(row); }}
         />
       )}
 
@@ -83,6 +86,15 @@ export default function ShopOrders({ user }) {
           editRow={formRow.isNew ? null : formRow}
           onClose={() => setFormRow(null)}
           onSaveSuccess={() => { setFormRow(null); loadData(); }}
+        />
+      )}
+
+      {productionRow && (
+        <ShopOrderProductionDrawer
+          user={user}
+          row={productionRow}
+          onClose={() => setProductionRow(null)}
+          onSaveSuccess={() => { setProductionRow(null); loadData(); }}
         />
       )}
     </div>
