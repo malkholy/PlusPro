@@ -28,11 +28,11 @@ BEGIN
     DECLARE @Cnt int , @ShopOrderFacility nvarchar(5),@ParentItemCode nvarchar(50),@ParentItemType nvarchar(1) , @LotControl int , @OnHand float , @Allocated float , @OrderState int , @ProducationAllow int , @ParentOrginalQty float
 	declare  @Line int  ,@Seq int ,  @ItemID int  , @lot nvarchar(150) ,@Qty Float , @Warehouse nvarchar(5) , @ChildIssueTransaction nvarchar(5) , @ParentTransaction nvarchar(5) , @ErrorLine int , @LineType  int  ,
 	@ChildReceiptTransaction nvarchar(5) , @childTransaction nvarchar(5) , @ChildCorrection nvarchar(5) , @Batchsize float , @Factor float , @SumQtyIssued  float ,  @TotalQtyIssued dec(15,5) , @quantityOrdered dec(15,5) ,
-	@FormulaID int =0 , @MachineID int , @ShopOrderNumber int =0 , @ShopOrderDate date , @ParentItemID int
+	@FormulaID int =0 , @MachineID int , @ShopOrderNumber int =0 , @ShopOrderDate date , @ParentItemID int , @ShiftNo int
 
 	create Table #TempHeader
 	( ShopOrderNo int , ShopOrderDate date ,  Warehouse nvarchar(50) ,  ParentITemID int , FormulaID int , MAchineID int ,
-	Qty dec(18,5) )
+	Qty dec(18,5) , ShiftNo int )
 
     -- =============================================
     -- INITIALIZE STATE
@@ -44,9 +44,9 @@ BEGIN
    begin
 		INSERT INTO #TempHeader
         SELECT * FROM OPENJSON(@LineData)
-		WITH (ShopOrderNo int , ShopOrderDate date ,  Warehouse nvarchar(50) ,  ParentITemID int , FormulaID int , MAchineID int , Qty dec(18,5) )
+		WITH (ShopOrderNo int , ShopOrderDate date ,  Warehouse nvarchar(50) ,  ParentITemID int , FormulaID int , MAchineID int , Qty dec(18,5) , ShiftNo int )
 
-        SELECT TOP 1 @ShopOrderDate=ShopOrderDate ,   @ParentItemID  = ParentITemID, @FormulaID= FormulaID , @MachineID =MAchineID , @Qty =Qty , @Warehouse=Warehouse
+        SELECT TOP 1 @ShopOrderDate=ShopOrderDate ,   @ParentItemID  = ParentITemID, @FormulaID= FormulaID , @MachineID =MAchineID , @Qty =Qty , @Warehouse=Warehouse , @ShiftNo=ShiftNo
         FROM #TempHeader
 		select  @Batchsize = BatchQuantity  FROM prd.BillOfMaterialHeader  WHERE FormulaID=@FormulaID
 		set @Factor=@Qty / @Batchsize
@@ -57,10 +57,10 @@ BEGIN
 
 		Insert into pro.[ShopOrderHeader] (
 		ShopOrderNumber,ShopOrderDate,ShopOrderWarehouse,ParentItemID,ParentItemCode,ParentItemType,QuantityRequired,
-		MachineID,FlormulaID,OrderCreatedBy,OrderCreatedDate)
+		MachineID,FlormulaID,ShiftID,OrderCreatedBy,OrderCreatedDate)
 		values(
 		@ShopOrderNumber,@ShopOrderDate,@Warehouse,@ParentItemID,@ParentItemCode,@ParentItemType,@Qty,
-		@MachineID,@FormulaID,@User,GETDATE())
+		@MachineID,@FormulaID,@ShiftNo,@User,GETDATE())
 
 		Insert into PRO.ShopOrderLine
 		(ShopOrderNumber,ParentItemID,ParentItemCode,Line,ChildItemID,ChildItemCode ,   ChildQuantityRequired,LineWarehouse,ChildItemType,
@@ -84,9 +84,9 @@ BEGIN
 
 		INSERT INTO #TempHeader
         SELECT * FROM OPENJSON(@LineData)
-		WITH (ShopOrderNo int , ShopOrderDate date ,  Warehouse nvarchar(50) ,  ParentITemID int , FormulaID int , MAchineID int , Qty dec(18,5) )
+		WITH (ShopOrderNo int , ShopOrderDate date ,  Warehouse nvarchar(50) ,  ParentITemID int , FormulaID int , MAchineID int , Qty dec(18,5) , ShiftNo int )
 
-        SELECT TOP 1 @ShopOrderNumber = ShopOrderNo, @ShopOrderDate=ShopOrderDate ,   @ParentItemID  = ParentITemID, @FormulaID= FormulaID , @MachineID =MAchineID , @Qty =Qty , @Warehouse=Warehouse
+        SELECT TOP 1 @ShopOrderNumber = ShopOrderNo, @ShopOrderDate=ShopOrderDate ,   @ParentItemID  = ParentITemID, @FormulaID= FormulaID , @MachineID =MAchineID , @Qty =Qty , @Warehouse=Warehouse , @ShiftNo=ShiftNo
         FROM #TempHeader
 
 		IF @ShopOrderNumber IS NULL
@@ -118,7 +118,7 @@ BEGIN
 
 		UPDATE pro.ShopOrderHeader
 		SET ShopOrderDate=@ShopOrderDate, ShopOrderWarehouse=@Warehouse, ParentItemID=@ParentItemID, ParentItemCode=@ParentItemCode,
-			ParentItemType=@ParentItemType, QuantityRequired=@Qty, MachineID=@MachineID, FlormulaID=@FormulaID,
+			ParentItemType=@ParentItemType, QuantityRequired=@Qty, MachineID=@MachineID, FlormulaID=@FormulaID, ShiftID=@ShiftNo,
 			OrderLastMaintBy=@User, OrderLastMaintDate=GETDATE()
 		WHERE ShopOrderNumber=@ShopOrderNumber
 

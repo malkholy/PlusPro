@@ -37,6 +37,7 @@ export default function ShopOrderFormDrawer({ user, editRow, onClose, onSaveSucc
   const [warehouse, setWarehouse] = useState(editRow?.ShopOrderWarehouse || '');
   const [qty, setQty] = useState(editRow?.QuantityRequired ?? '');
   const [shopOrderDate, setShopOrderDate] = useState(editRow?.ShopOrderDate ? editRow.ShopOrderDate.split('T')[0] : toLocalDateStr(new Date()));
+  const [shiftNo, setShiftNo] = useState(editRow?.ShiftID || '');
 
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -104,6 +105,7 @@ export default function ShopOrderFormDrawer({ user, editRow, onClose, onSaveSucc
     if (!warehouse) { setError('Please select a warehouse.'); return; }
     if (!qty || Number(qty) <= 0) { setError('Please enter a Qty greater than 0.'); return; }
     if (!shopOrderDate) { setError('Please select a date.'); return; }
+    if (!shiftNo) { setError('Please select a shift.'); return; }
     if (batchQuantity <= 0) { setError('Selected formula has no Batch Quantity set.'); return; }
 
     setSaving(true);
@@ -119,7 +121,8 @@ export default function ShopOrderFormDrawer({ user, editRow, onClose, onSaveSucc
         ParentITemID: Number(itemID),
         FormulaID: Number(formulaID),
         MAchineID: Number(machineID),
-        Qty: Number(qty)
+        Qty: Number(qty),
+        ShiftNo: Number(shiftNo)
       }, { User: user?.Username }, 'shop_order');
 
       if (res.State === 0) {
@@ -210,6 +213,14 @@ export default function ShopOrderFormDrawer({ user, editRow, onClose, onSaveSucc
               <div>
                 <label style={labelStyle}>Date</label>
                 <input type="date" value={shopOrderDate} onChange={e => setShopOrderDate(e.target.value)} style={inputStyle} />
+              </div>
+              <div>
+                <label style={labelStyle}>Shift</label>
+                <select value={shiftNo} onChange={e => setShiftNo(e.target.value)} style={inputStyle}>
+                  <option value="">Select shift...</option>
+                  <option value="1">Shift 1 (07:00 AM - 07:00 PM)</option>
+                  <option value="2">Shift 2 (07:00 PM - 07:00 AM)</option>
+                </select>
               </div>
             </div>
 
