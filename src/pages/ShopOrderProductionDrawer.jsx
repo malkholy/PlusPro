@@ -25,21 +25,34 @@ export default function ShopOrderProductionDrawer({ user, row, onClose, onSaveSu
     let cancelled = false;
     setLinesLoading(true);
     apiCall('Shop Order Lines', { param1: row.ShopOrderNumber }, { User: user?.Username }, 'lookup')
-      .then(d => {
+      .then(async d => {
         if (cancelled) return;
-        if (d.State === 0) {
-          setLines((d.List0 || []).map(l => ({
-            line: l.Line, childItemCode: l.ChildItemCode, childItemDescription: l.ItemDescription,
-            quantityRequired: l.ChildQuantityRequired, quantityIssued: l.ChildQuantityIssued
-          })));
-        } else {
+        if (d.State !== 0) {
           setError(d.Message || 'Failed to load lines.');
+          return;
         }
+        const rawLines = d.List0 || [];
+
+        const balances = await Promise.all(rawLines.map(l =>
+          apiCall('GetGridData', { PageGroupID: 'item_balance', fromItem: l.ChildItemCode, toItem: l.ChildItemCode }, { User: user?.Username }, 'plus')
+            .then(bd => (bd.State === 0 ? (bd.List0 || []) : []))
+            .catch(() => [])
+        ));
+        if (cancelled) return;
+
+        setLines(rawLines.map((l, i) => {
+          const match = balances[i].find(b => String(b.Warehouse || '').trim().toUpperCase() === String(row.ShopOrderWarehouse || '').trim().toUpperCase());
+          return {
+            line: l.Line, childItemCode: l.ChildItemCode, childItemDescription: l.ItemDescription,
+            quantityRequired: l.ChildQuantityRequired, quantityIssued: l.ChildQuantityIssued,
+            balance: match ? Number(match.ItemBalance || 0) : null
+          };
+        }));
       })
       .catch(e => { if (!cancelled) setError('Failed to load lines: ' + e.message); })
       .finally(() => { if (!cancelled) setLinesLoading(false); });
     return () => { cancelled = true; };
-  }, [row.ShopOrderNumber, user]);
+  }, [row.ShopOrderNumber, row.ShopOrderWarehouse, user]);
 
   const updateLineIssued = (idx, val) => setLines(prev => prev.map((l, i) => i === idx ? { ...l, quantityIssued: val } : l));
 
@@ -180,26 +193,36 @@ export default function ShopOrderProductionDrawer({ user, row, onClose, onSaveSu
                     <th style={thStyle}>Description</th>
                     <th style={{ ...thStyle, textAlign: 'right' }}>Qty Required</th>
                     <th style={{ ...thStyle, textAlign: 'right' }}>Qty Issued</th>
+                    <th style={{ ...thStyle, textAlign: 'right' }}>Balance ({row.ShopOrderWarehouse || '—'})</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {lines.map((l, idx) => (
-                    <tr key={l.line}>
-                      <td style={tdStyle}>{l.line}</td>
-                      <td style={tdStyle}>{l.childItemCode}</td>
-                      <td style={tdStyle}>{l.childItemDescription || '—'}</td>
-                      <td style={{ ...tdStyle, textAlign: 'right', fontFamily: 'var(--mono)' }}>
-                        {Number(l.quantityRequired || 0).toLocaleString(undefined, { maximumFractionDigits: 5 })}
-                      </td>
-                      <td style={{ ...tdStyle, width: 140 }}>
-                        <input
-                          type="number" step="0.00001" value={l.quantityIssued}
-                          onChange={e => updateLineIssued(idx, e.target.value)}
-                          style={{ ...inputStyle, textAlign: 'right' }}
-                        />
-                      </td>
-                    </tr>
-                  ))}
+                  {lines.map((l, idx) => {
+                    const short = l.balance !== null && l.balance < Number(l.quantityRequired || 0);
+                    return (
+                      <tr key={l.line}>
+                        <td style={tdStyle}>{l.line}</td>
+                        <td style={tdStyle}>{l.childItemCode}</td>
+                        <td style={tdStyle}>{l.childItemDescription || '—'}</td>
+                        <td style={{ ...tdStyle, textAlign: 'right', fontFamily: 'var(--mono)' }}>
+                          {Number(l.quantityRequired || 0).toLocaleString(undefined, { maximumFractionDigits: 5 })}
+                        </td>
+                        <td style={{ ...tdStyle, width: 140 }}>
+                          <input
+                            type="number" step="0.00001" value={l.quantityIssued}
+                            onChange={e => updateLineIssued(idx, e.target.value)}
+                            style={{ ...inputStyle, textAlign: 'right' }}
+                          />
+                        </td>
+                        <td style={{
+                          ...tdStyle, textAlign: 'right', fontFamily: 'var(--mono)', fontWeight: 700,
+                          color: l.balance === null ? 'var(--hint)' : (short ? 'var(--red)' : 'var(--green)')
+                        }}>
+                          {l.balance === null ? '—' : l.balance.toLocaleString(undefined, { maximumFractionDigits: 3 })}
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             )}
