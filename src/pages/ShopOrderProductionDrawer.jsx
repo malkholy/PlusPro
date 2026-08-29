@@ -113,10 +113,46 @@ export default function ShopOrderProductionDrawer({ user, row, onClose, onSaveSu
           )}
 
           <div style={{ background: 'var(--surface)', padding: 20, borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }}>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 16 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16 }}>
               <div>
                 <label style={labelStyle}>Item Code</label>
                 <input value={row.ParentItemCode || '—'} readOnly style={{ ...inputStyle, background: 'var(--soft)', color: 'var(--muted)' }} />
+              </div>
+              <div style={{ gridColumn: 'span 2' }}>
+                <label style={labelStyle}>Description</label>
+                <input value={row.ItemDescription || '—'} readOnly style={{ ...inputStyle, background: 'var(--soft)', color: 'var(--muted)' }} />
+              </div>
+              <div>
+                <label style={labelStyle}>State</label>
+                <input value={Number(row.OrderState) === 0 ? 'Draft (0)' : row.OrderState} readOnly style={{ ...inputStyle, background: 'var(--soft)', color: 'var(--muted)' }} />
+              </div>
+              <div>
+                <label style={labelStyle}>Date</label>
+                <input value={row.ShopOrderDate ? row.ShopOrderDate.split('T')[0] : '—'} readOnly style={{ ...inputStyle, background: 'var(--soft)', color: 'var(--muted)' }} />
+              </div>
+              <div>
+                <label style={labelStyle}>Warehouse</label>
+                <input value={row.ShopOrderWarehouse || '—'} readOnly style={{ ...inputStyle, background: 'var(--soft)', color: 'var(--muted)' }} />
+              </div>
+              <div>
+                <label style={labelStyle}>Machine</label>
+                <input value={row.MachineCode || '—'} readOnly style={{ ...inputStyle, background: 'var(--soft)', color: 'var(--muted)' }} />
+              </div>
+              <div>
+                <label style={labelStyle}>Formula</label>
+                <input value={row.FormulaCode || '—'} readOnly style={{ ...inputStyle, background: 'var(--soft)', color: 'var(--muted)' }} />
+              </div>
+              <div>
+                <label style={labelStyle}>Shift</label>
+                <input value={row.ShiftID ?? '—'} readOnly style={{ ...inputStyle, background: 'var(--soft)', color: 'var(--muted)' }} />
+              </div>
+              <div>
+                <label style={labelStyle}>Created By</label>
+                <input value={row.OrderCreatedBy || '—'} readOnly style={{ ...inputStyle, background: 'var(--soft)', color: 'var(--muted)' }} />
+              </div>
+              <div>
+                <label style={labelStyle}>Created Date</label>
+                <input value={row.OrderCreatedDate ? row.OrderCreatedDate.split('T')[0] : '—'} readOnly style={{ ...inputStyle, background: 'var(--soft)', color: 'var(--muted)' }} />
               </div>
               <div>
                 <label style={labelStyle}>Qty Required</label>
