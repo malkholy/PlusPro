@@ -36,13 +36,17 @@ export default function BillOfMaterialFormDrawer({ user, editRow, onClose, onSav
         setItemOptions((d.List0 || []).map(i => ({
           label: `${i.ItemCode} - ${i.ItemName}`, value: i.ItemID, itemCode: i.ItemCode, itemName: i.ItemName
         })));
+      } else {
+        setError(d.Message || 'Failed to load items.');
       }
-    });
+    }).catch(e => setError('Failed to load items: ' + e.message));
     apiCall('Machine Master All', null, { User: user?.Username }, 'lookup').then(d => {
       if (d.State === 0) {
         setMachineOptions((d.List0 || []).map(m => ({ label: `${m.MachineCode} - ${m.MachineDescription}`, value: m.MachineID })));
+      } else {
+        setError(d.Message || 'Failed to load machines.');
       }
-    });
+    }).catch(e => setError('Failed to load machines: ' + e.message));
   }, [user]);
 
   useEffect(() => {
@@ -56,8 +60,11 @@ export default function BillOfMaterialFormDrawer({ user, editRow, onClose, onSav
             childItemID: l.ChildItemID, childItemCode: l.ChildItemCode, childItemDescription: l.ChildItemDescription,
             quantity: l.Quantity
           })));
+        } else {
+          setError(d.Message || 'Failed to load BOM lines.');
         }
       })
+      .catch(e => setError('Failed to load BOM lines: ' + e.message))
       .finally(() => setLinesLoading(false));
   }, [isEditMode, editRow, user]);
 

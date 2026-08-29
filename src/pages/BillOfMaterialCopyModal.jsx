@@ -9,18 +9,25 @@ const labelStyle = {
 
 export default function BillOfMaterialCopyModal({ user, row, onClose, onSuccess }) {
   const [itemOptions, setItemOptions] = useState([]);
+  const [itemsLoading, setItemsLoading] = useState(true);
   const [targetItemID, setTargetItemID] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
   useEffect(() => {
-    apiCall('Item Master All', null, { User: user?.Username }, 'lookup').then(d => {
-      if (d.State === 0) {
-        setItemOptions((d.List0 || [])
-          .filter(i => String(i.ItemID) !== String(row.ParentItemID))
-          .map(i => ({ label: `${i.ItemCode} - ${i.ItemName}`, value: i.ItemID })));
-      }
-    });
+    setItemsLoading(true);
+    apiCall('Item Master All', null, { User: user?.Username }, 'lookup')
+      .then(d => {
+        if (d.State === 0) {
+          setItemOptions((d.List0 || [])
+            .filter(i => String(i.ItemID) !== String(row.ParentItemID))
+            .map(i => ({ label: `${i.ItemCode} - ${i.ItemName}`, value: i.ItemID })));
+        } else {
+          setError(d.Message || 'Failed to load items.');
+        }
+      })
+      .catch(e => setError('Failed to load items: ' + e.message))
+      .finally(() => setItemsLoading(false));
   }, [user, row.ParentItemID]);
 
   const handleCopy = async () => {
@@ -71,7 +78,8 @@ export default function BillOfMaterialCopyModal({ user, row, onClose, onSuccess 
               value={targetItemID}
               onChange={setTargetItemID}
               options={itemOptions}
-              placeholder="Search item code / description..."
+              placeholder={itemsLoading ? 'Loading items...' : (itemOptions.length === 0 ? 'No items available' : 'Search item code / description...')}
+              disabled={itemsLoading}
             />
           </div>
         </div>
