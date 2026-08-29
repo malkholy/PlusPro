@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { apiCall } from '../shared/api.js';
 import DataGrid from '../shared/DataGrid.jsx';
+import ShopOrderFormDrawer from './ShopOrderFormDrawer.jsx';
 
 export default function ShopOrders({ user }) {
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [formOpen, setFormOpen] = useState(false);
 
   const loadData = async () => {
     setLoading(true);
@@ -58,9 +60,18 @@ export default function ShopOrders({ user }) {
           columns={columns}
           rows={data}
           loading={loading}
+          onAdd={() => setFormOpen(true)}
           onRefresh={loadData}
         />
       </div>
+
+      {formOpen && (
+        <ShopOrderFormDrawer
+          user={user}
+          onClose={() => setFormOpen(false)}
+          onSaveSuccess={() => { setFormOpen(false); loadData(); }}
+        />
+      )}
     </div>
   );
 }

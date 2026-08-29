@@ -175,6 +175,19 @@ export default defineConfig({
           })
         }
       },
+      '/shop-order-api': {
+        target: 'https://sila.silasystem.com:7103',
+        changeOrigin: true,
+        secure: false,
+        rewrite: (path) => path.replace(/^\/shop-order-api/, ''),
+        configure: (proxy) => {
+          proxy.on('proxyReq', (proxyReq) => {
+            proxyReq.setHeader('SP_Name', '[PRO].[APIPlusShopOrderOperation]')
+            proxyReq.setHeader('Accept', 'application/json')
+            proxyReq.setHeader('Content-Type', 'application/json')
+          })
+        }
+      },
       '/api': {
         target: 'https://sila.silasystem.com:7103',
         changeOrigin: true,
