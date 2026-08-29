@@ -136,6 +136,38 @@ export default function ShopOrderFormDrawer({ user, editRow, onClose, onSaveSucc
     qtyBaselineRef.current = newQty;
   };
 
+  // Discards whatever's currently in the lines table and regenerates it
+  // fresh from the selected Formula's BOM, scaled by Qty/BatchQuantity --
+  // same math New Shop Order uses on creation. An escape hatch back to the
+  // formula's numbers after manual edits, or after switching Formula/Qty.
+  const [rebuilding, setRebuilding] = useState(false);
+  const handleRebuildFromBOM = async () => {
+    setError('');
+    if (!formulaID) { setError('Select a formula first.'); return; }
+    if (!qty || Number(qty) <= 0) { setError('Enter a Qty greater than 0 first.'); return; }
+    if (batchQuantity <= 0) { setError('Selected formula has no Batch Quantity set.'); return; }
+
+    setRebuilding(true);
+    try {
+      const d = await apiCall('BOM L1 Formula', { ParentItemCode: itemCode }, { User: user?.Username }, 'plus');
+      if (d.State !== 0) { setError(d.Message || 'Failed to load formula lines.'); return; }
+
+      const bomLines = (d.List0 || []).filter(l => String(l.LineFormulaID) === String(formulaID));
+      if (bomLines.length === 0) { setError('This formula has no BOM lines.'); return; }
+
+      const ratio = Number(qty) / batchQuantity;
+      setLines(bomLines.map(l => ({
+        childItemID: l.ChildItemID, childItemCode: l.ChildItemCode, childItemDescription: l.ChildItemDescription,
+        quantity: Number(l.Quantity || 0) * ratio
+      })));
+      qtyBaselineRef.current = Number(qty);
+    } catch (e) {
+      setError('Failed to rebuild lines: ' + e.message);
+    } finally {
+      setRebuilding(false);
+    }
+  };
+
   const handleItemChange = (id) => {
     setItemID(id);
     const opt = itemOptions.find(o => String(o.value) === String(id));
@@ -303,12 +335,26 @@ export default function ShopOrderFormDrawer({ user, editRow, onClose, onSaveSucc
             <div style={{ background: 'var(--surface)', padding: 20, borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
                 <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: 'var(--text)' }}>Lines</h3>
-                <button
-                  onClick={addLine}
-                  style={{ padding: '6px 14px', borderRadius: 'var(--radius-xs)', border: '1px solid var(--border2)', background: 'var(--surface)', color: 'var(--text)', fontWeight: 600, fontSize: 12.5, cursor: 'pointer' }}
-                >
-                  + Add Line
-                </button>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button
+                    onClick={handleRebuildFromBOM}
+                    disabled={rebuilding}
+                    title="Discard current lines and regenerate from the selected Formula's BOM"
+                    style={{
+                      padding: '6px 14px', borderRadius: 'var(--radius-xs)', border: '1px solid var(--border2)',
+                      background: 'var(--surface)', color: 'var(--orange2)', fontWeight: 600, fontSize: 12.5,
+                      cursor: rebuilding ? 'not-allowed' : 'pointer', opacity: rebuilding ? 0.6 : 1
+                    }}
+                  >
+                    {rebuilding ? 'Rebuilding...' : '🔄 Rebuild from BOM'}
+                  </button>
+                  <button
+                    onClick={addLine}
+                    style={{ padding: '6px 14px', borderRadius: 'var(--radius-xs)', border: '1px solid var(--border2)', background: 'var(--surface)', color: 'var(--text)', fontWeight: 600, fontSize: 12.5, cursor: 'pointer' }}
+                  >
+                    + Add Line
+                  </button>
+                </div>
               </div>
 
               {linesLoading ? (
