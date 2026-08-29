@@ -192,8 +192,8 @@ export default function ShopOrderProductionDrawer({ user, row, onClose, onSaveSu
                     <th style={thStyle}>Item Code</th>
                     <th style={thStyle}>Description</th>
                     <th style={{ ...thStyle, textAlign: 'right' }}>Qty Required</th>
-                    <th style={{ ...thStyle, textAlign: 'right' }}>Qty Issued</th>
                     <th style={{ ...thStyle, textAlign: 'right' }}>Balance ({row.ShopOrderWarehouse || '—'})</th>
+                    <th style={{ ...thStyle, textAlign: 'right' }}>Qty Issued</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -207,18 +207,18 @@ export default function ShopOrderProductionDrawer({ user, row, onClose, onSaveSu
                         <td style={{ ...tdStyle, textAlign: 'right', fontFamily: 'var(--mono)' }}>
                           {Number(l.quantityRequired || 0).toLocaleString(undefined, { maximumFractionDigits: 5 })}
                         </td>
+                        <td style={{
+                          ...tdStyle, textAlign: 'right', fontFamily: 'var(--mono)', fontWeight: 700,
+                          color: l.balance === null ? 'var(--hint)' : (short ? 'var(--red)' : 'var(--green)')
+                        }}>
+                          {l.balance === null ? '—' : l.balance.toLocaleString(undefined, { maximumFractionDigits: 3 })}
+                        </td>
                         <td style={{ ...tdStyle, width: 140 }}>
                           <input
                             type="number" step="0.00001" value={l.quantityIssued}
                             onChange={e => updateLineIssued(idx, e.target.value)}
                             style={{ ...inputStyle, textAlign: 'right' }}
                           />
-                        </td>
-                        <td style={{
-                          ...tdStyle, textAlign: 'right', fontFamily: 'var(--mono)', fontWeight: 700,
-                          color: l.balance === null ? 'var(--hint)' : (short ? 'var(--red)' : 'var(--green)')
-                        }}>
-                          {l.balance === null ? '—' : l.balance.toLocaleString(undefined, { maximumFractionDigits: 3 })}
                         </td>
                       </tr>
                     );
