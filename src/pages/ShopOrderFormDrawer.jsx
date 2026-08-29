@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { apiCall } from '../shared/api.js';
 import SearchableSelect from '../shared/SearchableSelect.jsx';
 
@@ -41,6 +41,11 @@ export default function ShopOrderFormDrawer({ user, editRow, onClose, onSaveSucc
 
   const [lines, setLines] = useState([]);
   const [linesLoading, setLinesLoading] = useState(isEditMode);
+  // The header Qty that the current line quantities correspond to -- lets us
+  // rescale every line by (newQty / thisBaseline) when Qty changes, same
+  // factor math New Shop Order applies server-side, instead of losing manual
+  // line edits by recomputing from the formula from scratch.
+  const qtyBaselineRef = useRef(Number(editRow?.QuantityRequired) || 0);
 
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -95,6 +100,7 @@ export default function ShopOrderFormDrawer({ user, editRow, onClose, onSaveSucc
             childItemID: l.ChildItemID, childItemCode: l.ChildItemCode, childItemDescription: l.ItemDescription,
             quantity: l.ChildQuantityRequired
           })));
+          qtyBaselineRef.current = Number(editRow.QuantityRequired) || 0;
         } else {
           setError(d.Message || 'Failed to load lines.');
         }
@@ -112,6 +118,23 @@ export default function ShopOrderFormDrawer({ user, editRow, onClose, onSaveSucc
     } : l));
   };
   const updateLineQty = (idx, val) => setLines(prev => prev.map((l, i) => i === idx ? { ...l, quantity: val } : l));
+
+  // Rescale every line's qty by (newQty / oldQty) when the header Qty
+  // changes -- same ratio the SP applies as its "Factor" on New Shop Order,
+  // just re-derived client-side from whatever the lines currently are
+  // (which may include manual edits/additions) instead of the formula.
+  const handleQtyBlur = () => {
+    const newQty = Number(qty) || 0;
+    const oldQty = qtyBaselineRef.current;
+    if (isEditMode && oldQty > 0 && newQty > 0 && newQty !== oldQty && lines.length > 0) {
+      const ratio = newQty / oldQty;
+      setLines(prev => prev.map(l => ({
+        ...l,
+        quantity: l.quantity === '' || l.quantity == null ? l.quantity : Number(l.quantity) * ratio
+      })));
+    }
+    qtyBaselineRef.current = newQty;
+  };
 
   const handleItemChange = (id) => {
     setItemID(id);
@@ -253,7 +276,7 @@ export default function ShopOrderFormDrawer({ user, editRow, onClose, onSaveSucc
               </div>
               <div>
                 <label style={labelStyle}>Qty</label>
-                <input type="number" step="0.00001" value={qty} onChange={e => setQty(e.target.value)} style={inputStyle} />
+                <input type="number" step="0.00001" value={qty} onChange={e => setQty(e.target.value)} onBlur={handleQtyBlur} style={inputStyle} />
               </div>
               <div>
                 <label style={labelStyle}>Date</label>
