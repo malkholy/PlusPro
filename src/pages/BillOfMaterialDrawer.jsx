@@ -6,7 +6,7 @@ const summaryValueStyle = { fontSize: 13, fontWeight: 700, color: 'var(--text)',
 const thStyle = { textAlign: 'left', padding: '8px 10px', fontSize: 11, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: 0.3, borderBottom: '1px solid var(--border)' };
 const tdStyle = { padding: '8px 10px', fontSize: 13, color: 'var(--text)', borderBottom: '1px solid var(--border)' };
 
-export default function BillOfMaterialDrawer({ user, row, onClose }) {
+export default function BillOfMaterialDrawer({ user, row, onClose, onEdit }) {
   const [lines, setLines] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -115,13 +115,25 @@ export default function BillOfMaterialDrawer({ user, row, onClose }) {
           )}
         </div>
 
-        <div style={{ padding: '14px 24px', borderTop: '1px solid var(--border)', background: 'var(--surface)', display: 'flex', justifyContent: 'flex-end' }}>
+        <div style={{ padding: '14px 24px', borderTop: '1px solid var(--border)', background: 'var(--surface)', display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
           <button
             onClick={onClose}
             style={{ padding: '8px 20px', borderRadius: 'var(--radius-xs)', border: '1px solid var(--border2)', background: 'var(--surface)', color: 'var(--text)', fontWeight: 600, fontSize: 13, cursor: 'pointer' }}
           >
             Close
           </button>
+          {onEdit && (
+            <button
+              onClick={() => onEdit(row)}
+              style={{
+                padding: '8px 22px', borderRadius: 'var(--radius-xs)', border: 'none',
+                background: 'linear-gradient(135deg, var(--orange), var(--orange2))', color: '#fff',
+                fontWeight: 700, fontSize: 13, cursor: 'pointer'
+              }}
+            >
+              ✏ Edit
+            </button>
+          )}
         </div>
       </div>
 

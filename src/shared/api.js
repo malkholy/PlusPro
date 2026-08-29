@@ -54,6 +54,8 @@ export async function apiCall(operation, lineData = null, extraParams = {}, apiT
     target = 'acp';
   } else if (apiType === 'planning') {
     target = 'planning';
+  } else if (apiType === 'bom') {
+    target = 'bom';
   }
 
   let url = '';
@@ -111,6 +113,9 @@ export async function apiCall(operation, lineData = null, extraParams = {}, apiT
   } else if (target === 'planning') {
     url = IS_DEV ? '/planning-api/General/GeneralAPI/' : 'https://sila.silasystem.com:7103/General/GeneralAPI/';
     spName = '[PRO].[APIPlusPlanningOperation]';
+  } else if (target === 'bom') {
+    url = IS_DEV ? '/bom-api/General/GeneralAPI/' : 'https://sila.silasystem.com:7103/General/GeneralAPI/';
+    spName = 'APIPlusBOMOperation';
   } else {
     url = IS_DEV ? '/api/General/GeneralAPI/' : 'https://sila.silasystem.com:7103/General/GeneralAPI/';
     spName = 'APIPlusOperation';
