@@ -112,8 +112,6 @@ BEGIN
 			RETURN
 		END
 
-		select  @Batchsize = BatchQuantity  FROM prd.BillOfMaterialHeader  WHERE FormulaID=@FormulaID
-		set @Factor=@Qty / @Batchsize
 		select @ParentItemCode=ItemCode ,@ParentItemType=ItemType from inv.ItemMaster where itemid=@ParentItemID
 
 		UPDATE pro.ShopOrderHeader
@@ -122,18 +120,26 @@ BEGIN
 			OrderLastMaintBy=@User, OrderLastMaintDate=GETDATE()
 		WHERE ShopOrderNumber=@ShopOrderNumber
 
-		-- Replace the line list wholesale, same pattern as New Shop Order (and
-		-- Planning History's Edit operation).
+		-- Lines are explicitly controlled by the caller here (edit qty, add a
+		-- new line, delete a line in the UI) instead of being recomputed from
+		-- the formula's batch factor like New Shop Order does. Replace wholesale.
 		DELETE FROM PRO.ShopOrderLine WHERE ShopOrderNumber=@ShopOrderNumber
 
-		Insert into PRO.ShopOrderLine
-		(ShopOrderNumber,ParentItemID,ParentItemCode,Line,ChildItemID,ChildItemCode ,   ChildQuantityRequired,LineWarehouse,ChildItemType,
-		LineCreatedBy,LineCreatedDate , FormulaLine , OrginalFormulaQty )
-		select
-		@ShopOrderNumber ,   @ParentItemID , @ParentItemCode , line ,ChildItemID , ItemCode , @Factor*Quantity , @Warehouse , ItemType ,
-		@user , getdate() , line , Quantity
-		from PRd.BillOfMaterialLine a left outer join inv.ItemMaster on ChildItemID=ItemID
-		where  LineFormulaID=@FormulaID ORDER BY a.Line
+		IF @LineMember IS NOT NULL AND LTRIM(RTRIM(@LineMember)) <> ''
+		BEGIN
+			INSERT INTO PRO.ShopOrderLine
+			(ShopOrderNumber,ParentItemID,ParentItemCode,Line,ChildItemID,ChildItemCode,ChildQuantityRequired,LineWarehouse,ChildItemType,
+			LineCreatedBy,LineCreatedDate)
+			SELECT
+			@ShopOrderNumber, @ParentItemID, @ParentItemCode, nl.Line, nl.ChildItemID, im.ItemCode, nl.Qty, @Warehouse, im.ItemType,
+			@User, GETDATE()
+			FROM OPENJSON(@LineMember) WITH (
+				Line        int             '$.Line',
+				ChildItemID int             '$.ChildItemID',
+				Qty         decimal(18,5)   '$.Qty'
+			) nl
+			INNER JOIN inv.ItemMaster im ON im.ItemID = nl.ChildItemID
+		END
 
 		SELECT * FROM pro.ShopOrderHeader WHERE ShopOrderNumber = @ShopOrderNumber
 

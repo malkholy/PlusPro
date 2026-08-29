@@ -39,6 +39,9 @@ export default function ShopOrderFormDrawer({ user, editRow, onClose, onSaveSucc
   const [shopOrderDate, setShopOrderDate] = useState(editRow?.ShopOrderDate ? editRow.ShopOrderDate.split('T')[0] : toLocalDateStr(new Date()));
   const [shiftNo, setShiftNo] = useState(editRow?.ShiftID || '');
 
+  const [lines, setLines] = useState([]);
+  const [linesLoading, setLinesLoading] = useState(isEditMode);
+
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
@@ -82,6 +85,34 @@ export default function ShopOrderFormDrawer({ user, editRow, onClose, onSaveSucc
     }).catch(e => setOptionsError('Failed to load warehouses: ' + e.message));
   }, [user]);
 
+  useEffect(() => {
+    if (!isEditMode) return;
+    setLinesLoading(true);
+    apiCall('Shop Order Lines', { param1: editRow.ShopOrderNumber }, { User: user?.Username }, 'lookup')
+      .then(d => {
+        if (d.State === 0) {
+          setLines((d.List0 || []).map(l => ({
+            childItemID: l.ChildItemID, childItemCode: l.ChildItemCode, childItemDescription: l.ItemDescription,
+            quantity: l.ChildQuantityRequired
+          })));
+        } else {
+          setError(d.Message || 'Failed to load lines.');
+        }
+      })
+      .catch(e => setError('Failed to load lines: ' + e.message))
+      .finally(() => setLinesLoading(false));
+  }, [isEditMode, editRow, user]);
+
+  const addLine = () => setLines(prev => [...prev, { childItemID: '', childItemCode: '', childItemDescription: '', quantity: '' }]);
+  const removeLine = (idx) => setLines(prev => prev.filter((_, i) => i !== idx));
+  const updateLineItem = (idx, id) => {
+    const opt = itemOptions.find(o => String(o.value) === String(id));
+    setLines(prev => prev.map((l, i) => i === idx ? {
+      ...l, childItemID: id, childItemCode: opt?.itemCode || '', childItemDescription: opt?.itemName || ''
+    } : l));
+  };
+  const updateLineQty = (idx, val) => setLines(prev => prev.map((l, i) => i === idx ? { ...l, quantity: val } : l));
+
   const handleItemChange = (id) => {
     setItemID(id);
     const opt = itemOptions.find(o => String(o.value) === String(id));
@@ -107,9 +138,20 @@ export default function ShopOrderFormDrawer({ user, editRow, onClose, onSaveSucc
     if (!shopOrderDate) { setError('Please select a date.'); return; }
     if (!shiftNo) { setError('Please select a shift.'); return; }
     if (batchQuantity <= 0) { setError('Selected formula has no Batch Quantity set.'); return; }
+    if (isEditMode) {
+      if (lines.length === 0) { setError('Add at least one line.'); return; }
+      if (lines.some(l => !l.childItemID)) { setError('Every line needs an item selected.'); return; }
+      if (lines.some(l => !l.quantity || Number(l.quantity) <= 0)) { setError('Every line needs a quantity greater than 0.'); return; }
+    }
 
     setSaving(true);
     try {
+      const lineMember = isEditMode ? lines.map((l, i) => ({
+        Line: i + 1,
+        ChildItemID: Number(l.childItemID),
+        Qty: Number(l.quantity)
+      })) : undefined;
+
       const res = await apiCall(isEditMode ? 'Edit Shop Order' : 'New Shop Order', {
         ...(isEditMode ? { ShopOrderNo: editRow.ShopOrderNumber } : {}),
         ShopOrderDate: shopOrderDate,
@@ -123,7 +165,10 @@ export default function ShopOrderFormDrawer({ user, editRow, onClose, onSaveSucc
         MAchineID: Number(machineID),
         Qty: Number(qty),
         ShiftNo: Number(shiftNo)
-      }, { User: user?.Username }, 'shop_order');
+      }, {
+        User: user?.Username,
+        ...(isEditMode ? { LineMember: JSON.stringify(lineMember) } : {})
+      }, 'shop_order');
 
       if (res.State === 0) {
         setSuccess(isEditMode ? 'Shop Order updated successfully!' : 'Shop Order created successfully!');
@@ -141,7 +186,7 @@ export default function ShopOrderFormDrawer({ user, editRow, onClose, onSaveSucc
   return (
     <>
       <div style={{
-        position: 'fixed', top: 0, right: 0, bottom: 0, width: 560, maxWidth: '95vw',
+        position: 'fixed', top: 0, right: 0, bottom: 0, width: 680, maxWidth: '95vw',
         background: 'var(--surface)', boxShadow: 'var(--shadow-lg)', zIndex: 1100,
         display: 'flex', flexDirection: 'column', fontFamily: 'var(--font)'
       }}>
@@ -224,12 +269,71 @@ export default function ShopOrderFormDrawer({ user, editRow, onClose, onSaveSucc
               </div>
             </div>
 
-            {factor > 0 && (
+            {!isEditMode && factor > 0 && (
               <div style={{ fontSize: 11.5, color: 'var(--hint)' }}>
                 = {factor.toLocaleString(undefined, { maximumFractionDigits: 3 })}x batch factor -- each BOM line's per-batch quantity will be scaled by this.
               </div>
             )}
           </div>
+
+          {isEditMode && (
+            <div style={{ background: 'var(--surface)', padding: 20, borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: 'var(--text)' }}>Lines</h3>
+                <button
+                  onClick={addLine}
+                  style={{ padding: '6px 14px', borderRadius: 'var(--radius-xs)', border: '1px solid var(--border2)', background: 'var(--surface)', color: 'var(--text)', fontWeight: 600, fontSize: 12.5, cursor: 'pointer' }}
+                >
+                  + Add Line
+                </button>
+              </div>
+
+              {linesLoading ? (
+                <div style={{ fontSize: 13, color: 'var(--hint)' }}>Loading...</div>
+              ) : lines.length === 0 ? (
+                <div style={{ fontSize: 13, color: 'var(--hint)' }}>No lines yet -- click "Add Line" to add raw materials.</div>
+              ) : (
+                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                  <thead>
+                    <tr>
+                      <th style={{ textAlign: 'left', padding: '8px 6px', fontSize: 11, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', borderBottom: '1px solid var(--border)' }}>#</th>
+                      <th style={{ textAlign: 'left', padding: '8px 6px', fontSize: 11, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', borderBottom: '1px solid var(--border)' }}>Item</th>
+                      <th style={{ textAlign: 'right', padding: '8px 6px', fontSize: 11, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', borderBottom: '1px solid var(--border)' }}>Qty</th>
+                      <th style={{ borderBottom: '1px solid var(--border)' }}></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {lines.map((l, idx) => (
+                      <tr key={idx}>
+                        <td style={{ padding: '8px 6px', fontSize: 13, color: 'var(--muted)' }}>{idx + 1}</td>
+                        <td style={{ padding: '8px 6px', minWidth: 220 }}>
+                          <SearchableSelect
+                            value={l.childItemID}
+                            onChange={(id) => updateLineItem(idx, id)}
+                            options={itemOptions}
+                            placeholder="Search item..."
+                          />
+                        </td>
+                        <td style={{ padding: '8px 6px', width: 120 }}>
+                          <input
+                            type="number" step="0.00001" value={l.quantity}
+                            onChange={e => updateLineQty(idx, e.target.value)}
+                            style={{ ...inputStyle, textAlign: 'right' }}
+                          />
+                        </td>
+                        <td style={{ padding: '8px 6px', width: 40 }}>
+                          <button
+                            onClick={() => removeLine(idx)}
+                            style={{ background: 'none', border: 'none', color: 'var(--red)', fontSize: 16, cursor: 'pointer' }}
+                          >×</button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          )}
         </div>
 
         <div style={{ padding: '14px 24px', borderTop: '1px solid var(--border)', background: 'var(--surface)', display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
