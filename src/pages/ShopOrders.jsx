@@ -2,11 +2,13 @@ import React, { useState, useEffect } from 'react';
 import { apiCall } from '../shared/api.js';
 import DataGrid from '../shared/DataGrid.jsx';
 import ShopOrderFormDrawer from './ShopOrderFormDrawer.jsx';
+import ShopOrderViewDrawer from './ShopOrderViewDrawer.jsx';
 
 export default function ShopOrders({ user }) {
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [viewRow, setViewRow] = useState(null);
   const [formRow, setFormRow] = useState(null);
 
   const loadData = async () => {
@@ -29,15 +31,6 @@ export default function ShopOrders({ user }) {
   useEffect(() => {
     loadData();
   }, [user]);
-
-  const handleEdit = (row) => {
-    if (Number(row.OrderState) !== 0) {
-      setError('Only draft shop orders (State 0) can be edited.');
-      return;
-    }
-    setError('');
-    setFormRow(row);
-  };
 
   const columns = [
     { key: 'ShopOrderNumber', label: 'Order #', width: 110, align: 'right' },
@@ -70,10 +63,19 @@ export default function ShopOrders({ user }) {
           rows={data}
           loading={loading}
           onAdd={() => setFormRow({ isNew: true })}
-          onEdit={handleEdit}
+          onEdit={(row) => setViewRow(row)}
           onRefresh={loadData}
         />
       </div>
+
+      {viewRow && (
+        <ShopOrderViewDrawer
+          user={user}
+          row={viewRow}
+          onClose={() => setViewRow(null)}
+          onEdit={(row) => { setViewRow(null); setFormRow(row); }}
+        />
+      )}
 
       {formRow && (
         <ShopOrderFormDrawer
