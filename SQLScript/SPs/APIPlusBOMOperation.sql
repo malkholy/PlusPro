@@ -162,6 +162,66 @@ BEGIN
     END
 
     -- =============================================
+    -- COPY BOM
+    -- =============================================
+    -- Duplicates an existing formula's header + lines onto a different
+    -- target item -- same Machine/Batch Qty/lines, just re-pointed. New
+    -- FormulaID via GetSequenceNo, same as New BOM.
+    IF @Operation = 'Copy BOM'
+    BEGIN
+        DECLARE @CB_SourceFormulaID int, @CB_TargetItemID int,
+                @CB_MachineID int, @CB_BatchQuantity float,
+                @CB_TargetItemCode nvarchar(max), @CB_TargetItemType nvarchar(2), @CB_NewFormulaID int
+
+        SELECT @CB_SourceFormulaID = SourceFormulaID, @CB_TargetItemID = TargetItemID
+        FROM OPENJSON(@LineData) WITH (
+            SourceFormulaID int '$.SourceFormulaID',
+            TargetItemID int '$.TargetItemID'
+        )
+
+        SELECT @CB_MachineID = MachineID, @CB_BatchQuantity = BatchQuantity
+        FROM prd.BillOfMaterialHeader
+        WHERE FormulaID = @CB_SourceFormulaID
+
+        IF @CB_MachineID IS NULL
+        BEGIN
+            SET @State = 1
+            SET @Message = 'Source formula not found'
+            RETURN
+        END
+
+        SELECT @CB_TargetItemCode = ItemCode, @CB_TargetItemType = ItemType
+        FROM inv.ItemMaster
+        WHERE ItemID = @CB_TargetItemID
+
+        IF @CB_TargetItemCode IS NULL
+        BEGIN
+            SET @State = 1
+            SET @Message = 'Target item not found'
+            RETURN
+        END
+
+        EXEC GetSequenceNo 23, @CB_NewFormulaID OUT
+
+        INSERT INTO prd.BillOfMaterialHeader
+            (FormulaID, FormulaFacility, FormulaTypeID, MachineID, ParentItemID, ParentItemCode, BatchQuantity, ParentItemType,
+             FormulaCreatedBy, FormulaCreatedDate, FormulaLastMaintBy, FormulaLastMaintDate)
+        VALUES
+            (@CB_NewFormulaID, 'PRO', 1, @CB_MachineID, @CB_TargetItemID, @CB_TargetItemCode, @CB_BatchQuantity, @CB_TargetItemType,
+             @User, GETDATE(), @User, GETDATE())
+
+        INSERT INTO prd.BillOfMaterialLine
+            (LineFormulaID, LineParentItemID, LineParentItemCode, Line, ChildItemID, ChildItemCode, Quantity, ChildItemType)
+        SELECT
+            @CB_NewFormulaID, @CB_TargetItemID, @CB_TargetItemCode, Line, ChildItemID, ChildItemCode, Quantity, ChildItemType
+        FROM prd.BillOfMaterialLine
+        WHERE LineFormulaID = @CB_SourceFormulaID
+
+        SELECT * FROM prd.BillOfMaterialHeader WHERE FormulaID = @CB_NewFormulaID
+        RETURN
+    END
+
+    -- =============================================
     -- INVALID OPERATION
     -- =============================================
     SET @State = 1

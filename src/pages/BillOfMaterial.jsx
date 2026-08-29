@@ -3,6 +3,7 @@ import { apiCall } from '../shared/api.js';
 import DataGrid from '../shared/DataGrid.jsx';
 import BillOfMaterialDrawer from './BillOfMaterialDrawer.jsx';
 import BillOfMaterialFormDrawer from './BillOfMaterialFormDrawer.jsx';
+import BillOfMaterialCopyModal from './BillOfMaterialCopyModal.jsx';
 
 export default function BillOfMaterial({ user }) {
   const [data, setData] = useState([]);
@@ -10,6 +11,7 @@ export default function BillOfMaterial({ user }) {
   const [error, setError] = useState('');
   const [viewRow, setViewRow] = useState(null);
   const [formRow, setFormRow] = useState(null);
+  const [copyRow, setCopyRow] = useState(null);
   // Custom in-app confirm dialog -- native window.confirm() can silently
   // no-op inside some embedded/webview hosts (returns immediately without
   // blocking), which would skip straight past the delete every time.
@@ -90,9 +92,19 @@ export default function BillOfMaterial({ user }) {
           onAdd={() => setFormRow({ isNew: true })}
           onEdit={(row) => setViewRow(row)}
           onDelete={handleDelete}
+          onDuplicate={(row) => setCopyRow(row)}
           onRefresh={loadData}
         />
       </div>
+
+      {copyRow && (
+        <BillOfMaterialCopyModal
+          user={user}
+          row={copyRow}
+          onClose={() => setCopyRow(null)}
+          onSuccess={() => { setCopyRow(null); loadData(); }}
+        />
+      )}
 
       {viewRow && (
         <BillOfMaterialDrawer
