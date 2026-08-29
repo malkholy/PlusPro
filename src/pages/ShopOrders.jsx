@@ -7,7 +7,7 @@ export default function ShopOrders({ user }) {
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [formOpen, setFormOpen] = useState(false);
+  const [formRow, setFormRow] = useState(null);
 
   const loadData = async () => {
     setLoading(true);
@@ -29,6 +29,15 @@ export default function ShopOrders({ user }) {
   useEffect(() => {
     loadData();
   }, [user]);
+
+  const handleEdit = (row) => {
+    if (Number(row.OrderState) !== 0) {
+      setError('Only draft shop orders (State 0) can be edited.');
+      return;
+    }
+    setError('');
+    setFormRow(row);
+  };
 
   const columns = [
     { key: 'ShopOrderNumber', label: 'Order #', width: 110, align: 'right' },
@@ -60,16 +69,18 @@ export default function ShopOrders({ user }) {
           columns={columns}
           rows={data}
           loading={loading}
-          onAdd={() => setFormOpen(true)}
+          onAdd={() => setFormRow({ isNew: true })}
+          onEdit={handleEdit}
           onRefresh={loadData}
         />
       </div>
 
-      {formOpen && (
+      {formRow && (
         <ShopOrderFormDrawer
           user={user}
-          onClose={() => setFormOpen(false)}
-          onSaveSuccess={() => { setFormOpen(false); loadData(); }}
+          editRow={formRow.isNew ? null : formRow}
+          onClose={() => setFormRow(null)}
+          onSaveSuccess={() => { setFormRow(null); loadData(); }}
         />
       )}
     </div>

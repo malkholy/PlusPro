@@ -20,21 +20,23 @@ function toLocalDateStr(date) {
   return `${y}-${m}-${d}`;
 }
 
-export default function ShopOrderFormDrawer({ user, onClose, onSaveSuccess }) {
+export default function ShopOrderFormDrawer({ user, editRow, onClose, onSaveSuccess }) {
+  const isEditMode = !!editRow;
+
   const [itemOptions, setItemOptions] = useState([]);
   const [formulaOptions, setFormulaOptions] = useState([]);
   const [machineOptions, setMachineOptions] = useState([]);
   const [warehouseOptions, setWarehouseOptions] = useState([]);
   const [optionsError, setOptionsError] = useState('');
 
-  const [itemID, setItemID] = useState('');
-  const [itemCode, setItemCode] = useState('');
-  const [itemDescription, setItemDescription] = useState('');
-  const [formulaID, setFormulaID] = useState('');
-  const [machineID, setMachineID] = useState('');
-  const [warehouse, setWarehouse] = useState('');
-  const [qty, setQty] = useState('');
-  const [shopOrderDate, setShopOrderDate] = useState(() => toLocalDateStr(new Date()));
+  const [itemID, setItemID] = useState(editRow?.ParentItemID || '');
+  const [itemCode, setItemCode] = useState(editRow?.ParentItemCode || '');
+  const [itemDescription, setItemDescription] = useState(editRow?.ItemDescription || '');
+  const [formulaID, setFormulaID] = useState(editRow?.FlormulaID || '');
+  const [machineID, setMachineID] = useState(editRow?.MachineID || '');
+  const [warehouse, setWarehouse] = useState(editRow?.ShopOrderWarehouse || '');
+  const [qty, setQty] = useState(editRow?.QuantityRequired ?? '');
+  const [shopOrderDate, setShopOrderDate] = useState(editRow?.ShopOrderDate ? editRow.ShopOrderDate.split('T')[0] : toLocalDateStr(new Date()));
 
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -106,7 +108,8 @@ export default function ShopOrderFormDrawer({ user, onClose, onSaveSuccess }) {
 
     setSaving(true);
     try {
-      const res = await apiCall('New Shop Order', {
+      const res = await apiCall(isEditMode ? 'Edit Shop Order' : 'New Shop Order', {
+        ...(isEditMode ? { ShopOrderNo: editRow.ShopOrderNumber } : {}),
         ShopOrderDate: shopOrderDate,
         Warehouse: warehouse,
         // The SP's OPENJSON WITH clause declares these columns as
@@ -120,7 +123,7 @@ export default function ShopOrderFormDrawer({ user, onClose, onSaveSuccess }) {
       }, { User: user?.Username }, 'shop_order');
 
       if (res.State === 0) {
-        setSuccess('Shop Order created successfully!');
+        setSuccess(isEditMode ? 'Shop Order updated successfully!' : 'Shop Order created successfully!');
         setTimeout(() => { onSaveSuccess(); onClose(); }, 700);
       } else {
         setError(res.Message || 'Failed to save.');
@@ -140,7 +143,9 @@ export default function ShopOrderFormDrawer({ user, onClose, onSaveSuccess }) {
         display: 'flex', flexDirection: 'column', fontFamily: 'var(--font)'
       }}>
         <div style={{ padding: '16px 24px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: 'var(--text)' }}>New Shop Order</h2>
+          <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: 'var(--text)' }}>
+            {isEditMode ? `Edit Shop Order: ${editRow.ShopOrderNumber}` : 'New Shop Order'}
+          </h2>
           <button
             onClick={onClose}
             style={{
@@ -167,7 +172,7 @@ export default function ShopOrderFormDrawer({ user, onClose, onSaveSuccess }) {
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
               <div>
                 <label style={labelStyle}>Item</label>
-                <SearchableSelect value={itemID} onChange={handleItemChange} options={itemOptions} placeholder="Search item code / description..." />
+                <SearchableSelect value={itemID} onChange={handleItemChange} options={itemOptions} placeholder="Search item code / description..." disabled={isEditMode} />
               </div>
               <div>
                 <label style={labelStyle}>Item Description</label>
