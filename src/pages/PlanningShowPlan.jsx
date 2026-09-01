@@ -103,6 +103,10 @@ export default function PlanningShowPlan({ user, onClose }) {
   const [formulaModal, setFormulaModal] = useState(null);
   const [creatingShopOrder, setCreatingShopOrder] = useState(false);
   const [shopOrderNotice, setShopOrderNotice] = useState(null);
+  // Custom in-app confirm dialog -- native window.confirm() can silently
+  // no-op inside some embedded/webview hosts (returns immediately without
+  // blocking), which would skip straight past the delete every time.
+  const [confirmDialog, setConfirmDialog] = useState(null);
 
   useEffect(() => {
     apiCall('Item Master All', null, { User: user?.Username }, 'lookup').then(d => {
@@ -398,6 +402,36 @@ export default function PlanningShowPlan({ user, onClose }) {
     } finally {
       setCreatingShopOrder(false);
     }
+  };
+
+  // Right-click "Delete Slot" -- blocked (server-side too) once a Shop
+  // Order's been created from this slot.
+  const handleDeleteSlot = (item) => {
+    setContextMenu(null);
+    if (item.shopOrderNo) {
+      setShopOrderNotice({ type: 'error', message: `Cannot delete -- Shop Order ${item.shopOrderNo} is already linked to this slot.` });
+      return;
+    }
+    setConfirmDialog({
+      title: 'Delete Slot',
+      message: `Remove ${item.itemCode} from this time slot? This deletes the shift-plan row entirely.`,
+      confirmLabel: 'Delete',
+      danger: true,
+      onConfirm: async () => {
+        setConfirmDialog(null);
+        try {
+          const res = await apiCall('Delete Shift Plan Slot', item.shiftPlanID, { User: user?.Username }, 'planning');
+          if (res.State === 0) {
+            setShopOrderNotice({ type: 'success', message: `Removed ${item.itemCode} from this slot.` });
+            await handleGenerate();
+          } else {
+            setShopOrderNotice({ type: 'error', message: res.Message || 'Failed to delete slot.' });
+          }
+        } catch (e) {
+          setShopOrderNotice({ type: 'error', message: e.message });
+        }
+      }
+    });
   };
 
   const renderCell = (m, d, shiftNo) => {
@@ -852,6 +886,18 @@ export default function PlanningShowPlan({ user, onClose }) {
             >
               {creatingShopOrder ? 'Creating...' : '🏭 Create Shop Order'}
             </button>
+            <button
+              onClick={() => handleDeleteSlot(contextMenu.item)}
+              style={{
+                display: 'block', width: '100%', textAlign: 'left', padding: '10px 14px', border: 'none',
+                borderTop: '1px solid var(--border)', background: 'none', fontSize: 12.5, fontWeight: 600,
+                color: 'var(--red)', cursor: 'pointer'
+              }}
+              onMouseEnter={e => { e.currentTarget.style.background = 'var(--red-soft)'; }}
+              onMouseLeave={e => { e.currentTarget.style.background = 'none'; }}
+            >
+              🗑 Delete Slot
+            </button>
           </div>
         </>
       )}
@@ -952,6 +998,35 @@ export default function PlanningShowPlan({ user, onClose }) {
           </>
         );
       })()}
+
+      {confirmDialog && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.45)', zIndex: 1300, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ width: 420, maxWidth: '90vw', background: 'var(--bg)', borderRadius: 14, boxShadow: '0 10px 40px rgba(0,0,0,0.3)' }}>
+            <div style={{ padding: '20px 22px' }}>
+              <h3 style={{ margin: 0, fontSize: 16, fontWeight: 800, color: 'var(--text)' }}>{confirmDialog.title}</h3>
+              <p style={{ margin: '10px 0 0 0', fontSize: 12.5, color: 'var(--muted)', lineHeight: 1.5 }}>{confirmDialog.message}</p>
+            </div>
+            <div style={{ padding: '14px 22px', borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'flex-end', gap: 12 }}>
+              <button
+                onClick={() => setConfirmDialog(null)}
+                style={{ height: 36, padding: '0 20px', background: 'var(--soft)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 12.5, fontWeight: 700, cursor: 'pointer' }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmDialog.onConfirm}
+                style={{
+                  height: 36, padding: '0 24px',
+                  background: confirmDialog.danger ? 'var(--red)' : 'linear-gradient(135deg, var(--orange), var(--orange2))',
+                  color: '#fff', border: 'none', borderRadius: 8, fontSize: 12.5, fontWeight: 700, cursor: 'pointer'
+                }}
+              >
+                {confirmDialog.confirmLabel || 'Confirm'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }

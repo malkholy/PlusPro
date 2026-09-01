@@ -449,6 +449,36 @@ BEGIN
     END
 
     -- =============================================
+    -- DELETE SHIFT PLAN SLOT (Show Plan right-click) -- blocked once a Shop
+    -- Order has been created from this slot.
+    -- =============================================
+    IF @Operation = 'Delete Shift Plan Slot'
+    BEGIN
+        DECLARE @DSP_ShiftPlanID int, @DSP_ShopOrderNo int
+
+        SELECT @DSP_ShiftPlanID = CAST(@LineData AS int)
+
+        IF @DSP_ShiftPlanID IS NULL OR NOT EXISTS (SELECT 1 FROM [PRO].[PrdItemPlanningShiftPlan] WHERE ShiftPlanID = @DSP_ShiftPlanID)
+        BEGIN
+            SET @State = 1
+            SET @Message = 'Shift plan slot not found'
+            RETURN
+        END
+
+        SELECT @DSP_ShopOrderNo = ShopOrderNo FROM [PRO].[PrdItemPlanningShiftPlan] WHERE ShiftPlanID = @DSP_ShiftPlanID
+
+        IF @DSP_ShopOrderNo IS NOT NULL
+        BEGIN
+            SET @State = 1
+            SET @Message = 'Cannot delete -- Shop Order ' + CAST(@DSP_ShopOrderNo AS nvarchar(20)) + ' is already linked to this slot'
+            RETURN
+        END
+
+        DELETE FROM [PRO].[PrdItemPlanningShiftPlan] WHERE ShiftPlanID = @DSP_ShiftPlanID
+        RETURN
+    END
+
+    -- =============================================
     -- INVALID OPERATION
     -- =============================================
     SET @State = 1
