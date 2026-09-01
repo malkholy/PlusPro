@@ -131,7 +131,7 @@ export default function FGInquiryModal({ user, onClose }) {
     <>
       <div style={{
         position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%, -50%)',
-        width: 640, maxWidth: '92vw', maxHeight: '85vh', background: 'var(--surface)', borderRadius: 'var(--radius)',
+        width: 920, maxWidth: '95vw', maxHeight: '90vh', background: 'var(--surface)', borderRadius: 'var(--radius)',
         boxShadow: 'var(--shadow-lg)', border: '1px solid var(--border)', zIndex: 1200,
         fontFamily: 'var(--font)', overflow: 'hidden', display: 'flex', flexDirection: 'column'
       }}>
@@ -204,8 +204,8 @@ export default function FGInquiryModal({ user, onClose }) {
               <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 12 }}>
                 Formula <strong style={{ color: 'var(--text)' }}>{formulaCode}</strong> · Batch Qty {batchQuantity.toLocaleString(undefined, { maximumFractionDigits: 5 })}
               </div>
-              <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', overflow: 'hidden' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', overflow: 'auto' }}>
+                <table style={{ width: '100%', minWidth: 640, borderCollapse: 'collapse' }}>
                   <thead>
                     <tr>
                       <th style={thStyle}>#</th>
