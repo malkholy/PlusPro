@@ -242,13 +242,28 @@ export default function PlanningItemHistoryDrawer({ user, editRow, onClose, onSa
     setShiftPlanRows(computedShiftPlan);
   };
 
+  // Cumulative is capped at the header's Planned Qty -- once manual edits
+  // push the running total past the plan, further shifts just show the plan
+  // total instead of a number that overshoots it.
   const recomputeCumulative = (rows) => {
+    const cap = Number(plannedQty || 0);
     let cumulative = 0;
     return rows.map(r => {
       cumulative += Number(r.qty || 0);
-      return { ...r, cumulative };
+      const capped = cap > 0 ? Math.min(cumulative, cap) : cumulative;
+      return { ...r, cumulative: capped };
     });
   };
+
+  // Re-cap cumulative if Planned Qty changes after the shift plan's already
+  // been manually edited (dirty) -- otherwise the cap would only refresh the
+  // next time a row itself is edited.
+  useEffect(() => {
+    if (shiftPlanDirty) {
+      setShiftPlanRows(prev => (prev.length > 0 ? recomputeCumulative(prev) : prev));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [plannedQty, shiftPlanDirty]);
 
   const updateShiftRowQty = (idx, val) => {
     setShiftPlanDirty(true);
