@@ -173,8 +173,10 @@ export default function PlanningItemHistoryDrawer({ user, editRow, onClose, onSa
   // PlannedQty is distributed across BOTH shifts back to back (24h/day
   // capacity), alternating starting from the calculated Shift No, until the
   // last (partial) shift finishes the run. End Date is the calendar date
-  // that final shift actually completes on.
-  const { endDate, shiftPlan, shiftsNeeded } = useMemo(() => {
+  // that final shift actually completes on. This is the auto-computed
+  // default -- the actual editable schedule lives in shiftPlanRows below,
+  // which starts out synced to this but can diverge once the user edits it.
+  const { endDate: computedEndDate, shiftPlan: computedShiftPlan } = useMemo(() => {
     const batchQty = Number(selectedFormula?.batchQuantity || 0);
     const qty = Number(plannedQty || 0);
     const prodTime = Number(productionTime || 0);
@@ -217,6 +219,74 @@ export default function PlanningItemHistoryDrawer({ user, editRow, onClose, onSa
     }
     return { endDate: toLocalDateStr(lastEnd), shiftPlan: rows, shiftsNeeded: shifts };
   }, [startDate, plannedQty, productionTime, selectedFormula, shiftNo]);
+
+  // The editable Shift Plan -- stays synced to the auto-computed schedule
+  // until the user manually edits a row (edits qty, adds, or removes a
+  // shift), at which point it stops auto-resyncing so their edits aren't
+  // silently overwritten by an unrelated header field change. "Recalculate"
+  // resets it back to the auto-computed schedule on demand.
+  const [shiftPlanRows, setShiftPlanRows] = useState([]);
+  const [shiftPlanDirty, setShiftPlanDirty] = useState(false);
+
+  useEffect(() => {
+    if (!shiftPlanDirty) {
+      setShiftPlanRows(computedShiftPlan);
+    }
+  }, [computedShiftPlan, shiftPlanDirty]);
+
+  const endDate = shiftPlanRows.length > 0 ? shiftPlanRows[shiftPlanRows.length - 1].date : computedEndDate;
+  const shiftsNeeded = shiftPlanRows.length;
+
+  const recalculateShiftPlan = () => {
+    setShiftPlanDirty(false);
+    setShiftPlanRows(computedShiftPlan);
+  };
+
+  const recomputeCumulative = (rows) => {
+    let cumulative = 0;
+    return rows.map(r => {
+      cumulative += Number(r.qty || 0);
+      return { ...r, cumulative };
+    });
+  };
+
+  const updateShiftRowQty = (idx, val) => {
+    setShiftPlanDirty(true);
+    setShiftPlanRows(prev => recomputeCumulative(
+      prev.map((r, i) => i === idx ? { ...r, qty: val === '' ? '' : Number(val) } : r)
+    ));
+  };
+
+  const removeShiftRow = (idx) => {
+    setShiftPlanDirty(true);
+    setShiftPlanRows(prev => recomputeCumulative(
+      prev.filter((_, i) => i !== idx).map((r, i) => ({ ...r, index: i + 1 }))
+    ));
+  };
+
+  const addShiftRow = () => {
+    if (!startDate) return;
+    setShiftPlanDirty(true);
+    setShiftPlanRows(prev => {
+      const i = prev.length;
+      const anchor = new Date(startDate + 'T00:00:00');
+      anchor.setHours(shiftStartHour(shiftNo), 0, 0, 0);
+      const shiftStart = new Date(anchor.getTime() + i * SHIFT_SECONDS * 1000);
+      const shiftEnd = new Date(shiftStart.getTime() + SHIFT_SECONDS * 1000);
+      const newRow = {
+        index: i + 1,
+        date: toLocalDateStr(shiftStart),
+        shift: shiftStart.getHours() === 19 ? '2' : '1',
+        qty: 0,
+        cumulative: 0,
+        startTime: formatTime(shiftStart),
+        endTime: formatTime(shiftEnd),
+        startTimeRaw: toLocalDateTimeStr(shiftStart),
+        endTimeRaw: toLocalDateTimeStr(shiftEnd)
+      };
+      return recomputeCumulative([...prev, newRow]);
+    });
+  };
 
   const handleItemChange = (id) => {
     setItemID(id);
@@ -268,6 +338,14 @@ export default function PlanningItemHistoryDrawer({ user, editRow, onClose, onSa
       setError('Please select a Start Date.');
       return;
     }
+    if (shiftPlanRows.length === 0) {
+      setError('Add at least one shift to the Shift Plan.');
+      return;
+    }
+    if (shiftPlanRows.some(r => r.qty === '' || r.qty == null || Number(r.qty) < 0)) {
+      setError('Every shift needs a Qty of 0 or more.');
+      return;
+    }
 
     setSaving(true);
 
@@ -285,13 +363,13 @@ export default function PlanningItemHistoryDrawer({ user, editRow, onClose, onSa
       Warehouse: warehouse || ''
     };
 
-    const shiftPlanLines = shiftPlan.map(r => ({
+    const shiftPlanLines = shiftPlanRows.map(r => ({
       ShiftIndex: r.index,
       ShiftDate: r.date,
       ShiftNo: Number(r.shift),
       StartTime: r.startTimeRaw,
       EndTime: r.endTimeRaw,
-      PlannedQty: r.qty,
+      PlannedQty: Number(r.qty || 0),
       CumulativeQty: r.cumulative
     }));
 
@@ -525,9 +603,27 @@ export default function PlanningItemHistoryDrawer({ user, editRow, onClose, onSa
 
           {activeTab === 'shift' && (
             <div style={{ backgroundColor: '#fff', padding: 20, borderRadius: 8, border: '1px solid #E2E8F0' }}>
-              <h3 style={{ margin: '0 0 4px 0', fontSize: 16, color: '#334155', fontWeight: 600 }}>Shift Plan</h3>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 4 }}>
+                <h3 style={{ margin: 0, fontSize: 16, color: '#334155', fontWeight: 600 }}>Shift Plan</h3>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button
+                    onClick={recalculateShiftPlan}
+                    title="Reset back to the auto-computed schedule"
+                    style={{ padding: '6px 14px', borderRadius: 6, border: '1px solid #CBD5E1', background: '#fff', color: '#2563EB', fontWeight: 600, fontSize: 12.5, cursor: 'pointer' }}
+                  >
+                    🔄 Recalculate
+                  </button>
+                  <button
+                    onClick={addShiftRow}
+                    disabled={!startDate}
+                    style={{ padding: '6px 14px', borderRadius: 6, border: '1px solid #CBD5E1', background: '#fff', color: '#334155', fontWeight: 600, fontSize: 12.5, cursor: startDate ? 'pointer' : 'not-allowed', opacity: startDate ? 1 : 0.5 }}
+                  >
+                    + Add Shift
+                  </button>
+                </div>
+              </div>
               <p style={{ margin: '0 0 16px 0', fontSize: 12.5, color: '#64748B' }}>
-                Planned Qty is distributed across both shifts back to back (24h/day), starting from the calculated Shift No, until production completes.
+                Auto-distributed across both shifts back to back (24h/day) starting from the calculated Shift No -- edit a shift's Qty, remove one, or add another as needed.
               </p>
               <div style={{ maxWidth: 280, marginBottom: 20 }}>
                 <label style={labelStyle}>Starting Shift (calculated from current time)</label>
@@ -537,7 +633,7 @@ export default function PlanningItemHistoryDrawer({ user, editRow, onClose, onSa
                   style={{ ...inputStyle, background: '#F1F5F9', color: '#64748B' }}
                 />
               </div>
-              {shiftPlan.length === 0 ? (
+              {shiftPlanRows.length === 0 ? (
                 <div style={{ fontSize: 13, color: '#94A3B8' }}>Fill in Formula, Production Time, Planned Qty, and Start Date to see the shift plan.</div>
               ) : (
                 <table style={{ width: '100%', borderCollapse: 'collapse' }}>
@@ -550,18 +646,31 @@ export default function PlanningItemHistoryDrawer({ user, editRow, onClose, onSa
                       <th style={thStyle}>End Time</th>
                       <th style={{ ...thStyle, textAlign: 'right' }}>Qty This Shift</th>
                       <th style={{ ...thStyle, textAlign: 'right' }}>Cumulative</th>
+                      <th style={thStyle}></th>
                     </tr>
                   </thead>
                   <tbody>
-                    {shiftPlan.map(r => (
-                      <tr key={r.index}>
+                    {shiftPlanRows.map((r, idx) => (
+                      <tr key={idx}>
                         <td style={tdStyle}>{r.index}</td>
                         <td style={tdStyle}>{r.date}</td>
                         <td style={tdStyle}>{r.shift}</td>
                         <td style={{ ...tdStyle, fontFamily: 'monospace' }}>{r.startTime}</td>
                         <td style={{ ...tdStyle, fontFamily: 'monospace' }}>{r.endTime}</td>
-                        <td style={{ ...tdStyle, textAlign: 'right', fontFamily: 'monospace' }}>{r.qty.toLocaleString(undefined, { maximumFractionDigits: 3 })}</td>
-                        <td style={{ ...tdStyle, textAlign: 'right', fontFamily: 'monospace', fontWeight: 700 }}>{r.cumulative.toLocaleString(undefined, { maximumFractionDigits: 3 })}</td>
+                        <td style={{ ...tdStyle, width: 130 }}>
+                          <input
+                            type="number" step="0.00001" value={r.qty}
+                            onChange={e => updateShiftRowQty(idx, e.target.value)}
+                            style={{ ...inputStyle, textAlign: 'right', padding: '6px 10px' }}
+                          />
+                        </td>
+                        <td style={{ ...tdStyle, textAlign: 'right', fontFamily: 'monospace', fontWeight: 700 }}>{Number(r.cumulative || 0).toLocaleString(undefined, { maximumFractionDigits: 3 })}</td>
+                        <td style={{ ...tdStyle, width: 32 }}>
+                          <button
+                            onClick={() => removeShiftRow(idx)}
+                            style={{ background: 'none', border: 'none', color: '#DC2626', fontSize: 16, cursor: 'pointer' }}
+                          >×</button>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
