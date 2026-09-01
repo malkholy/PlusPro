@@ -3,6 +3,7 @@ import { apiCall } from '../shared/api.js';
 import DataGrid from '../shared/DataGrid.jsx';
 import PlanningItemHistoryDrawer from './PlanningItemHistoryDrawer.jsx';
 import PlanningShowPlan from './PlanningShowPlan.jsx';
+import FGInquiryModal from './FGInquiryModal.jsx';
 
 export default function PlanningItemHistory({ user }) {
   const [data, setData] = useState([]);
@@ -11,6 +12,7 @@ export default function PlanningItemHistory({ user }) {
   const [drawerRow, setDrawerRow] = useState(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [showPlanOpen, setShowPlanOpen] = useState(false);
+  const [fgInquiryOpen, setFgInquiryOpen] = useState(false);
   // Custom in-app confirm dialog -- native window.confirm() can silently
   // no-op inside some embedded/webview hosts (returns immediately without
   // blocking), which would skip straight past the delete every time.
@@ -98,6 +100,14 @@ export default function PlanningItemHistory({ user }) {
         >
           📅 Show Plan
         </button>
+        <button
+          onClick={() => setFgInquiryOpen(true)}
+          style={{ marginLeft: 10, padding: '8px 16px', borderRadius: 'var(--radius-xs)', border: '1px solid var(--border2)', background: 'var(--surface)', color: 'var(--text)', fontWeight: 600, fontSize: 13, cursor: 'pointer' }}
+          onMouseEnter={e => { e.currentTarget.style.background = 'var(--soft)'; e.currentTarget.style.borderColor = 'var(--orange)'; e.currentTarget.style.color = 'var(--orange2)'; }}
+          onMouseLeave={e => { e.currentTarget.style.background = 'var(--surface)'; e.currentTarget.style.borderColor = 'var(--border2)'; e.currentTarget.style.color = 'var(--text)'; }}
+        >
+          📦 FG Inquery
+        </button>
       </div>
       <div style={{ flex: 1, minHeight: 0 }}>
         <DataGrid
@@ -126,6 +136,13 @@ export default function PlanningItemHistory({ user }) {
         <PlanningShowPlan
           user={user}
           onClose={() => setShowPlanOpen(false)}
+        />
+      )}
+
+      {fgInquiryOpen && (
+        <FGInquiryModal
+          user={user}
+          onClose={() => setFgInquiryOpen(false)}
         />
       )}
 
