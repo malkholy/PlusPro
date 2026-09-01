@@ -94,6 +94,7 @@ export default function PlanningShowPlan({ user, onClose }) {
   const [assignFormulaID, setAssignFormulaID] = useState('');
   const [assignWarehouse, setAssignWarehouse] = useState('');
   const [assignQty, setAssignQty] = useState('');
+  const [assignProductionTime, setAssignProductionTime] = useState('');
   const [assignSaving, setAssignSaving] = useState(false);
   const [assignError, setAssignError] = useState('');
 
@@ -225,11 +226,21 @@ export default function PlanningShowPlan({ user, onClose }) {
   const selectedAssignFormula = formulaOptions.find(f => String(f.value) === String(assignFormulaID));
   const qtyPerSlot = selectedCount > 0 && Number(assignQty) > 0 ? Number(assignQty) / selectedCount : 0;
 
+  // How many 12h shifts this Qty actually needs at this batch size/production
+  // rate, vs. how many empty slots were selected -- catches "not enough
+  // slots selected" (need to pick more) and "more slots than needed" (some
+  // will sit underfilled) before saving.
+  const assignBatchQty = Number(selectedAssignFormula?.batchQuantity || 0);
+  const assignProdTime = Number(assignProductionTime || 0);
+  const unitsPerShift = assignBatchQty > 0 && assignProdTime > 0 ? (SHIFT_SECONDS / assignProdTime) * assignBatchQty : 0;
+  const slotsNeeded = unitsPerShift > 0 && Number(assignQty) > 0 ? Math.ceil(Number(assignQty) / unitsPerShift) : 0;
+
   const handleAssignSave = async () => {
     setAssignError('');
     if (!assignItemID) { setAssignError('Please select an item.'); return; }
     if (!assignFormulaID) { setAssignError('Please select a formula.'); return; }
     if (!assignWarehouse) { setAssignError('Please select a warehouse.'); return; }
+    if (!assignProductionTime || Number(assignProductionTime) <= 0) { setAssignError('Enter a Production Time greater than 0.'); return; }
     const totalQty = Number(assignQty);
     if (!totalQty || totalQty <= 0) { setAssignError('Enter a Planned Qty greater than 0.'); return; }
     if (selectedCount === 0) { setAssignError('No slots selected.'); return; }
@@ -278,7 +289,7 @@ export default function PlanningShowPlan({ user, onClose }) {
           FormulaID: Number(assignFormulaID),
           MachineID: Number(machineID),
           FormulaBatch: selectedAssignFormula?.batchQuantity ?? 0,
-          ProductionTime: 0,
+          ProductionTime: Number(assignProductionTime) || 0,
           Warehouse: assignWarehouse
         };
 
@@ -288,7 +299,7 @@ export default function PlanningShowPlan({ user, onClose }) {
 
       setAssignModalOpen(false);
       setAssignItemID(''); setAssignItemCode(''); setAssignItemDescription('');
-      setAssignFormulaID(''); setAssignWarehouse(''); setAssignQty('');
+      setAssignFormulaID(''); setAssignWarehouse(''); setAssignQty(''); setAssignProductionTime('');
       setSelectedSlots({});
       await handleGenerate();
     } catch (e) {
@@ -666,6 +677,28 @@ export default function PlanningShowPlan({ user, onClose }) {
                 {qtyPerSlot > 0 && (
                   <div style={{ fontSize: 11.5, color: 'var(--hint)', marginTop: 4 }}>
                     = {qtyPerSlot.toLocaleString(undefined, { maximumFractionDigits: 3 })} per slot, split evenly across {selectedCount} slot{selectedCount > 1 ? 's' : ''}
+                  </div>
+                )}
+              </div>
+
+              <div>
+                <label style={labelStyle}>Production Time (seconds / batch)</label>
+                <input
+                  type="number" value={assignProductionTime}
+                  onChange={e => setAssignProductionTime(e.target.value)}
+                  style={{ ...inputStyle, width: '100%' }}
+                />
+                {slotsNeeded > 0 && (
+                  <div style={{
+                    fontSize: 11.5, fontWeight: 600, marginTop: 6, padding: '6px 10px', borderRadius: 'var(--radius-xs)',
+                    color: slotsNeeded > selectedCount ? 'var(--red)' : (slotsNeeded < selectedCount ? 'var(--orange2)' : 'var(--green)'),
+                    background: slotsNeeded > selectedCount ? 'var(--red-soft)' : (slotsNeeded < selectedCount ? 'var(--orange-soft)' : 'var(--green-soft)')
+                  }}>
+                    {slotsNeeded > selectedCount
+                      ? `This Qty needs ${slotsNeeded} shift${slotsNeeded > 1 ? 's' : ''} at this rate -- select ${slotsNeeded - selectedCount} more empty slot${slotsNeeded - selectedCount > 1 ? 's' : ''}.`
+                      : slotsNeeded < selectedCount
+                      ? `This Qty only needs ${slotsNeeded} shift${slotsNeeded > 1 ? 's' : ''} -- ${selectedCount - slotsNeeded} of the ${selectedCount} selected will sit underfilled.`
+                      : `Fits exactly across ${slotsNeeded} shift${slotsNeeded > 1 ? 's' : ''}.`}
                   </div>
                 )}
               </div>
