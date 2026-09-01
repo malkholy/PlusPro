@@ -392,10 +392,13 @@ BEGIN
         )
 
         SELECT
+            sp.ShiftPlanID,
+            sp.ShopOrderNo,
             h.MachineID,
             mm.MachineCode,
             sp.ShiftDate,
             sp.ShiftNo,
+            h.ItemID,
             sp.ItemCode,
             im.ItemDescription,
             sp.PlannedQty,
@@ -412,6 +415,36 @@ BEGIN
         WHERE (@PSC_FromDate IS NULL OR sp.ShiftDate >= @PSC_FromDate)
           AND (@PSC_ToDate IS NULL OR sp.ShiftDate <= @PSC_ToDate)
         ORDER BY h.MachineID, sp.ShiftDate, sp.ShiftNo
+        RETURN
+    END
+
+    -- =============================================
+    -- LINK SHOP ORDER TO SHIFT
+    -- =============================================
+    -- Stamps a just-created Shop Order's number back onto the shift-plan row
+    -- it was generated from (Show Plan calendar's right-click "Create Shop
+    -- Order"), so the calendar can show which slots already have an order.
+    IF @Operation = 'Link Shop Order To Shift'
+    BEGIN
+        DECLARE @LSO_ShiftPlanID int, @LSO_ShopOrderNo int
+
+        SELECT @LSO_ShiftPlanID = ShiftPlanID, @LSO_ShopOrderNo = ShopOrderNo
+        FROM OPENJSON(@LineData) WITH (
+            ShiftPlanID int '$.ShiftPlanID',
+            ShopOrderNo int '$.ShopOrderNo'
+        )
+
+        IF @LSO_ShiftPlanID IS NULL
+        BEGIN
+            SET @State = 1
+            SET @Message = 'ShiftPlanID is required'
+            RETURN
+        END
+
+        UPDATE [PRO].[PrdItemPlanningShiftPlan]
+        SET ShopOrderNo = @LSO_ShopOrderNo
+        WHERE ShiftPlanID = @LSO_ShiftPlanID
+
         RETURN
     END
 

@@ -98,9 +98,11 @@ export default function PlanningShowPlan({ user, onClose }) {
   const [assignSaving, setAssignSaving] = useState(false);
   const [assignError, setAssignError] = useState('');
 
-  // Right-click on an assigned slot -> "Show Formula".
+  // Right-click on an assigned slot -> "Show Formula" / "Create Shop Order".
   const [contextMenu, setContextMenu] = useState(null);
   const [formulaModal, setFormulaModal] = useState(null);
+  const [creatingShopOrder, setCreatingShopOrder] = useState(false);
+  const [shopOrderNotice, setShopOrderNotice] = useState(null);
 
   useEffect(() => {
     apiCall('Item Master All', null, { User: user?.Username }, 'lookup').then(d => {
@@ -172,10 +174,11 @@ export default function PlanningShowPlan({ user, onClose }) {
         const key = `${r.MachineID}|${dateStr}|${r.ShiftNo}`;
         if (!map[key]) map[key] = [];
         map[key].push({
-          itemCode: r.ItemCode, itemDescription: r.ItemDescription || '', qty: Number(r.PlannedQty || 0),
+          itemID: r.ItemID || null, itemCode: r.ItemCode, itemDescription: r.ItemDescription || '', qty: Number(r.PlannedQty || 0),
           formulaID: r.FormulaID || null, formulaCode: r.FormulaCode || '',
           formulaBatch: Number(r.FormulaBatch || 0), productionTime: Number(r.ProductionTime || 0),
-          warehouse: r.Warehouse || ''
+          warehouse: r.Warehouse || '', machineID: r.MachineID, shiftDate: dateStr, shiftNo: r.ShiftNo,
+          shiftPlanID: r.ShiftPlanID, shopOrderNo: r.ShopOrderNo || null
         });
       });
 
@@ -341,6 +344,62 @@ export default function PlanningShowPlan({ user, onClose }) {
     }
   };
 
+  // Creates a Shop Order using the exact same item/formula/machine/qty/
+  // warehouse/date/shift as the right-clicked slot, then stamps the new
+  // ShopOrderNumber back onto that shift-plan row so the calendar knows it's
+  // covered.
+  const handleCreateShopOrder = async (item) => {
+    setContextMenu(null);
+    if (item.shopOrderNo) {
+      setShopOrderNotice({ type: 'error', message: `This slot already has Shop Order ${item.shopOrderNo}.` });
+      return;
+    }
+    if (!item.itemID || !item.formulaID || !item.machineID || !item.warehouse || !item.qty) {
+      setShopOrderNotice({ type: 'error', message: 'This slot is missing item/formula/machine/warehouse/qty -- cannot create a Shop Order from it.' });
+      return;
+    }
+
+    setCreatingShopOrder(true);
+    setShopOrderNotice(null);
+    try {
+      const createRes = await apiCall('New Shop Order', {
+        ShopOrderDate: item.shiftDate,
+        Warehouse: item.warehouse,
+        // Same case-sensitive OPENJSON key casing as ShopOrderFormDrawer.jsx.
+        ParentITemID: Number(item.itemID),
+        FormulaID: Number(item.formulaID),
+        MAchineID: Number(item.machineID),
+        Qty: Number(item.qty),
+        ShiftNo: Number(item.shiftNo)
+      }, { User: user?.Username }, 'shop_order');
+
+      if (createRes.State !== 0) {
+        setShopOrderNotice({ type: 'error', message: createRes.Message || 'Failed to create Shop Order.' });
+        return;
+      }
+
+      const shopOrderNumber = createRes.List0?.[0]?.ShopOrderNumber;
+
+      if (shopOrderNumber && item.shiftPlanID) {
+        const linkRes = await apiCall('Link Shop Order To Shift', {
+          ShiftPlanID: item.shiftPlanID, ShopOrderNo: shopOrderNumber
+        }, { User: user?.Username }, 'planning');
+        if (linkRes.State !== 0) {
+          setShopOrderNotice({ type: 'error', message: `Shop Order ${shopOrderNumber} created, but couldn't link it to the slot: ${linkRes.Message}` });
+          await handleGenerate();
+          return;
+        }
+      }
+
+      setShopOrderNotice({ type: 'success', message: `Shop Order ${shopOrderNumber} created and linked to this slot.` });
+      await handleGenerate();
+    } catch (e) {
+      setShopOrderNotice({ type: 'error', message: e.message });
+    } finally {
+      setCreatingShopOrder(false);
+    }
+  };
+
   const renderCell = (m, d, shiftNo) => {
     const key = `${m.MachineID}|${d}|${shiftNo}`;
     const items = cellMap[key] || [];
@@ -394,6 +453,14 @@ export default function PlanningShowPlan({ user, onClose }) {
                 </span>
               )}
             </div>
+            {c.shopOrderNo && (
+              <div style={{
+                marginTop: 3, fontSize: 9.5, fontWeight: 700, color: 'var(--green)',
+                display: 'inline-flex', alignItems: 'center', gap: 3
+              }}>
+                🏭 SO {c.shopOrderNo}
+              </div>
+            )}
           </div>
         ))}
         {isEmpty && isSelected && (
@@ -596,6 +663,23 @@ export default function PlanningShowPlan({ user, onClose }) {
             </button>
           </div>
         )}
+
+        {shopOrderNotice && (
+          <div style={{
+            position: 'absolute', top: 90, right: 20, zIndex: 70, maxWidth: 340,
+            background: shopOrderNotice.type === 'success' ? 'var(--green-soft)' : 'var(--red-soft)',
+            color: shopOrderNotice.type === 'success' ? 'var(--green)' : 'var(--red)',
+            border: `1px solid ${shopOrderNotice.type === 'success' ? 'rgba(22,163,74,0.2)' : 'rgba(220,38,38,0.2)'}`,
+            borderRadius: 'var(--radius-sm)', boxShadow: 'var(--shadow-lg)', padding: '10px 14px',
+            display: 'flex', alignItems: 'flex-start', gap: 10, fontSize: 12.5, fontWeight: 600
+          }}>
+            <span style={{ flex: 1 }}>{shopOrderNotice.message}</span>
+            <button
+              onClick={() => setShopOrderNotice(null)}
+              style={{ background: 'none', border: 'none', color: 'inherit', fontSize: 16, lineHeight: 1, cursor: 'pointer', flexShrink: 0 }}
+            >×</button>
+          </div>
+        )}
       </div>
 
       <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 999 }} onClick={onClose} />
@@ -754,6 +838,19 @@ export default function PlanningShowPlan({ user, onClose }) {
               onMouseLeave={e => { e.currentTarget.style.background = 'none'; e.currentTarget.style.color = 'var(--text)'; }}
             >
               Show Formula
+            </button>
+            <button
+              onClick={() => handleCreateShopOrder(contextMenu.item)}
+              disabled={creatingShopOrder}
+              style={{
+                display: 'block', width: '100%', textAlign: 'left', padding: '10px 14px', border: 'none',
+                borderTop: '1px solid var(--border)', background: 'none', fontSize: 12.5, fontWeight: 600,
+                color: 'var(--text)', cursor: creatingShopOrder ? 'not-allowed' : 'pointer', opacity: creatingShopOrder ? 0.6 : 1
+              }}
+              onMouseEnter={e => { if (!creatingShopOrder) { e.currentTarget.style.background = 'var(--soft)'; e.currentTarget.style.color = 'var(--orange2)'; } }}
+              onMouseLeave={e => { e.currentTarget.style.background = 'none'; e.currentTarget.style.color = 'var(--text)'; }}
+            >
+              {creatingShopOrder ? 'Creating...' : '🏭 Create Shop Order'}
             </button>
           </div>
         </>
