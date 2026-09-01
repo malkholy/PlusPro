@@ -17,12 +17,14 @@ export default function FGInquiryModal({ user, onClose }) {
   const [itemOptions, setItemOptions] = useState([]);
   const [planningRows, setPlanningRows] = useState([]);
   const [formulaOptions, setFormulaOptions] = useState([]);
+  const [warehouseOptions, setWarehouseOptions] = useState([]);
   const [optionsError, setOptionsError] = useState('');
 
   const [itemID, setItemID] = useState('');
   const [itemCode, setItemCode] = useState('');
   const [itemDescription, setItemDescription] = useState('');
   const [qty, setQty] = useState('');
+  const [warehouse, setWarehouse] = useState('');
 
   const [searched, setSearched] = useState(false);
   const [searching, setSearching] = useState(false);
@@ -53,6 +55,14 @@ export default function FGInquiryModal({ user, onClose }) {
         })));
       }
     }).catch(() => {});
+
+    apiCall('xx', null, { User: user?.Username }, 'lookup').then(d => {
+      if (d.State === 0) {
+        setWarehouseOptions((d.List0 || []).map(w => ({ label: `${w.Warehouse} - ${w.WarhouseDescription}`, value: w.Warehouse })));
+      } else {
+        setOptionsError(d.Message || 'Failed to load warehouses.');
+      }
+    }).catch(e => setOptionsError('Failed to load warehouses: ' + e.message));
   }, [user]);
 
   const handleItemChange = (id) => {
@@ -69,6 +79,7 @@ export default function FGInquiryModal({ user, onClose }) {
     setError('');
     if (!itemID) { setError('Please select an item.'); return; }
     if (!qty || Number(qty) <= 0) { setError('Please enter a Qty greater than 0.'); return; }
+    if (!warehouse) { setError('Please select a warehouse.'); return; }
 
     const planningRow = planningRows.find(r => String(r.ItemID) === String(itemID));
     const defaultFormulaID = planningRow?.DefaultFormula;
@@ -92,12 +103,22 @@ export default function FGInquiryModal({ user, onClose }) {
       const bomLines = (d.List0 || []).filter(l => String(l.LineFormulaID) === String(defaultFormulaID));
       const ratio = Number(qty) / batchQty;
 
+      const balances = await Promise.all(bomLines.map(l =>
+        apiCall('GetGridData', { PageGroupID: 'item_balance', fromItem: l.ChildItemCode, toItem: l.ChildItemCode }, { User: user?.Username }, 'plus')
+          .then(bd => (bd.State === 0 ? (bd.List0 || []) : []))
+          .catch(() => [])
+      ));
+
       setFormulaCode(formula?.formulaCode || '');
       setBatchQuantity(batchQty);
-      setLines(bomLines.map(l => ({
-        line: l.Line, childItemCode: l.ChildItemCode, childItemDescription: l.ChildItemDescription,
-        quantityPerBatch: Number(l.Quantity || 0), totalRequired: Number(l.Quantity || 0) * ratio
-      })));
+      setLines(bomLines.map((l, i) => {
+        const match = balances[i].find(b => String(b.Warehouse || '').trim().toUpperCase() === String(warehouse).trim().toUpperCase());
+        return {
+          line: l.Line, childItemCode: l.ChildItemCode, childItemDescription: l.ChildItemDescription,
+          quantityPerBatch: Number(l.Quantity || 0), totalRequired: Number(l.Quantity || 0) * ratio,
+          balance: match ? Number(match.ItemBalance || 0) : null
+        };
+      }));
       setSearched(true);
     } catch (e) {
       setError(e.message);
@@ -142,6 +163,10 @@ export default function FGInquiryModal({ user, onClose }) {
           <div style={{ width: 140 }}>
             <label style={labelStyle}>Qty</label>
             <input type="number" step="0.00001" value={qty} onChange={e => { setQty(e.target.value); setSearched(false); }} style={inputStyle} />
+          </div>
+          <div style={{ flex: '1 1 200px', minWidth: 180 }}>
+            <label style={labelStyle}>Warehouse</label>
+            <SearchableSelect value={warehouse} onChange={(v) => { setWarehouse(v); setSearched(false); }} options={warehouseOptions} placeholder="Search warehouse..." />
           </div>
           <button
             onClick={handleSearch}
@@ -188,22 +213,32 @@ export default function FGInquiryModal({ user, onClose }) {
                       <th style={thStyle}>Description</th>
                       <th style={{ ...thStyle, textAlign: 'right' }}>Qty / Batch</th>
                       <th style={{ ...thStyle, textAlign: 'right' }}>Total Required</th>
+                      <th style={{ ...thStyle, textAlign: 'right' }}>Balance ({warehouse})</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {lines.map(l => (
-                      <tr key={l.line}>
-                        <td style={tdStyle}>{l.line}</td>
-                        <td style={tdStyle}>{l.childItemCode}</td>
-                        <td style={tdStyle}>{l.childItemDescription || '—'}</td>
-                        <td style={{ ...tdStyle, textAlign: 'right', fontFamily: 'var(--mono)' }}>
-                          {l.quantityPerBatch.toLocaleString(undefined, { maximumFractionDigits: 5 })}
-                        </td>
-                        <td style={{ ...tdStyle, textAlign: 'right', fontFamily: 'var(--mono)', fontWeight: 700 }}>
-                          {l.totalRequired.toLocaleString(undefined, { maximumFractionDigits: 3 })}
-                        </td>
-                      </tr>
-                    ))}
+                    {lines.map(l => {
+                      const short = l.balance !== null && l.balance < l.totalRequired;
+                      return (
+                        <tr key={l.line}>
+                          <td style={tdStyle}>{l.line}</td>
+                          <td style={tdStyle}>{l.childItemCode}</td>
+                          <td style={tdStyle}>{l.childItemDescription || '—'}</td>
+                          <td style={{ ...tdStyle, textAlign: 'right', fontFamily: 'var(--mono)' }}>
+                            {l.quantityPerBatch.toLocaleString(undefined, { maximumFractionDigits: 5 })}
+                          </td>
+                          <td style={{ ...tdStyle, textAlign: 'right', fontFamily: 'var(--mono)', fontWeight: 700 }}>
+                            {l.totalRequired.toLocaleString(undefined, { maximumFractionDigits: 3 })}
+                          </td>
+                          <td style={{
+                            ...tdStyle, textAlign: 'right', fontFamily: 'var(--mono)', fontWeight: 700,
+                            color: l.balance === null ? 'var(--hint)' : (short ? 'var(--red)' : 'var(--green)')
+                          }}>
+                            {l.balance === null ? '—' : l.balance.toLocaleString(undefined, { maximumFractionDigits: 3 })}
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
