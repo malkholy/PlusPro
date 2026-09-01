@@ -31,8 +31,6 @@ export default function FGInquiryModal({ user, onClose }) {
   const [error, setError] = useState('');
   const [formulaCode, setFormulaCode] = useState('');
   const [batchQuantity, setBatchQuantity] = useState(0);
-  const [batchFactor, setBatchFactor] = useState(0);
-  const [effectiveQty, setEffectiveQty] = useState(0);
   const [lines, setLines] = useState([]);
 
   useEffect(() => {
@@ -103,10 +101,10 @@ export default function FGInquiryModal({ user, onClose }) {
       if (d.State !== 0) { setError(d.Message || 'Failed to load formula lines.'); return; }
 
       const bomLines = (d.List0 || []).filter(l => String(l.LineFormulaID) === String(defaultFormulaID));
-      // Production only runs in whole batches -- Qty is rounded up to the
-      // nearest multiple of Batch Qty, and each line's Total Required is
-      // recalculated off that whole-batch factor (not a fractional ratio).
-      const factor = Math.ceil(Number(qty) / batchQty);
+      // Qty here is the batch multiplier itself (how many batches to run),
+      // not a total output quantity to divide by Batch Qty -- so each
+      // line's Total Required is just Qty x that line's per-batch quantity.
+      const qtyNum = Number(qty);
 
       const balances = await Promise.all(bomLines.map(l =>
         apiCall('GetGridData', { PageGroupID: 'item_balance', fromItem: l.ChildItemCode, toItem: l.ChildItemCode }, { User: user?.Username }, 'plus')
@@ -116,13 +114,11 @@ export default function FGInquiryModal({ user, onClose }) {
 
       setFormulaCode(formula?.formulaCode || '');
       setBatchQuantity(batchQty);
-      setBatchFactor(factor);
-      setEffectiveQty(factor * batchQty);
       setLines(bomLines.map((l, i) => {
         const match = balances[i].find(b => String(b.Warehouse || '').trim().toUpperCase() === String(warehouse).trim().toUpperCase());
         return {
           line: l.Line, childItemCode: l.ChildItemCode, childItemDescription: l.ChildItemDescription,
-          quantityPerBatch: Number(l.Quantity || 0), totalRequired: Number(l.Quantity || 0) * factor,
+          quantityPerBatch: Number(l.Quantity || 0), totalRequired: Number(l.Quantity || 0) * qtyNum,
           balance: match ? Number(match.ItemBalance || 0) : null
         };
       }));
@@ -208,17 +204,9 @@ export default function FGInquiryModal({ user, onClose }) {
             </div>
           ) : (
             <>
-              <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 8 }}>
-                Formula <strong style={{ color: 'var(--text)' }}>{formulaCode}</strong> · Batch Qty {batchQuantity.toLocaleString(undefined, { maximumFractionDigits: 5 })} · {batchFactor} batch{batchFactor > 1 ? 'es' : ''}
+              <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 12 }}>
+                Formula <strong style={{ color: 'var(--text)' }}>{formulaCode}</strong> · Batch Qty {batchQuantity.toLocaleString(undefined, { maximumFractionDigits: 5 })} · {Number(qty).toLocaleString(undefined, { maximumFractionDigits: 5 })} batch{Number(qty) > 1 ? 'es' : ''}
               </div>
-              {effectiveQty !== Number(qty) && (
-                <div style={{
-                  fontSize: 12, fontWeight: 600, color: 'var(--orange2)', background: 'var(--orange-soft)',
-                  padding: '6px 10px', borderRadius: 'var(--radius-xs)', marginBottom: 12, display: 'inline-block'
-                }}>
-                  Qty must be a whole multiple of Batch Qty -- rounded {Number(qty).toLocaleString(undefined, { maximumFractionDigits: 5 })} up to {effectiveQty.toLocaleString(undefined, { maximumFractionDigits: 5 })} ({batchFactor} × {batchQuantity.toLocaleString(undefined, { maximumFractionDigits: 5 })}).
-                </div>
-              )}
               <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', overflow: 'auto' }}>
                 <table style={{ width: '100%', minWidth: 640, borderCollapse: 'collapse' }}>
                   <thead>
