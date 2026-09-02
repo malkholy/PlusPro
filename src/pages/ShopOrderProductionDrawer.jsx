@@ -56,6 +56,17 @@ export default function ShopOrderProductionDrawer({ user, row, onClose, onSaveSu
 
   const updateLineIssued = (idx, val) => setLines(prev => prev.map((l, i) => i === idx ? { ...l, quantityIssued: val } : l));
 
+  // Defaults every line's Qty Issued to the same proportion of its Qty
+  // Required as the header Issued Qty is of the header's Qty Required --
+  // just a starting point, each line can still be edited afterward.
+  const handleIssuedQtyBlur = () => {
+    const required = Number(row.QuantityRequired || 0);
+    const issued = Number(issuedQty || 0);
+    if (required <= 0 || !issuedQty) return;
+    const factor = issued / required;
+    setLines(prev => prev.map(l => ({ ...l, quantityIssued: Number(l.quantityRequired || 0) * factor })));
+  };
+
   const handleSave = async () => {
     setError('');
     setSuccess('');
@@ -178,7 +189,12 @@ export default function ShopOrderProductionDrawer({ user, row, onClose, onSaveSu
               </div>
               <div>
                 <label style={labelStyle}>Issued Qty</label>
-                <input type="number" step="0.00001" value={issuedQty} onChange={e => setIssuedQty(e.target.value)} style={inputStyle} />
+                <input
+                  type="number" step="0.00001" value={issuedQty}
+                  onChange={e => setIssuedQty(e.target.value)}
+                  onBlur={handleIssuedQtyBlur}
+                  style={inputStyle}
+                />
               </div>
             </div>
           </div>
