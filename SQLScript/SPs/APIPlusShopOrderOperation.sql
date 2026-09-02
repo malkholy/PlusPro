@@ -170,8 +170,34 @@ BEGIN
 			RETURN
 		END
 
+		-- Reject the whole issue if any line's ChildIssued exceeds that item's
+		-- balance (summed across lots) in the line's warehouse.
+		IF @LineMember IS NOT NULL AND LTRIM(RTRIM(@LineMember)) <> ''
+		BEGIN
+			DECLARE @ISO_BadItemCode nvarchar(50), @ISO_BadBalance decimal(18,5), @ISO_BadIssued decimal(18,5)
+
+			SELECT TOP 1 @ISO_BadItemCode = x.ChildItemCode, @ISO_BadBalance = x.AvailBalance, @ISO_BadIssued = x.ChildIssued
+			FROM (
+				SELECT l.ChildItemCode, nl.ChildIssued,
+					ISNULL((SELECT SUM(b.ItemBalance) FROM inv.ItemBalance b WHERE b.ItemID = l.ChildItemID AND b.Warehouse = l.LineWarehouse), 0) AS AvailBalance
+				FROM OPENJSON(@LineMember) WITH (
+					Line        int            '$.Line',
+					ChildIssued decimal(18,5)  '$.ChildIssued'
+				) nl
+				INNER JOIN PRO.ShopOrderLine l ON l.Line = nl.Line AND l.ShopOrderNumber = @ISO_ShopOrderNumber
+			) x
+			WHERE x.ChildIssued > x.AvailBalance
+
+			IF @ISO_BadItemCode IS NOT NULL
+			BEGIN
+				SET @State = 1
+				SET @Message = 'Cannot issue ' + CAST(@ISO_BadIssued AS nvarchar(30)) + ' of ' + @ISO_BadItemCode + ' -- only ' + CAST(@ISO_BadBalance AS nvarchar(30)) + ' available in stock'
+				RETURN
+			END
+		END
+
 		UPDATE pro.ShopOrderHeader
-		SET QuantiftyIssued = @ISO_IssuedQty, OrderLastMaintBy = @User, OrderLastMaintDate = GETDATE()
+		SET QuantiftyIssued = @ISO_IssuedQty, OrderState = 10, OrderLastMaintBy = @User, OrderLastMaintDate = GETDATE()
 		WHERE ShopOrderNumber = @ISO_ShopOrderNumber
 
 		IF @LineMember IS NOT NULL AND LTRIM(RTRIM(@LineMember)) <> ''

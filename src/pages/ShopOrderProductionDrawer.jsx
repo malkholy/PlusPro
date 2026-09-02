@@ -65,6 +65,11 @@ export default function ShopOrderProductionDrawer({ user, row, onClose, onSaveSu
       setError('Line issued quantities cannot be negative.');
       return;
     }
+    const overBalance = lines.find(l => l.balance !== null && Number(l.quantityIssued || 0) > l.balance);
+    if (overBalance) {
+      setError(`Cannot issue ${Number(overBalance.quantityIssued).toLocaleString(undefined, { maximumFractionDigits: 3 })} of ${overBalance.childItemCode} -- only ${overBalance.balance.toLocaleString(undefined, { maximumFractionDigits: 3 })} available in stock.`);
+      return;
+    }
 
     setSaving(true);
     try {
@@ -199,6 +204,7 @@ export default function ShopOrderProductionDrawer({ user, row, onClose, onSaveSu
                 <tbody>
                   {lines.map((l, idx) => {
                     const short = l.balance !== null && l.balance < Number(l.quantityRequired || 0);
+                    const overBalance = l.balance !== null && Number(l.quantityIssued || 0) > l.balance;
                     return (
                       <tr key={l.line}>
                         <td style={tdStyle}>{l.line}</td>
@@ -217,7 +223,11 @@ export default function ShopOrderProductionDrawer({ user, row, onClose, onSaveSu
                           <input
                             type="number" step="0.00001" value={l.quantityIssued}
                             onChange={e => updateLineIssued(idx, e.target.value)}
-                            style={{ ...inputStyle, textAlign: 'right' }}
+                            style={{
+                              ...inputStyle, textAlign: 'right',
+                              borderColor: overBalance ? 'var(--red)' : 'var(--border2)',
+                              background: overBalance ? 'var(--red-soft)' : 'var(--surface)'
+                            }}
                           />
                         </td>
                       </tr>
