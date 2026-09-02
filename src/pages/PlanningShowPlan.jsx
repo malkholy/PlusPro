@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { apiCall } from '../shared/api.js';
 import SearchableSelect from '../shared/SearchableSelect.jsx';
+import ShopOrderProductionDrawer from './ShopOrderProductionDrawer.jsx';
 
 // Local (not UTC) date/time helpers -- toISOString() would shift the
 // calendar date backward for any timezone ahead of UTC (Egypt, UTC+2).
@@ -104,6 +105,8 @@ export default function PlanningShowPlan({ user, onClose }) {
   const [creatingShopOrder, setCreatingShopOrder] = useState(false);
   const [shopOrderNotice, setShopOrderNotice] = useState(null);
   const [editSlotModal, setEditSlotModal] = useState(null);
+  const [productionRow, setProductionRow] = useState(null);
+  const [openingProduction, setOpeningProduction] = useState(false);
   // Custom in-app confirm dialog -- native window.confirm() can silently
   // no-op inside some embedded/webview hosts (returns immediately without
   // blocking), which would skip straight past the delete every time.
@@ -467,6 +470,35 @@ export default function PlanningShowPlan({ user, onClose }) {
       }
     } catch (e) {
       setEditSlotModal(prev => ({ ...prev, saving: false, error: e.message }));
+    }
+  };
+
+  // Right-click "Producation" -- opens the same production/issue drawer used
+  // on the Shop Orders page, scoped to whichever Shop Order this slot is
+  // linked to. Requires "Create Shop Order" to have been run on the slot first.
+  const handleOpenProduction = async (item) => {
+    setContextMenu(null);
+    if (!item.shopOrderNo) {
+      setShopOrderNotice({ type: 'error', message: 'No Shop Order linked to this slot yet -- use "Create Shop Order" first.' });
+      return;
+    }
+    setOpeningProduction(true);
+    try {
+      const res = await apiCall('GetGridData', { PageGroupID: 'shop_orders' }, { User: user?.Username }, 'plus');
+      if (res.State !== 0) {
+        setShopOrderNotice({ type: 'error', message: res.Message || 'Failed to load Shop Order.' });
+        return;
+      }
+      const shopOrderRow = (res.List0 || []).find(r => String(r.ShopOrderNumber) === String(item.shopOrderNo));
+      if (!shopOrderRow) {
+        setShopOrderNotice({ type: 'error', message: `Shop Order ${item.shopOrderNo} not found.` });
+        return;
+      }
+      setProductionRow(shopOrderRow);
+    } catch (e) {
+      setShopOrderNotice({ type: 'error', message: e.message });
+    } finally {
+      setOpeningProduction(false);
     }
   };
 
@@ -935,6 +967,19 @@ export default function PlanningShowPlan({ user, onClose }) {
               {creatingShopOrder ? 'Creating...' : '🏭 Create Shop Order'}
             </button>
             <button
+              onClick={() => handleOpenProduction(contextMenu.item)}
+              disabled={openingProduction}
+              style={{
+                display: 'block', width: '100%', textAlign: 'left', padding: '10px 14px', border: 'none',
+                borderTop: '1px solid var(--border)', background: 'none', fontSize: 12.5, fontWeight: 600,
+                color: 'var(--text)', cursor: openingProduction ? 'not-allowed' : 'pointer', opacity: openingProduction ? 0.6 : 1
+              }}
+              onMouseEnter={e => { if (!openingProduction) { e.currentTarget.style.background = 'var(--soft)'; e.currentTarget.style.color = 'var(--orange2)'; } }}
+              onMouseLeave={e => { e.currentTarget.style.background = 'none'; e.currentTarget.style.color = 'var(--text)'; }}
+            >
+              {openingProduction ? 'Opening...' : '📋 Producation'}
+            </button>
+            <button
               onClick={() => handleDeleteSlot(contextMenu.item)}
               style={{
                 display: 'block', width: '100%', textAlign: 'left', padding: '10px 14px', border: 'none',
@@ -1105,6 +1150,15 @@ export default function PlanningShowPlan({ user, onClose }) {
           </div>
           <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 1290 }} onClick={() => !editSlotModal.saving && setEditSlotModal(null)} />
         </>
+      )}
+
+      {productionRow && (
+        <ShopOrderProductionDrawer
+          user={user}
+          row={productionRow}
+          onClose={() => setProductionRow(null)}
+          onSaveSuccess={() => { setProductionRow(null); handleGenerate(); }}
+        />
       )}
 
       {confirmDialog && (
