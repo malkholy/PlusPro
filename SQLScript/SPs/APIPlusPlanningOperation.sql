@@ -479,6 +479,43 @@ BEGIN
     END
 
     -- =============================================
+    -- EDIT SHIFT PLAN SLOT (Show Plan right-click) -- blocked once a Shop
+    -- Order has been created from this slot, same as Delete.
+    -- =============================================
+    IF @Operation = 'Edit Shift Plan Slot'
+    BEGIN
+        DECLARE @ESP_ShiftPlanID int, @ESP_PlannedQty decimal(18,5), @ESP_ShopOrderNo int
+
+        SELECT @ESP_ShiftPlanID = ShiftPlanID, @ESP_PlannedQty = PlannedQty
+        FROM OPENJSON(@LineData) WITH (
+            ShiftPlanID int '$.ShiftPlanID',
+            PlannedQty  decimal(18,5) '$.PlannedQty'
+        )
+
+        IF @ESP_ShiftPlanID IS NULL OR NOT EXISTS (SELECT 1 FROM [PRO].[PrdItemPlanningShiftPlan] WHERE ShiftPlanID = @ESP_ShiftPlanID)
+        BEGIN
+            SET @State = 1
+            SET @Message = 'Shift plan slot not found'
+            RETURN
+        END
+
+        SELECT @ESP_ShopOrderNo = ShopOrderNo FROM [PRO].[PrdItemPlanningShiftPlan] WHERE ShiftPlanID = @ESP_ShiftPlanID
+
+        IF @ESP_ShopOrderNo IS NOT NULL
+        BEGIN
+            SET @State = 1
+            SET @Message = 'Cannot edit -- Shop Order ' + CAST(@ESP_ShopOrderNo AS nvarchar(20)) + ' is already linked to this slot'
+            RETURN
+        END
+
+        UPDATE [PRO].[PrdItemPlanningShiftPlan]
+        SET PlannedQty = ISNULL(@ESP_PlannedQty, 0)
+        WHERE ShiftPlanID = @ESP_ShiftPlanID
+
+        RETURN
+    END
+
+    -- =============================================
     -- INVALID OPERATION
     -- =============================================
     SET @State = 1

@@ -103,6 +103,7 @@ export default function PlanningShowPlan({ user, onClose }) {
   const [formulaModal, setFormulaModal] = useState(null);
   const [creatingShopOrder, setCreatingShopOrder] = useState(false);
   const [shopOrderNotice, setShopOrderNotice] = useState(null);
+  const [editSlotModal, setEditSlotModal] = useState(null);
   // Custom in-app confirm dialog -- native window.confirm() can silently
   // no-op inside some embedded/webview hosts (returns immediately without
   // blocking), which would skip straight past the delete every time.
@@ -432,6 +433,41 @@ export default function PlanningShowPlan({ user, onClose }) {
         }
       }
     });
+  };
+
+  // Right-click "Edit Shift Plan" -- blocked once a Shop Order's been
+  // created from this slot, same as Delete.
+  const handleOpenEditSlot = (item) => {
+    setContextMenu(null);
+    if (item.shopOrderNo) {
+      setShopOrderNotice({ type: 'error', message: `Cannot edit -- Shop Order ${item.shopOrderNo} is already linked to this slot.` });
+      return;
+    }
+    setEditSlotModal({ item, qty: item.qty, saving: false, error: '' });
+  };
+
+  const handleSaveEditSlot = async () => {
+    if (!editSlotModal) return;
+    const qtyNum = Number(editSlotModal.qty);
+    if (!editSlotModal.qty || qtyNum < 0) {
+      setEditSlotModal(prev => ({ ...prev, error: 'Enter a Qty of 0 or more.' }));
+      return;
+    }
+    setEditSlotModal(prev => ({ ...prev, saving: true, error: '' }));
+    try {
+      const res = await apiCall('Edit Shift Plan Slot', {
+        ShiftPlanID: editSlotModal.item.shiftPlanID, PlannedQty: qtyNum
+      }, { User: user?.Username }, 'planning');
+      if (res.State === 0) {
+        setEditSlotModal(null);
+        setShopOrderNotice({ type: 'success', message: `Updated Qty for ${editSlotModal.item.itemCode} on this slot.` });
+        await handleGenerate();
+      } else {
+        setEditSlotModal(prev => ({ ...prev, saving: false, error: res.Message || 'Failed to save.' }));
+      }
+    } catch (e) {
+      setEditSlotModal(prev => ({ ...prev, saving: false, error: e.message }));
+    }
   };
 
   const renderCell = (m, d, shiftNo) => {
@@ -874,6 +910,18 @@ export default function PlanningShowPlan({ user, onClose }) {
               Show Formula
             </button>
             <button
+              onClick={() => handleOpenEditSlot(contextMenu.item)}
+              style={{
+                display: 'block', width: '100%', textAlign: 'left', padding: '10px 14px', border: 'none',
+                borderTop: '1px solid var(--border)', background: 'none', fontSize: 12.5, fontWeight: 600,
+                color: 'var(--text)', cursor: 'pointer'
+              }}
+              onMouseEnter={e => { e.currentTarget.style.background = 'var(--soft)'; e.currentTarget.style.color = 'var(--orange2)'; }}
+              onMouseLeave={e => { e.currentTarget.style.background = 'none'; e.currentTarget.style.color = 'var(--text)'; }}
+            >
+              ✏ Edit Shift Plan
+            </button>
+            <button
               onClick={() => handleCreateShopOrder(contextMenu.item)}
               disabled={creatingShopOrder}
               style={{
@@ -998,6 +1046,66 @@ export default function PlanningShowPlan({ user, onClose }) {
           </>
         );
       })()}
+
+      {editSlotModal && (
+        <>
+          <div style={{
+            position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%, -50%)',
+            width: 400, maxWidth: '92vw', background: 'var(--surface)', borderRadius: 'var(--radius)',
+            boxShadow: 'var(--shadow-lg)', border: '1px solid var(--border)', zIndex: 1300,
+            fontFamily: 'var(--font)', overflow: 'hidden'
+          }}>
+            <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)' }}>
+              <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: 'var(--text)' }}>Edit Shift Plan</h3>
+              <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4 }}>
+                {editSlotModal.item.itemCode} · {editSlotModal.item.shiftDate} · Shift {editSlotModal.item.shiftNo}
+              </div>
+            </div>
+            <div style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 16 }}>
+              {editSlotModal.error && (
+                <div style={{
+                  color: 'var(--red)', background: 'var(--red-soft)', fontSize: 12.5, fontWeight: 600,
+                  padding: '8px 12px', borderRadius: 'var(--radius-xs)', border: '1px solid rgba(220,38,38,0.15)'
+                }}>
+                  {editSlotModal.error}
+                </div>
+              )}
+              <div>
+                <label style={labelStyle}>Planned Qty</label>
+                <input
+                  type="number" step="0.00001" value={editSlotModal.qty}
+                  onChange={e => setEditSlotModal(prev => ({ ...prev, qty: e.target.value }))}
+                  style={{ ...inputStyle, width: '100%' }}
+                />
+              </div>
+            </div>
+            <div style={{ padding: '14px 20px', borderTop: '1px solid var(--border)', background: 'var(--soft)', display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+              <button
+                onClick={() => setEditSlotModal(null)}
+                disabled={editSlotModal.saving}
+                style={{
+                  padding: '8px 16px', borderRadius: 'var(--radius-xs)', border: '1px solid var(--border2)',
+                  background: 'var(--surface)', color: 'var(--text)', fontWeight: 600, fontSize: 13, cursor: 'pointer'
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSaveEditSlot}
+                disabled={editSlotModal.saving}
+                style={{
+                  padding: '8px 20px', borderRadius: 'var(--radius-xs)', border: 'none',
+                  background: editSlotModal.saving ? 'var(--hint)' : 'linear-gradient(135deg, var(--orange), var(--orange2))',
+                  color: '#fff', fontWeight: 700, fontSize: 13, cursor: editSlotModal.saving ? 'not-allowed' : 'pointer'
+                }}
+              >
+                {editSlotModal.saving ? 'Saving...' : 'Save'}
+              </button>
+            </div>
+          </div>
+          <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 1290 }} onClick={() => !editSlotModal.saving && setEditSlotModal(null)} />
+        </>
+      )}
 
       {confirmDialog && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.45)', zIndex: 1300, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
