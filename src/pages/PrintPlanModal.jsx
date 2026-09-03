@@ -23,6 +23,7 @@ const tdStyle = { padding: '8px 10px', fontSize: 13, color: 'var(--text)', borde
 
 export default function PrintPlanModal({ user, onClose }) {
   const [date, setDate] = useState(toLocalDateStr(new Date()));
+  const [shiftNo, setShiftNo] = useState('');
   const [rows, setRows] = useState([]);
   const [loaded, setLoaded] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -30,12 +31,14 @@ export default function PrintPlanModal({ user, onClose }) {
 
   const handleLoad = async () => {
     if (!date) { setError('Please select a date.'); return; }
+    if (!shiftNo) { setError('Please select a shift.'); return; }
     setError('');
     setLoading(true);
     try {
       const res = await apiCall('Get Planning Shift Calendar', { FromDate: date, ToDate: date }, { User: user?.Username }, 'planning');
       if (res.State === 0) {
-        const sorted = [...(res.List0 || [])].sort((a, b) => (a.ShiftNo - b.ShiftNo) || String(a.MachineCode || '').localeCompare(String(b.MachineCode || '')));
+        const filtered = (res.List0 || []).filter(r => Number(r.ShiftNo) === Number(shiftNo));
+        const sorted = filtered.sort((a, b) => String(a.MachineCode || '').localeCompare(String(b.MachineCode || '')));
         setRows(sorted);
         setLoaded(true);
       } else {
@@ -48,14 +51,15 @@ export default function PrintPlanModal({ user, onClose }) {
     }
   };
 
+  const shiftLabel = shiftNo === '1' ? 'Shift 1 (07:00 AM - 07:00 PM)' : shiftNo === '2' ? 'Shift 2 (07:00 PM - 07:00 AM)' : '';
+
   const handlePrint = () => {
     if (!window.jspdf) { setError('jsPDF not loaded'); return; }
     const doc = new window.jspdf.jsPDF({ orientation: 'landscape' });
-    doc.text(`Shift Plan - ${date}`, 14, 14);
+    doc.text(`Shift Plan - ${date} - ${shiftLabel}`, 14, 14);
     doc.autoTable({
-      head: [['Shift No', 'Machine', 'Item Code', 'Description', 'Formula', 'Batch Qty', 'Prod. Time (s)', 'Warehouse', 'Planned Qty', 'Shop Order']],
+      head: [['Machine', 'Item Code', 'Description', 'Formula', 'Batch Qty', 'Prod. Time (s)', 'Warehouse', 'Planned Qty', 'Shop Order']],
       body: rows.map(r => [
-        r.ShiftNo,
         r.MachineCode || '—',
         r.ItemCode || '—',
         r.ItemDescription || '—',
@@ -68,7 +72,7 @@ export default function PrintPlanModal({ user, onClose }) {
       ]),
       startY: 22
     });
-    doc.save(`Shift Plan - ${date}.pdf`);
+    doc.save(`Shift Plan - ${date} - Shift ${shiftNo}.pdf`);
   };
 
   return (
@@ -103,6 +107,14 @@ export default function PrintPlanModal({ user, onClose }) {
           <div style={{ width: 200 }}>
             <label style={labelStyle}>Date</label>
             <input type="date" value={date} onChange={e => { setDate(e.target.value); setLoaded(false); }} style={inputStyle} />
+          </div>
+          <div style={{ width: 220 }}>
+            <label style={labelStyle}>Shift</label>
+            <select value={shiftNo} onChange={e => { setShiftNo(e.target.value); setLoaded(false); }} style={inputStyle}>
+              <option value="">Select shift...</option>
+              <option value="1">Shift 1 (07:00 AM - 07:00 PM)</option>
+              <option value="2">Shift 2 (07:00 PM - 07:00 AM)</option>
+            </select>
           </div>
           <button
             onClick={handleLoad}
@@ -142,18 +154,21 @@ export default function PrintPlanModal({ user, onClose }) {
 
           {!loaded ? (
             <div style={{ fontSize: 13, color: 'var(--hint)', padding: 20, textAlign: 'center' }}>
-              Select a date and click Load to preview that day's shift plan.
+              Select a date and shift, then click Load to preview that shift's plan.
             </div>
           ) : rows.length === 0 ? (
             <div style={{ fontSize: 13, color: 'var(--hint)', padding: 20, textAlign: 'center' }}>
-              No shift plan scheduled for this date.
+              No shift plan scheduled for this date/shift.
             </div>
           ) : (
-            <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', overflow: 'auto' }}>
+            <>
+              <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 12 }}>
+                {date} · <strong style={{ color: 'var(--text)' }}>{shiftLabel}</strong>
+              </div>
+              <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', overflow: 'auto' }}>
               <table style={{ width: '100%', minWidth: 900, borderCollapse: 'collapse' }}>
                 <thead>
                   <tr>
-                    <th style={thStyle}>Shift No</th>
                     <th style={thStyle}>Machine</th>
                     <th style={thStyle}>Item Code</th>
                     <th style={thStyle}>Description</th>
@@ -168,7 +183,6 @@ export default function PrintPlanModal({ user, onClose }) {
                 <tbody>
                   {rows.map(r => (
                     <tr key={r.ShiftPlanID}>
-                      <td style={tdStyle}>{r.ShiftNo}</td>
                       <td style={tdStyle}>{r.MachineCode || '—'}</td>
                       <td style={tdStyle}>{r.ItemCode || '—'}</td>
                       <td style={tdStyle}>{r.ItemDescription || '—'}</td>
@@ -186,7 +200,8 @@ export default function PrintPlanModal({ user, onClose }) {
                   ))}
                 </tbody>
               </table>
-            </div>
+              </div>
+            </>
           )}
         </div>
       </div>
