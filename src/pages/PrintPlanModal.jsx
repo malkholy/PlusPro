@@ -167,6 +167,50 @@ export default function PrintPlanModal({ user, onClose }) {
     doc.save(`Shift Plan - ${date} - Shift ${shiftNo} - ${machineTypeLabel}.pdf`);
   };
 
+  // Simple blank fill-in-by-hand sheet: one row per machine in the loaded
+  // plan, only the Machine column filled -- the rest is written on paper.
+  const RAW_COLUMNS = [
+    { id: 'machine', headerAr: 'المكنة', width: 50 },
+    { id: 'material', headerAr: 'اسم الخامة', width: 95 },
+    { id: 'qty', headerAr: 'الكمية', width: 45 },
+    { id: 'notes', headerAr: 'الملاحظات', width: 75 }
+  ];
+  const RAW_FONT_SIZE = 11;
+
+  const handlePrintRaw = () => {
+    if (!window.jspdf) { setError('jsPDF not loaded'); return; }
+    const doc = new window.jspdf.jsPDF({ orientation: 'landscape' });
+
+    const titleText = `كشف الخامات - ${date} - ${shiftLabelAr} - ${machineTypeLabelAr}`;
+    const title = arabicCellImage(titleText, 14, true);
+    const pageWidth = doc.internal.pageSize.getWidth();
+    doc.addImage(title.dataUrl, 'PNG', pageWidth - 14 - title.widthMm, 8, title.widthMm, title.heightMm);
+
+    const machines = [...new Set(rows.map(r => r.MachineCode).filter(Boolean))].sort();
+    const rtlColumns = [...RAW_COLUMNS].reverse();
+
+    doc.autoTable({
+      head: [rtlColumns.map(() => '')],
+      body: machines.map(m => rtlColumns.map(c => (c.id === 'machine' ? m : ''))),
+      startY: 22,
+      styles: { fontSize: RAW_FONT_SIZE, cellPadding: 4, valign: 'middle', halign: 'right', minCellHeight: 14 },
+      headStyles: { halign: 'right' },
+      columnStyles: Object.fromEntries(rtlColumns.map((c, i) => [i, { cellWidth: c.width }])),
+      didDrawCell: (data) => {
+        if (data.section !== 'head') return;
+        const col = rtlColumns[data.column.index];
+        const { dataUrl, widthMm, heightMm } = arabicCellImage(col.headerAr, RAW_FONT_SIZE, true);
+        const maxW = data.cell.width - 4;
+        let w = widthMm, h = heightMm;
+        if (w > maxW) { const s = maxW / w; w *= s; h *= s; }
+        const x = data.cell.x + data.cell.width - w - 2;
+        const y = data.cell.y + (data.cell.height - h) / 2;
+        doc.addImage(dataUrl, 'PNG', x, y, w, h);
+      }
+    });
+    doc.save(`Raw Sheet - ${date} - Shift ${shiftNo} - ${machineTypeLabel}.pdf`);
+  };
+
   return (
     <>
       <div style={{
@@ -239,6 +283,19 @@ export default function PrintPlanModal({ user, onClose }) {
               onMouseLeave={e => { e.currentTarget.style.background = 'var(--surface)'; e.currentTarget.style.borderColor = 'var(--border2)'; e.currentTarget.style.color = 'var(--text)'; }}
             >
               🖨️ Print PDF
+            </button>
+          )}
+          {loaded && rows.length > 0 && (
+            <button
+              onClick={handlePrintRaw}
+              style={{
+                padding: '9px 22px', borderRadius: 'var(--radius-xs)', border: '1px solid var(--border2)',
+                background: 'var(--surface)', color: 'var(--text)', fontWeight: 700, fontSize: 13, cursor: 'pointer'
+              }}
+              onMouseEnter={e => { e.currentTarget.style.background = 'var(--soft)'; e.currentTarget.style.borderColor = 'var(--orange)'; e.currentTarget.style.color = 'var(--orange2)'; }}
+              onMouseLeave={e => { e.currentTarget.style.background = 'var(--surface)'; e.currentTarget.style.borderColor = 'var(--border2)'; e.currentTarget.style.color = 'var(--text)'; }}
+            >
+              🖨️ Print Raw
             </button>
           )}
         </div>
