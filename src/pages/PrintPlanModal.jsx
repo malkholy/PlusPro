@@ -25,15 +25,16 @@ const ARABIC_RE = /[؀-ۿ]/;
 const MM_PER_PT = 0.352778;
 
 // jsPDF's built-in fonts (Helvetica etc.) only cover WinAnsi/Latin glyphs --
-// Arabic item descriptions render as garbled boxes if drawn as normal PDF
-// text. The browser's own text engine shapes/renders Arabic correctly, so
-// Arabic cells are rasterized via <canvas> and stamped into the PDF as an
-// image instead of relying on jsPDF's font.
-function arabicCellImage(text, fontSizePt) {
+// Arabic text renders as garbled boxes if drawn as normal PDF text. The
+// browser's own text engine shapes/renders Arabic correctly, so any Arabic
+// text (cell content, headers, title) is rasterized via <canvas> and
+// stamped into the PDF as an image instead of relying on jsPDF's font.
+function arabicCellImage(text, fontSizePt, bold = false) {
   const scale = 4; // render at higher px density than the target mm size for crisp output
   const pxFont = Math.round(fontSizePt * scale * 1.333);
+  const fontSpec = `${bold ? 'bold ' : ''}${pxFont}px Arial, Tahoma, sans-serif`;
   const measure = document.createElement('canvas').getContext('2d');
-  measure.font = `${pxFont}px Arial, Tahoma, sans-serif`;
+  measure.font = fontSpec;
   const width = Math.ceil(measure.measureText(text).width) + Math.round(pxFont * 0.3);
   const height = Math.ceil(pxFont * 1.5);
 
@@ -41,7 +42,7 @@ function arabicCellImage(text, fontSizePt) {
   canvas.width = width;
   canvas.height = height;
   const ctx = canvas.getContext('2d');
-  ctx.font = `${pxFont}px Arial, Tahoma, sans-serif`;
+  ctx.font = fontSpec;
   ctx.fillStyle = '#1a1a1a';
   ctx.textBaseline = 'middle';
   ctx.direction = 'rtl';
@@ -52,6 +53,10 @@ function arabicCellImage(text, fontSizePt) {
   const widthMm = heightMm * (width / height);
   return { dataUrl: canvas.toDataURL('image/png'), widthMm, heightMm };
 }
+
+// Arabic translations for the printed PDF only -- the on-screen preview
+// modal stays English/LTR since it's an internal admin screen.
+const AR_MACHINE_TYPE = { '1': 'إنتاج', '2': 'تعبئة' };
 
 export default function PrintPlanModal({ user, onClose }) {
   const [date, setDate] = useState(toLocalDateStr(new Date()));
@@ -93,27 +98,38 @@ export default function PrintPlanModal({ user, onClose }) {
   };
 
   const shiftLabel = shiftNo === '1' ? 'Shift 1 (07:00 AM - 07:00 PM)' : shiftNo === '2' ? 'Shift 2 (07:00 PM - 07:00 AM)' : '';
+  const shiftLabelAr = shiftNo === '1' ? 'الوردية الأولى (07:00 ص - 07:00 م)' : shiftNo === '2' ? 'الوردية الثانية (07:00 م - 07:00 ص)' : '';
   const machineTypeLabel = (machineTypeOptions.find(t => String(t.TypeID) === String(machineType))?.TypeDescription || '').trim();
+  const machineTypeLabelAr = AR_MACHINE_TYPE[String(machineType)] || machineTypeLabel;
 
+  // Logical (LTR reading) order -- reversed just before building the PDF
+  // table so the first column ends up rightmost, matching RTL reading order.
   const PDF_COLUMNS = [
-    { header: 'Machine', key: 'MachineCode' },
-    { header: 'Shop Order', key: 'ShopOrderNo' },
-    { header: 'Item Code', key: 'ItemCode' },
-    { header: 'Description', key: 'ItemDescription' },
-    { header: 'Prod. Time (s)', key: 'ProductionTime' },
-    { header: 'Planned Qty', key: 'PlannedQty' },
-    { header: 'UOM', key: 'StockUM' },
-    { header: 'Final Qty', key: null }
+    { header: 'Machine', headerAr: 'الماكينة', key: 'MachineCode' },
+    { header: 'Shop Order', headerAr: 'أمر التشغيل', key: 'ShopOrderNo' },
+    { header: 'Item Code', headerAr: 'كود الصنف', key: 'ItemCode' },
+    { header: 'Description', headerAr: 'الوصف', key: 'ItemDescription' },
+    { header: 'Prod. Time (s)', headerAr: 'زمن الإنتاج (ث)', key: 'ProductionTime' },
+    { header: 'Planned Qty', headerAr: 'الكمية المخططة', key: 'PlannedQty' },
+    { header: 'UOM', headerAr: 'وحدة القياس', key: 'StockUM' },
+    { header: 'Final Qty', headerAr: 'الكمية الفعلية', key: null }
   ];
   const PDF_FONT_SIZE = 9;
 
   const handlePrint = () => {
     if (!window.jspdf) { setError('jsPDF not loaded'); return; }
     const doc = new window.jspdf.jsPDF({ orientation: 'landscape' });
-    doc.text(`Shift Plan - ${date} - ${shiftLabel} - ${machineTypeLabel}`, 14, 14);
+
+    const titleText = `خطة الوردية - ${date} - ${shiftLabelAr} - ${machineTypeLabelAr}`;
+    const title = arabicCellImage(titleText, 14, true);
+    const pageWidth = doc.internal.pageSize.getWidth();
+    doc.addImage(title.dataUrl, 'PNG', pageWidth - 14 - title.widthMm, 8, title.widthMm, title.heightMm);
+
+    const rtlColumns = [...PDF_COLUMNS].reverse();
+
     doc.autoTable({
-      head: [PDF_COLUMNS.map(c => c.header)],
-      body: rows.map(r => PDF_COLUMNS.map(c => {
+      head: [rtlColumns.map(() => '')],
+      body: rows.map(r => rtlColumns.map(c => {
         if (c.key === null) return '';
         const raw = c.key === 'PlannedQty'
           ? Number(r.PlannedQty || 0).toLocaleString(undefined, { maximumFractionDigits: 5 })
@@ -122,13 +138,20 @@ export default function PrintPlanModal({ user, onClose }) {
         return str === '' ? '—' : (ARABIC_RE.test(str) ? '' : str);
       })),
       startY: 22,
-      styles: { fontSize: PDF_FONT_SIZE, cellPadding: 3, valign: 'middle' },
+      styles: { fontSize: PDF_FONT_SIZE, cellPadding: 3, valign: 'middle', halign: 'right' },
+      headStyles: { halign: 'right' },
       didDrawCell: (data) => {
-        if (data.section !== 'body') return;
-        const col = PDF_COLUMNS[data.column.index];
-        const raw = rows[data.row.index]?.[col.key];
-        if (raw == null || !ARABIC_RE.test(String(raw))) return;
-        const { dataUrl, widthMm, heightMm } = arabicCellImage(String(raw), PDF_FONT_SIZE);
+        const col = rtlColumns[data.column.index];
+        let text = null, bold = false;
+        if (data.section === 'head') {
+          text = col.headerAr;
+          bold = true;
+        } else {
+          const raw = rows[data.row.index]?.[col.key];
+          if (raw != null && ARABIC_RE.test(String(raw))) text = String(raw);
+        }
+        if (!text) return;
+        const { dataUrl, widthMm, heightMm } = arabicCellImage(text, PDF_FONT_SIZE, bold);
         const maxW = data.cell.width - 4;
         let w = widthMm, h = heightMm;
         if (w > maxW) { const s = maxW / w; w *= s; h *= s; }
