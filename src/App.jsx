@@ -42,6 +42,7 @@ import ClientRequest from './pages/ClientRequest.jsx';
 import BOMHeader from './pages/BOMHeader.jsx';
 import BillOfMaterial from './pages/BillOfMaterial.jsx';
 import ShopOrders from './pages/ShopOrders.jsx';
+import CustomerPaymentsCollections from './pages/CustomerPaymentsCollections.jsx';
 import PriceListCost from './pages/PriceListCost.jsx';
 import ItemCostSummary from './pages/ItemCostSummary.jsx';
 import AccountsMaster from './pages/AccountsMaster.jsx';
@@ -388,7 +389,8 @@ const PAGE_COMPONENTS = {
   planning_item_master: PlanningItemMaster,
   planning_item_history: PlanningItemHistory,
   bill_of_material: BillOfMaterial,
-  shop_orders: ShopOrders
+  shop_orders: ShopOrders,
+  customer_payments_collections: CustomerPaymentsCollections
 };
 
 // The sidebar is built live from PLS.PagesAndGroups at login instead of a
