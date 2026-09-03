@@ -402,6 +402,7 @@ BEGIN
             h.ItemID,
             sp.ItemCode,
             im.ItemDescription,
+            im.StockUM,
             sp.PlannedQty,
             h.FormulaID,
             bh.ParentItemCode AS FormulaCode,

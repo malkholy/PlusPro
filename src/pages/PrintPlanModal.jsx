@@ -102,6 +102,7 @@ export default function PrintPlanModal({ user, onClose }) {
     { header: 'Description', key: 'ItemDescription' },
     { header: 'Prod. Time (s)', key: 'ProductionTime' },
     { header: 'Planned Qty', key: 'PlannedQty' },
+    { header: 'UOM', key: 'StockUM' },
     { header: 'Final Qty', key: null }
   ];
   const PDF_FONT_SIZE = 9;
@@ -248,6 +249,7 @@ export default function PrintPlanModal({ user, onClose }) {
                     <th style={thStyle}>Description</th>
                     <th style={{ ...thStyle, textAlign: 'right' }}>Prod. Time (s)</th>
                     <th style={{ ...thStyle, textAlign: 'right' }}>Planned Qty</th>
+                    <th style={thStyle}>UOM</th>
                     <th style={thStyle}>Final Qty</th>
                   </tr>
                 </thead>
@@ -262,6 +264,7 @@ export default function PrintPlanModal({ user, onClose }) {
                       <td style={{ ...tdStyle, textAlign: 'right', fontFamily: 'var(--mono)', fontWeight: 700 }}>
                         {Number(r.PlannedQty || 0).toLocaleString(undefined, { maximumFractionDigits: 5 })}
                       </td>
+                      <td style={tdStyle}>{r.StockUM || '—'}</td>
                       <td style={tdStyle}></td>
                     </tr>
                   ))}
