@@ -58,15 +58,12 @@ export default function PrintPlanModal({ user, onClose }) {
     const doc = new window.jspdf.jsPDF({ orientation: 'landscape' });
     doc.text(`Shift Plan - ${date} - ${shiftLabel}`, 14, 14);
     doc.autoTable({
-      head: [['Machine', 'Item Code', 'Description', 'Formula', 'Batch Qty', 'Prod. Time (s)', 'Warehouse', 'Planned Qty', 'Shop Order']],
+      head: [['Machine', 'Item Code', 'Description', 'Prod. Time (s)', 'Planned Qty', 'Shop Order']],
       body: rows.map(r => [
         r.MachineCode || '—',
         r.ItemCode || '—',
         r.ItemDescription || '—',
-        r.FormulaCode || '—',
-        Number(r.FormulaBatch || 0).toLocaleString(undefined, { maximumFractionDigits: 5 }),
         r.ProductionTime ?? '—',
-        r.Warehouse || '—',
         Number(r.PlannedQty || 0).toLocaleString(undefined, { maximumFractionDigits: 5 }),
         r.ShopOrderNo || '—'
       ]),
@@ -172,10 +169,7 @@ export default function PrintPlanModal({ user, onClose }) {
                     <th style={thStyle}>Machine</th>
                     <th style={thStyle}>Item Code</th>
                     <th style={thStyle}>Description</th>
-                    <th style={thStyle}>Formula</th>
-                    <th style={{ ...thStyle, textAlign: 'right' }}>Batch Qty</th>
                     <th style={{ ...thStyle, textAlign: 'right' }}>Prod. Time (s)</th>
-                    <th style={thStyle}>Warehouse</th>
                     <th style={{ ...thStyle, textAlign: 'right' }}>Planned Qty</th>
                     <th style={thStyle}>Shop Order</th>
                   </tr>
@@ -186,12 +180,7 @@ export default function PrintPlanModal({ user, onClose }) {
                       <td style={tdStyle}>{r.MachineCode || '—'}</td>
                       <td style={tdStyle}>{r.ItemCode || '—'}</td>
                       <td style={tdStyle}>{r.ItemDescription || '—'}</td>
-                      <td style={tdStyle}>{r.FormulaCode || '—'}</td>
-                      <td style={{ ...tdStyle, textAlign: 'right', fontFamily: 'var(--mono)' }}>
-                        {Number(r.FormulaBatch || 0).toLocaleString(undefined, { maximumFractionDigits: 5 })}
-                      </td>
                       <td style={{ ...tdStyle, textAlign: 'right', fontFamily: 'var(--mono)' }}>{r.ProductionTime ?? '—'}</td>
-                      <td style={tdStyle}>{r.Warehouse || '—'}</td>
                       <td style={{ ...tdStyle, textAlign: 'right', fontFamily: 'var(--mono)', fontWeight: 700 }}>
                         {Number(r.PlannedQty || 0).toLocaleString(undefined, { maximumFractionDigits: 5 })}
                       </td>
