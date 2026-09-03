@@ -148,58 +148,27 @@ BEGIN
     END
 
     -- =============================================
-    -- DELETE PLANNING HISTORY
-    -- =============================================
-    -- Only draft plans (PlanningState = 0) can be deleted -- once a plan
-    -- moves past draft it's part of the committed production record.
-    IF @Operation = 'Delete Planning History'
-    BEGIN
-        DECLARE @DPH_PlanningID int, @DPH_State int
-
-        SELECT @DPH_PlanningID = CAST(@LineData AS int)
-
-        SELECT @DPH_State = PlanningState
-        FROM [PRO].[PrdItemPlanningHistory]
-        WHERE PlanningID = @DPH_PlanningID
-
-        IF @DPH_State IS NULL
-        BEGIN
-            SET @State = 1
-            SET @Message = 'Planning record not found'
-            RETURN
-        END
-
-        IF @DPH_State <> 0
-        BEGIN
-            SET @State = 1
-            SET @Message = 'Only draft plans can be deleted'
-            RETURN
-        END
-
-        DELETE FROM [PRO].[PrdItemPlanningShiftPlan] WHERE PlanningID = @DPH_PlanningID
-        DELETE FROM [PRO].[PrdItemPlanningHistory] WHERE PlanningID = @DPH_PlanningID
-        RETURN
-    END
-
-    -- =============================================
     -- NEW PLANNING HISTORY
     -- =============================================
+    -- Historically inserted a PrdItemPlanningHistory header row plus child
+    -- shift rows. That header table is gone -- ShiftPlan is now the
+    -- standalone source of truth, so each shift row carries its own
+    -- Item/Machine/Formula/ProductionTime/Warehouse directly. Kept as the
+    -- same operation name/contract since Show Plan's "Assign Item" flow
+    -- calls this to create new shift rows.
     IF @Operation = 'New Planning History'
     BEGIN
-        DECLARE @PH_ItemID int, @PH_ItemCode nvarchar(50), @PH_StartDate date, @PH_EndDate date,
-                @PH_PlannedQty decimal(18,5), @PH_FormulaID int, @PH_MachineID int, @PH_PlanningID int,
+        DECLARE @PH_ItemID int, @PH_ItemCode nvarchar(50),
+                @PH_FormulaID int, @PH_MachineID int,
                 @PH_FormulaBatch decimal(18,5), @PH_ProductionTime int, @PH_Warehouse nvarchar(50)
 
         SELECT
-            @PH_ItemID = ItemID, @PH_ItemCode = ItemCode, @PH_StartDate = StartDate, @PH_EndDate = EndDate,
-            @PH_PlannedQty = PlannedQty, @PH_FormulaID = FormulaID, @PH_MachineID = MachineID,
+            @PH_ItemID = ItemID, @PH_ItemCode = ItemCode,
+            @PH_FormulaID = FormulaID, @PH_MachineID = MachineID,
             @PH_FormulaBatch = FormulaBatch, @PH_ProductionTime = ProductionTime, @PH_Warehouse = Warehouse
         FROM OPENJSON(@LineData) WITH (
             ItemID int '$.ItemID',
             ItemCode nvarchar(50) '$.ItemCode',
-            StartDate date '$.StartDate',
-            EndDate date '$.EndDate',
-            PlannedQty decimal(18,5) '$.PlannedQty',
             FormulaID int '$.FormulaID',
             MachineID int '$.MachineID',
             FormulaBatch decimal(18,5) '$.FormulaBatch',
@@ -228,8 +197,7 @@ BEGIN
                 SELECT 1
                 FROM OPENJSON(@LineMember) WITH (ShiftDate date '$.ShiftDate', ShiftNo int '$.ShiftNo') nl
                 INNER JOIN [PRO].[PrdItemPlanningShiftPlan] sp ON sp.ShiftDate = nl.ShiftDate AND sp.ShiftNo = nl.ShiftNo
-                INNER JOIN [PRO].[PrdItemPlanningHistory] h2 ON sp.PlanningID = h2.PlanningID
-                WHERE h2.MachineID = @PH_MachineID
+                WHERE sp.MachineID = @PH_MachineID
             )
             BEGIN
                 SET @State = 1
@@ -238,21 +206,13 @@ BEGIN
             END
         END
 
-        -- PlanningState isn't collected on this form yet; defaulted to 0 until it's wired up.
-        INSERT INTO [PRO].[PrdItemPlanningHistory]
-            (ItemID, ItemCode, PlanningState, PlannedQty, StartDate, EndDate, MachineID, FormulaID, FormulaBatch, ProductionTime, Warehouse, CreatedBy, CreatedDate, LastMaintBy, LastMaintDate)
-        VALUES
-            (@PH_ItemID, @PH_ItemCode, 0, @PH_PlannedQty, @PH_StartDate, @PH_EndDate, @PH_MachineID, @PH_FormulaID, ISNULL(@PH_FormulaBatch, 0), ISNULL(@PH_ProductionTime, 0), ISNULL(@PH_Warehouse, ''), @User, GETDATE(), @User, GETDATE())
-
-        SET @PH_PlanningID = SCOPE_IDENTITY()
-
-        -- Persist the computed shift-by-shift schedule, if the caller sent one.
         IF @LineMember IS NOT NULL AND LTRIM(RTRIM(@LineMember)) <> ''
         BEGIN
             INSERT INTO [PRO].[PrdItemPlanningShiftPlan]
-                (PlanningID, ItemCode, ShiftIndex, ShiftDate, ShiftNo, StartTime, EndTime, PlannedQty, CumulativeQty, CreatedBy, CreatedDate)
+                (ItemID, ItemCode, MachineID, FormulaID, FormulaBatch, ProductionTime, Warehouse, ShiftIndex, ShiftDate, ShiftNo, StartTime, EndTime, PlannedQty, CumulativeQty, CreatedBy, CreatedDate)
             SELECT
-                @PH_PlanningID, @PH_ItemCode, ShiftIndex, ShiftDate, ShiftNo, StartTime, EndTime, PlannedQty, CumulativeQty, @User, GETDATE()
+                @PH_ItemID, @PH_ItemCode, @PH_MachineID, @PH_FormulaID, ISNULL(@PH_FormulaBatch, 0), ISNULL(@PH_ProductionTime, 0), ISNULL(@PH_Warehouse, ''),
+                ShiftIndex, ShiftDate, ShiftNo, StartTime, EndTime, PlannedQty, CumulativeQty, @User, GETDATE()
             FROM OPENJSON(@LineMember) WITH (
                 ShiftIndex   int          '$.ShiftIndex',
                 ShiftDate    date         '$.ShiftDate',
@@ -264,117 +224,6 @@ BEGIN
             )
         END
 
-        SELECT *
-        FROM [PRO].[PrdItemPlanningHistory]
-        WHERE PlanningID = @PH_PlanningID
-        RETURN
-    END
-
-    -- =============================================
-    -- EDIT PLANNING HISTORY
-    -- =============================================
-    IF @Operation = 'Edit Planning History'
-    BEGIN
-        DECLARE @EPH_PlanningID int, @EPH_ItemID int, @EPH_ItemCode nvarchar(50), @EPH_StartDate date, @EPH_EndDate date,
-                @EPH_PlannedQty decimal(18,5), @EPH_FormulaID int, @EPH_MachineID int,
-                @EPH_FormulaBatch decimal(18,5), @EPH_ProductionTime int, @EPH_Warehouse nvarchar(50)
-
-        SELECT
-            @EPH_PlanningID = PlanningID, @EPH_ItemID = ItemID, @EPH_ItemCode = ItemCode, @EPH_StartDate = StartDate, @EPH_EndDate = EndDate,
-            @EPH_PlannedQty = PlannedQty, @EPH_FormulaID = FormulaID, @EPH_MachineID = MachineID,
-            @EPH_FormulaBatch = FormulaBatch, @EPH_ProductionTime = ProductionTime, @EPH_Warehouse = Warehouse
-        FROM OPENJSON(@LineData) WITH (
-            PlanningID int '$.PlanningID',
-            ItemID int '$.ItemID',
-            ItemCode nvarchar(50) '$.ItemCode',
-            StartDate date '$.StartDate',
-            EndDate date '$.EndDate',
-            PlannedQty decimal(18,5) '$.PlannedQty',
-            FormulaID int '$.FormulaID',
-            MachineID int '$.MachineID',
-            FormulaBatch decimal(18,5) '$.FormulaBatch',
-            ProductionTime int '$.ProductionTime',
-            Warehouse nvarchar(50) '$.Warehouse'
-        )
-
-        IF @EPH_PlanningID IS NULL
-        BEGIN
-            SET @State = 1
-            SET @Message = 'PlanningID is required'
-            RETURN
-        END
-
-        -- Reject if the incoming shift plan double-books this machine: either
-        -- against another plan already on the machine, or against itself
-        -- (duplicate slot sent twice in the same payload). This plan's own
-        -- existing shift rows are excluded since they're being replaced.
-        IF @LineMember IS NOT NULL AND LTRIM(RTRIM(@LineMember)) <> ''
-        BEGIN
-            IF EXISTS (
-                SELECT ShiftDate, ShiftNo
-                FROM OPENJSON(@LineMember) WITH (ShiftDate date '$.ShiftDate', ShiftNo int '$.ShiftNo')
-                GROUP BY ShiftDate, ShiftNo
-                HAVING COUNT(*) > 1
-            )
-            BEGIN
-                SET @State = 1
-                SET @Message = 'Duplicate time slots in the submitted shift plan.'
-                RETURN
-            END
-
-            IF EXISTS (
-                SELECT 1
-                FROM OPENJSON(@LineMember) WITH (ShiftDate date '$.ShiftDate', ShiftNo int '$.ShiftNo') nl
-                INNER JOIN [PRO].[PrdItemPlanningShiftPlan] sp ON sp.ShiftDate = nl.ShiftDate AND sp.ShiftNo = nl.ShiftNo
-                INNER JOIN [PRO].[PrdItemPlanningHistory] h2 ON sp.PlanningID = h2.PlanningID
-                WHERE h2.MachineID = @EPH_MachineID
-                  AND sp.PlanningID <> @EPH_PlanningID
-            )
-            BEGIN
-                SET @State = 1
-                SET @Message = 'One or more selected time slots are already assigned to another item on this machine.'
-                RETURN
-            END
-        END
-
-        UPDATE [PRO].[PrdItemPlanningHistory]
-        SET ItemID = @EPH_ItemID,
-            ItemCode = @EPH_ItemCode,
-            PlannedQty = @EPH_PlannedQty,
-            StartDate = @EPH_StartDate,
-            EndDate = @EPH_EndDate,
-            MachineID = @EPH_MachineID,
-            FormulaID = @EPH_FormulaID,
-            FormulaBatch = ISNULL(@EPH_FormulaBatch, 0),
-            ProductionTime = ISNULL(@EPH_ProductionTime, 0),
-            Warehouse = ISNULL(@EPH_Warehouse, ''),
-            LastMaintBy = @User,
-            LastMaintDate = GETDATE()
-        WHERE PlanningID = @EPH_PlanningID
-
-        -- Replace the shift plan wholesale with the recalculated one.
-        DELETE FROM [PRO].[PrdItemPlanningShiftPlan] WHERE PlanningID = @EPH_PlanningID
-
-        IF @LineMember IS NOT NULL AND LTRIM(RTRIM(@LineMember)) <> ''
-        BEGIN
-            INSERT INTO [PRO].[PrdItemPlanningShiftPlan]
-                (PlanningID, ItemCode, ShiftIndex, ShiftDate, ShiftNo, StartTime, EndTime, PlannedQty, CumulativeQty, CreatedBy, CreatedDate)
-            SELECT
-                @EPH_PlanningID, @EPH_ItemCode, ShiftIndex, ShiftDate, ShiftNo, StartTime, EndTime, PlannedQty, CumulativeQty, @User, GETDATE()
-            FROM OPENJSON(@LineMember) WITH (
-                ShiftIndex   int          '$.ShiftIndex',
-                ShiftDate    date         '$.ShiftDate',
-                ShiftNo      int          '$.ShiftNo',
-                StartTime    datetime     '$.StartTime',
-                EndTime      datetime     '$.EndTime',
-                PlannedQty   decimal(18,5) '$.PlannedQty',
-                CumulativeQty decimal(18,5) '$.CumulativeQty'
-            )
-        END
-
-        SELECT *
-        FROM [PRO].[PrdItemPlanningHistory]
-        WHERE PlanningID = @EPH_PlanningID
         RETURN
     END
 
@@ -394,29 +243,28 @@ BEGIN
         SELECT
             sp.ShiftPlanID,
             sp.ShopOrderNo,
-            h.MachineID,
+            sp.MachineID,
             mm.MachineCode,
             mm.MachineType,
             sp.ShiftDate,
             sp.ShiftNo,
-            h.ItemID,
+            sp.ItemID,
             sp.ItemCode,
             im.ItemDescription,
             im.StockUM,
             sp.PlannedQty,
-            h.FormulaID,
+            sp.FormulaID,
             bh.ParentItemCode AS FormulaCode,
-            h.FormulaBatch,
-            h.ProductionTime,
-            h.Warehouse
+            sp.FormulaBatch,
+            sp.ProductionTime,
+            sp.Warehouse
         FROM [PRO].[PrdItemPlanningShiftPlan] sp
-        INNER JOIN [PRO].[PrdItemPlanningHistory] h ON sp.PlanningID = h.PlanningID
-        LEFT OUTER JOIN prd.MachineMaster mm ON h.MachineID = mm.MachineID
-        LEFT OUTER JOIN inv.ItemMaster im ON h.ItemID = im.ItemID
-        LEFT OUTER JOIN prd.BillOfMaterialHeader bh ON h.FormulaID = bh.FormulaID
+        LEFT OUTER JOIN prd.MachineMaster mm ON sp.MachineID = mm.MachineID
+        LEFT OUTER JOIN inv.ItemMaster im ON sp.ItemID = im.ItemID
+        LEFT OUTER JOIN prd.BillOfMaterialHeader bh ON sp.FormulaID = bh.FormulaID
         WHERE (@PSC_FromDate IS NULL OR sp.ShiftDate >= @PSC_FromDate)
           AND (@PSC_ToDate IS NULL OR sp.ShiftDate <= @PSC_ToDate)
-        ORDER BY h.MachineID, sp.ShiftDate, sp.ShiftNo
+        ORDER BY sp.MachineID, sp.ShiftDate, sp.ShiftNo
         RETURN
     END
 
