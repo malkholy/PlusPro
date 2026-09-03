@@ -91,7 +91,8 @@ export default function PrintPlanModal({ user, onClose }) {
     { header: 'Item Code', key: 'ItemCode' },
     { header: 'Description', key: 'ItemDescription' },
     { header: 'Prod. Time (s)', key: 'ProductionTime' },
-    { header: 'Planned Qty', key: 'PlannedQty' }
+    { header: 'Planned Qty', key: 'PlannedQty' },
+    { header: 'Final Qty', key: null }
   ];
   const PDF_FONT_SIZE = 9;
 
@@ -102,6 +103,7 @@ export default function PrintPlanModal({ user, onClose }) {
     doc.autoTable({
       head: [PDF_COLUMNS.map(c => c.header)],
       body: rows.map(r => PDF_COLUMNS.map(c => {
+        if (c.key === null) return '';
         const raw = c.key === 'PlannedQty'
           ? Number(r.PlannedQty || 0).toLocaleString(undefined, { maximumFractionDigits: 5 })
           : (r[c.key] ?? '');
@@ -227,6 +229,7 @@ export default function PrintPlanModal({ user, onClose }) {
                     <th style={thStyle}>Description</th>
                     <th style={{ ...thStyle, textAlign: 'right' }}>Prod. Time (s)</th>
                     <th style={{ ...thStyle, textAlign: 'right' }}>Planned Qty</th>
+                    <th style={thStyle}>Final Qty</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -240,6 +243,7 @@ export default function PrintPlanModal({ user, onClose }) {
                       <td style={{ ...tdStyle, textAlign: 'right', fontFamily: 'var(--mono)', fontWeight: 700 }}>
                         {Number(r.PlannedQty || 0).toLocaleString(undefined, { maximumFractionDigits: 5 })}
                       </td>
+                      <td style={tdStyle}></td>
                     </tr>
                   ))}
                 </tbody>
