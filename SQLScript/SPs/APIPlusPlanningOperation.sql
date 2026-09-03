@@ -396,6 +396,7 @@ BEGIN
             sp.ShopOrderNo,
             h.MachineID,
             mm.MachineCode,
+            mm.MachineType,
             sp.ShiftDate,
             sp.ShiftNo,
             h.ItemID,

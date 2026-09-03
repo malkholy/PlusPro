@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { apiCall } from '../shared/api.js';
 
 // Local (not UTC) date helper -- toISOString() would shift the calendar
@@ -56,20 +56,29 @@ function arabicCellImage(text, fontSizePt) {
 export default function PrintPlanModal({ user, onClose }) {
   const [date, setDate] = useState(toLocalDateStr(new Date()));
   const [shiftNo, setShiftNo] = useState('');
+  const [machineType, setMachineType] = useState('');
+  const [machineTypeOptions, setMachineTypeOptions] = useState([]);
   const [rows, setRows] = useState([]);
   const [loaded, setLoaded] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
+  useEffect(() => {
+    apiCall('Machine Type All', null, { User: user?.Username }, 'lookup').then(d => {
+      if (d.State === 0) setMachineTypeOptions(d.List0 || []);
+    }).catch(() => {});
+  }, [user]);
+
   const handleLoad = async () => {
     if (!date) { setError('Please select a date.'); return; }
     if (!shiftNo) { setError('Please select a shift.'); return; }
+    if (!machineType) { setError('Please select a machine type.'); return; }
     setError('');
     setLoading(true);
     try {
       const res = await apiCall('Get Planning Shift Calendar', { FromDate: date, ToDate: date }, { User: user?.Username }, 'planning');
       if (res.State === 0) {
-        const filtered = (res.List0 || []).filter(r => Number(r.ShiftNo) === Number(shiftNo));
+        const filtered = (res.List0 || []).filter(r => Number(r.ShiftNo) === Number(shiftNo) && Number(r.MachineType) === Number(machineType));
         const sorted = filtered.sort((a, b) => String(a.MachineCode || '').localeCompare(String(b.MachineCode || '')));
         setRows(sorted);
         setLoaded(true);
@@ -84,6 +93,7 @@ export default function PrintPlanModal({ user, onClose }) {
   };
 
   const shiftLabel = shiftNo === '1' ? 'Shift 1 (07:00 AM - 07:00 PM)' : shiftNo === '2' ? 'Shift 2 (07:00 PM - 07:00 AM)' : '';
+  const machineTypeLabel = (machineTypeOptions.find(t => String(t.TypeID) === String(machineType))?.TypeDescription || '').trim();
 
   const PDF_COLUMNS = [
     { header: 'Machine', key: 'MachineCode' },
@@ -99,7 +109,7 @@ export default function PrintPlanModal({ user, onClose }) {
   const handlePrint = () => {
     if (!window.jspdf) { setError('jsPDF not loaded'); return; }
     const doc = new window.jspdf.jsPDF({ orientation: 'landscape' });
-    doc.text(`Shift Plan - ${date} - ${shiftLabel}`, 14, 14);
+    doc.text(`Shift Plan - ${date} - ${shiftLabel} - ${machineTypeLabel}`, 14, 14);
     doc.autoTable({
       head: [PDF_COLUMNS.map(c => c.header)],
       body: rows.map(r => PDF_COLUMNS.map(c => {
@@ -126,7 +136,7 @@ export default function PrintPlanModal({ user, onClose }) {
         doc.addImage(dataUrl, 'PNG', x, y, w, h);
       }
     });
-    doc.save(`Shift Plan - ${date} - Shift ${shiftNo}.pdf`);
+    doc.save(`Shift Plan - ${date} - Shift ${shiftNo} - ${machineTypeLabel}.pdf`);
   };
 
   return (
@@ -170,6 +180,15 @@ export default function PrintPlanModal({ user, onClose }) {
               <option value="2">Shift 2 (07:00 PM - 07:00 AM)</option>
             </select>
           </div>
+          <div style={{ width: 200 }}>
+            <label style={labelStyle}>Machine Type</label>
+            <select value={machineType} onChange={e => { setMachineType(e.target.value); setLoaded(false); }} style={inputStyle}>
+              <option value="">Select type...</option>
+              {machineTypeOptions.map(t => (
+                <option key={t.TypeID} value={t.TypeID}>{(t.TypeDescription || '').trim()}</option>
+              ))}
+            </select>
+          </div>
           <button
             onClick={handleLoad}
             disabled={loading}
@@ -208,16 +227,16 @@ export default function PrintPlanModal({ user, onClose }) {
 
           {!loaded ? (
             <div style={{ fontSize: 13, color: 'var(--hint)', padding: 20, textAlign: 'center' }}>
-              Select a date and shift, then click Load to preview that shift's plan.
+              Select a date, shift, and machine type, then click Load to preview that plan.
             </div>
           ) : rows.length === 0 ? (
             <div style={{ fontSize: 13, color: 'var(--hint)', padding: 20, textAlign: 'center' }}>
-              No shift plan scheduled for this date/shift.
+              No shift plan scheduled for this date/shift/machine type.
             </div>
           ) : (
             <>
               <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 12 }}>
-                {date} · <strong style={{ color: 'var(--text)' }}>{shiftLabel}</strong>
+                {date} · <strong style={{ color: 'var(--text)' }}>{shiftLabel}</strong> · <strong style={{ color: 'var(--text)' }}>{machineTypeLabel}</strong>
               </div>
               <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', overflow: 'auto' }}>
               <table style={{ width: '100%', minWidth: 900, borderCollapse: 'collapse' }}>
