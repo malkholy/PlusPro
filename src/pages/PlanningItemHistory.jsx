@@ -4,6 +4,7 @@ import DataGrid from '../shared/DataGrid.jsx';
 import PlanningItemHistoryDrawer from './PlanningItemHistoryDrawer.jsx';
 import PlanningShowPlan from './PlanningShowPlan.jsx';
 import FGInquiryModal from './FGInquiryModal.jsx';
+import PrintPlanModal from './PrintPlanModal.jsx';
 
 export default function PlanningItemHistory({ user }) {
   const [data, setData] = useState([]);
@@ -13,6 +14,7 @@ export default function PlanningItemHistory({ user }) {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [showPlanOpen, setShowPlanOpen] = useState(false);
   const [fgInquiryOpen, setFgInquiryOpen] = useState(false);
+  const [printPlanOpen, setPrintPlanOpen] = useState(false);
   // Custom in-app confirm dialog -- native window.confirm() can silently
   // no-op inside some embedded/webview hosts (returns immediately without
   // blocking), which would skip straight past the delete every time.
@@ -108,6 +110,14 @@ export default function PlanningItemHistory({ user }) {
         >
           📦 FG Inquery
         </button>
+        <button
+          onClick={() => setPrintPlanOpen(true)}
+          style={{ marginLeft: 10, padding: '8px 16px', borderRadius: 'var(--radius-xs)', border: '1px solid var(--border2)', background: 'var(--surface)', color: 'var(--text)', fontWeight: 600, fontSize: 13, cursor: 'pointer' }}
+          onMouseEnter={e => { e.currentTarget.style.background = 'var(--soft)'; e.currentTarget.style.borderColor = 'var(--orange)'; e.currentTarget.style.color = 'var(--orange2)'; }}
+          onMouseLeave={e => { e.currentTarget.style.background = 'var(--surface)'; e.currentTarget.style.borderColor = 'var(--border2)'; e.currentTarget.style.color = 'var(--text)'; }}
+        >
+          🖨️ Print Plan
+        </button>
       </div>
       <div style={{ flex: 1, minHeight: 0 }}>
         <DataGrid
@@ -143,6 +153,13 @@ export default function PlanningItemHistory({ user }) {
         <FGInquiryModal
           user={user}
           onClose={() => setFgInquiryOpen(false)}
+        />
+      )}
+
+      {printPlanOpen && (
+        <PrintPlanModal
+          user={user}
+          onClose={() => setPrintPlanOpen(false)}
         />
       )}
 
