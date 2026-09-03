@@ -115,6 +115,7 @@ export default function PrintPlanModal({ user, onClose }) {
     { header: 'Final Qty', headerAr: 'الكمية الفعلية', key: null }
   ];
   const PDF_FONT_SIZE = 9;
+  const DESC_FONT_SIZE = 13;
 
   const handlePrint = () => {
     if (!window.jspdf) { setError('jsPDF not loaded'); return; }
@@ -126,6 +127,7 @@ export default function PrintPlanModal({ user, onClose }) {
     doc.addImage(title.dataUrl, 'PNG', pageWidth - 14 - title.widthMm, 8, title.widthMm, title.heightMm);
 
     const rtlColumns = [...PDF_COLUMNS].reverse();
+    const descColIndex = rtlColumns.findIndex(c => c.key === 'ItemDescription');
 
     doc.autoTable({
       head: [rtlColumns.map(() => '')],
@@ -140,6 +142,7 @@ export default function PrintPlanModal({ user, onClose }) {
       startY: 22,
       styles: { fontSize: PDF_FONT_SIZE, cellPadding: 3, valign: 'middle', halign: 'right' },
       headStyles: { halign: 'right' },
+      columnStyles: { [descColIndex]: { fontSize: DESC_FONT_SIZE } },
       didDrawCell: (data) => {
         const col = rtlColumns[data.column.index];
         let text = null, bold = false;
@@ -151,7 +154,8 @@ export default function PrintPlanModal({ user, onClose }) {
           if (raw != null && ARABIC_RE.test(String(raw))) text = String(raw);
         }
         if (!text) return;
-        const { dataUrl, widthMm, heightMm } = arabicCellImage(text, PDF_FONT_SIZE, bold);
+        const fontSize = (data.section === 'body' && col.key === 'ItemDescription') ? DESC_FONT_SIZE : PDF_FONT_SIZE;
+        const { dataUrl, widthMm, heightMm } = arabicCellImage(text, fontSize, bold);
         const maxW = data.cell.width - 4;
         let w = widthMm, h = heightMm;
         if (w > maxW) { const s = maxW / w; w *= s; h *= s; }
