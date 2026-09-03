@@ -97,6 +97,10 @@ const PANEL_GROUPS = [
     ['ExpensesRatio', 'Expenses Ratio', fmtPct],
     ['TotalYearExpenses', 'Total Year Expenses'],
     ['TotalCustomerExtraDiscount', 'Total Customer Extra Discount']
+  ]},
+  { title: 'Expenses Vs Sales', icon: '⚖️', accent: '#fb923c', items: [
+    ['YTDSales2026', 'Total Year Sales'],
+    ['TotalYearExpenses', 'Total Year Expenses (Operation - Producation)']
   ]}
 ];
 
