@@ -100,7 +100,8 @@ const PANEL_GROUPS = [
   ]},
   { title: 'Expenses Vs Sales', icon: '⚖️', accent: '#fb923c', items: [
     ['YTDSales2026', 'Total Year Sales'],
-    ['TotalYearExpenses', 'Total Year Expenses (Operation - Producation)']
+    ['TotalYearExpenses', 'Total Year Expenses (Operation - Producation)'],
+    [row => (Number(row.YTDSales2026) || 0) ? (Number(row.TotalYearExpenses) || 0) / Number(row.YTDSales2026) : 0, 'Expenses / Sales Rate', fmtRatioPct]
   ]}
 ];
 
