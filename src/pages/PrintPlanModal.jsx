@@ -87,11 +87,11 @@ export default function PrintPlanModal({ user, onClose }) {
 
   const PDF_COLUMNS = [
     { header: 'Machine', key: 'MachineCode' },
+    { header: 'Shop Order', key: 'ShopOrderNo' },
     { header: 'Item Code', key: 'ItemCode' },
     { header: 'Description', key: 'ItemDescription' },
     { header: 'Prod. Time (s)', key: 'ProductionTime' },
-    { header: 'Planned Qty', key: 'PlannedQty' },
-    { header: 'Shop Order', key: 'ShopOrderNo' }
+    { header: 'Planned Qty', key: 'PlannedQty' }
   ];
   const PDF_FONT_SIZE = 9;
 
@@ -222,24 +222,24 @@ export default function PrintPlanModal({ user, onClose }) {
                 <thead>
                   <tr>
                     <th style={thStyle}>Machine</th>
+                    <th style={thStyle}>Shop Order</th>
                     <th style={thStyle}>Item Code</th>
                     <th style={thStyle}>Description</th>
                     <th style={{ ...thStyle, textAlign: 'right' }}>Prod. Time (s)</th>
                     <th style={{ ...thStyle, textAlign: 'right' }}>Planned Qty</th>
-                    <th style={thStyle}>Shop Order</th>
                   </tr>
                 </thead>
                 <tbody>
                   {rows.map(r => (
                     <tr key={r.ShiftPlanID}>
                       <td style={tdStyle}>{r.MachineCode || '—'}</td>
+                      <td style={tdStyle}>{r.ShopOrderNo || '—'}</td>
                       <td style={tdStyle}>{r.ItemCode || '—'}</td>
                       <td style={tdStyle}>{r.ItemDescription || '—'}</td>
                       <td style={{ ...tdStyle, textAlign: 'right', fontFamily: 'var(--mono)' }}>{r.ProductionTime ?? '—'}</td>
                       <td style={{ ...tdStyle, textAlign: 'right', fontFamily: 'var(--mono)', fontWeight: 700 }}>
                         {Number(r.PlannedQty || 0).toLocaleString(undefined, { maximumFractionDigits: 5 })}
                       </td>
-                      <td style={tdStyle}>{r.ShopOrderNo || '—'}</td>
                     </tr>
                   ))}
                 </tbody>
