@@ -523,6 +523,9 @@ export default function App() {
         const loggedUser = { Username: u.Username || un, Name: u.Name || un, IsAdmin: u.IsAdmin, AllowedOperations: allowedOperations };
         setAllowedPages(allowed);
         setNav(builtNav);
+        // All sidebar groups start collapsed -- the user expands the ones
+        // they want, rather than the whole tree opening on every login.
+        setCollapsedGroups(new Set(builtNav.filter(n => n.isGroup).map(n => n.id)));
         setCrudPageIds(crudIds);
         setUser(loggedUser);
 
