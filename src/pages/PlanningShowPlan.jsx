@@ -1002,7 +1002,7 @@ export default function PlanningShowPlan({ user, onClose }) {
           <>
             <div style={{
               position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%, -50%)',
-              width: 560, maxWidth: '92vw', maxHeight: '80vh', background: 'var(--surface)', borderRadius: 'var(--radius)',
+              width: 920, maxWidth: '95vw', maxHeight: '80vh', background: 'var(--surface)', borderRadius: 'var(--radius)',
               boxShadow: 'var(--shadow-lg)', border: '1px solid var(--border)', zIndex: 1300,
               fontFamily: 'var(--font)', overflow: 'hidden', display: 'flex', flexDirection: 'column'
             }}>
