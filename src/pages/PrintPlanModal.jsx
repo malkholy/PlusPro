@@ -21,6 +21,38 @@ const inputStyle = {
 const thStyle = { textAlign: 'left', padding: '8px 10px', fontSize: 11, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: 0.3, borderBottom: '1px solid var(--border)' };
 const tdStyle = { padding: '8px 10px', fontSize: 13, color: 'var(--text)', borderBottom: '1px solid var(--border)' };
 
+const ARABIC_RE = /[؀-ۿ]/;
+const MM_PER_PT = 0.352778;
+
+// jsPDF's built-in fonts (Helvetica etc.) only cover WinAnsi/Latin glyphs --
+// Arabic item descriptions render as garbled boxes if drawn as normal PDF
+// text. The browser's own text engine shapes/renders Arabic correctly, so
+// Arabic cells are rasterized via <canvas> and stamped into the PDF as an
+// image instead of relying on jsPDF's font.
+function arabicCellImage(text, fontSizePt) {
+  const scale = 4; // render at higher px density than the target mm size for crisp output
+  const pxFont = Math.round(fontSizePt * scale * 1.333);
+  const measure = document.createElement('canvas').getContext('2d');
+  measure.font = `${pxFont}px Arial, Tahoma, sans-serif`;
+  const width = Math.ceil(measure.measureText(text).width) + Math.round(pxFont * 0.3);
+  const height = Math.ceil(pxFont * 1.5);
+
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext('2d');
+  ctx.font = `${pxFont}px Arial, Tahoma, sans-serif`;
+  ctx.fillStyle = '#1a1a1a';
+  ctx.textBaseline = 'middle';
+  ctx.direction = 'rtl';
+  ctx.textAlign = 'right';
+  ctx.fillText(text, width - Math.round(pxFont * 0.15), height / 2);
+
+  const heightMm = fontSizePt * MM_PER_PT * 1.5;
+  const widthMm = heightMm * (width / height);
+  return { dataUrl: canvas.toDataURL('image/png'), widthMm, heightMm };
+}
+
 export default function PrintPlanModal({ user, onClose }) {
   const [date, setDate] = useState(toLocalDateStr(new Date()));
   const [shiftNo, setShiftNo] = useState('');
@@ -53,21 +85,44 @@ export default function PrintPlanModal({ user, onClose }) {
 
   const shiftLabel = shiftNo === '1' ? 'Shift 1 (07:00 AM - 07:00 PM)' : shiftNo === '2' ? 'Shift 2 (07:00 PM - 07:00 AM)' : '';
 
+  const PDF_COLUMNS = [
+    { header: 'Machine', key: 'MachineCode' },
+    { header: 'Item Code', key: 'ItemCode' },
+    { header: 'Description', key: 'ItemDescription' },
+    { header: 'Prod. Time (s)', key: 'ProductionTime' },
+    { header: 'Planned Qty', key: 'PlannedQty' },
+    { header: 'Shop Order', key: 'ShopOrderNo' }
+  ];
+  const PDF_FONT_SIZE = 9;
+
   const handlePrint = () => {
     if (!window.jspdf) { setError('jsPDF not loaded'); return; }
     const doc = new window.jspdf.jsPDF({ orientation: 'landscape' });
     doc.text(`Shift Plan - ${date} - ${shiftLabel}`, 14, 14);
     doc.autoTable({
-      head: [['Machine', 'Item Code', 'Description', 'Prod. Time (s)', 'Planned Qty', 'Shop Order']],
-      body: rows.map(r => [
-        r.MachineCode || '—',
-        r.ItemCode || '—',
-        r.ItemDescription || '—',
-        r.ProductionTime ?? '—',
-        Number(r.PlannedQty || 0).toLocaleString(undefined, { maximumFractionDigits: 5 }),
-        r.ShopOrderNo || '—'
-      ]),
-      startY: 22
+      head: [PDF_COLUMNS.map(c => c.header)],
+      body: rows.map(r => PDF_COLUMNS.map(c => {
+        const raw = c.key === 'PlannedQty'
+          ? Number(r.PlannedQty || 0).toLocaleString(undefined, { maximumFractionDigits: 5 })
+          : (r[c.key] ?? '');
+        const str = String(raw);
+        return str === '' ? '—' : (ARABIC_RE.test(str) ? '' : str);
+      })),
+      startY: 22,
+      styles: { fontSize: PDF_FONT_SIZE, cellPadding: 3, valign: 'middle' },
+      didDrawCell: (data) => {
+        if (data.section !== 'body') return;
+        const col = PDF_COLUMNS[data.column.index];
+        const raw = rows[data.row.index]?.[col.key];
+        if (raw == null || !ARABIC_RE.test(String(raw))) return;
+        const { dataUrl, widthMm, heightMm } = arabicCellImage(String(raw), PDF_FONT_SIZE);
+        const maxW = data.cell.width - 4;
+        let w = widthMm, h = heightMm;
+        if (w > maxW) { const s = maxW / w; w *= s; h *= s; }
+        const x = data.cell.x + data.cell.width - w - 2;
+        const y = data.cell.y + (data.cell.height - h) / 2;
+        doc.addImage(dataUrl, 'PNG', x, y, w, h);
+      }
     });
     doc.save(`Shift Plan - ${date} - Shift ${shiftNo}.pdf`);
   };
