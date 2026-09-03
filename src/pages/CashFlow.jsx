@@ -94,7 +94,9 @@ const PANEL_GROUPS = [
   ]},
   { title: 'Expenses & Ratios', icon: '📊', accent: '#f472b6', items: [
     ['Expenses', 'Expenses'],
-    ['ExpensesRatio', 'Expenses Ratio', fmtPct]
+    ['ExpensesRatio', 'Expenses Ratio', fmtPct],
+    ['TotalYearExpenses', 'Total Year Expenses'],
+    ['TotalCustomerExtraDiscount', 'Total Customer Extra Discount']
   ]}
 ];
 
