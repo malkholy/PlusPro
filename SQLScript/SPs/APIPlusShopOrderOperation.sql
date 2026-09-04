@@ -214,45 +214,200 @@ BEGIN
 			END
 		END
 
-		-- Additive: each Issue call is a new release on top of what's already
-		-- been issued (Qty Issued = Old Qty Issued + this release's amount),
-		-- not a replacement of the running total.
-		UPDATE pro.ShopOrderHeader
-		SET QuantiftyIssued = QuantiftyIssued + @ISO_IssuedQty, OrderState = 10, NumberOfReleases = NumberOfReleases + 1, OrderLastMaintBy = @User, OrderLastMaintDate = GETDATE()
-		WHERE ShopOrderNumber = @ISO_ShopOrderNumber
+		-- Everything from here on mutates real state (header, lines, and the
+		-- warehouse via INV.ItemTransactionSystemHistoryV2) -- wrapped in an
+		-- explicit transaction so a failed warehouse post (e.g. balance moved
+		-- under us between the check above and now) rolls back the header/line
+		-- changes too, instead of leaving the order marked issued with stock
+		-- never actually decremented.
+		BEGIN TRY
+			BEGIN TRANSACTION
 
-		IF @LineMember IS NOT NULL AND LTRIM(RTRIM(@LineMember)) <> ''
-		BEGIN
-			UPDATE l
-			SET l.ChildQuantityIssued = l.ChildQuantityIssued + nl.ChildIssued, l.LineLastMaintBy = @User, l.LineLastMaintDate = GETDATE()
-			FROM PRO.ShopOrderLine l
-			INNER JOIN OPENJSON(@LineMember) WITH (
-				Line        int            '$.Line',
-				ChildIssued decimal(18,5)  '$.ChildIssued'
-			) nl ON nl.Line = l.Line
-			WHERE l.ShopOrderNumber = @ISO_ShopOrderNumber
+			-- Additive: each Issue call is a new release on top of what's
+			-- already been issued (Qty Issued = Old Qty Issued + this
+			-- release's amount), not a replacement of the running total.
+			UPDATE pro.ShopOrderHeader
+			SET QuantiftyIssued = QuantiftyIssued + @ISO_IssuedQty, OrderState = 10, NumberOfReleases = NumberOfReleases + 1, OrderLastMaintBy = @User, OrderLastMaintDate = GETDATE()
+			WHERE ShopOrderNumber = @ISO_ShopOrderNumber
 
-			-- Insert brand-new lines added on the fly during this issue (Line is
-			-- null in the payload -- not part of the order's original lines).
-			DECLARE @ISO_MaxLine int
-			SELECT @ISO_MaxLine = ISNULL(MAX(Line), 0) FROM PRO.ShopOrderLine WHERE ShopOrderNumber = @ISO_ShopOrderNumber
+			DECLARE @ISO_ReleaseNo int
+			SELECT @ISO_ReleaseNo = NumberOfReleases FROM pro.ShopOrderHeader WHERE ShopOrderNumber = @ISO_ShopOrderNumber
 
-			INSERT INTO PRO.ShopOrderLine
-			(ShopOrderNumber, ParentItemID, ParentItemCode, Line, ChildItemID, ChildItemCode, ChildQuantityRequired, ChildQuantityIssued, LineWarehouse, ChildItemType, LineCreatedBy, LineCreatedDate)
-			SELECT
-				@ISO_ShopOrderNumber, @ISO_ParentItemID, @ISO_ParentItemCode,
-				@ISO_MaxLine + ROW_NUMBER() OVER (ORDER BY (SELECT NULL)),
-				nl.ChildItemID, im.ItemCode, ISNULL(nl.ChildQuantityRequired, 0), ISNULL(nl.ChildIssued, 0),
-				@ISO_Warehouse, im.ItemType, @User, GETDATE()
-			FROM OPENJSON(@LineMember) WITH (
-				Line                  int             '$.Line',
-				ChildItemID           int             '$.ChildItemID',
-				ChildQuantityRequired decimal(18,5)   '$.ChildQuantityRequired',
-				ChildIssued           decimal(18,5)   '$.ChildIssued'
-			) nl
-			INNER JOIN inv.ItemMaster im ON im.ItemID = nl.ChildItemID
-			WHERE nl.Line IS NULL
-		END
+			-- Post the "Producation Parent (+)" receipt for the finished good
+			-- itself -- a header-level concern (this release's produced Qty),
+			-- independent of which raw-material lines were touched. Line = 0
+			-- since this isn't tied to any PRO.ShopOrderLine row.
+			IF @ISO_IssuedQty > 0
+			BEGIN
+				DECLARE @ISO_ParentTxnLineData nvarchar(max), @ISO_ParentTxnState int, @ISO_ParentTxnMessage nvarchar(500)
+
+				SELECT @ISO_ParentTxnLineData = (
+					SELECT
+						'P' AS TransactionType,
+						GETDATE() AS TransactionDate,
+						@ISO_Warehouse AS TransactionWarehouse,
+						0 AS [Line],
+						@ISO_ParentItemID AS ItemID,
+						'' AS LotNo,
+						@ISO_IssuedQty AS TransactionQty,
+						'' AS Note,
+						0 AS Customer,
+						0 AS Vendor,
+						0 AS LoadNo,
+						1 AS OrderType,
+						@ISO_ReleaseNo AS ReleaseNo,
+						0 AS Seq,
+						@ISO_ShopOrderNumber AS TransactionNo,
+						'' AS FromWarehouse
+					FOR JSON PATH, WITHOUT_ARRAY_WRAPPER
+				)
+
+				EXEC INV.ItemTransactionSystemHistoryV2
+					@Operation = 'New Transaction',
+					@LineData = @ISO_ParentTxnLineData,
+					@User = @User,
+					@State = @ISO_ParentTxnState OUTPUT,
+					@Message = @ISO_ParentTxnMessage OUTPUT
+
+				-- INV.ItemTransactionSystemHistoryV2 has a bug: its success (and
+				-- "no available qty") paths both RETURN before reaching its own
+				-- COMMIT TRANSACTION, leaving its BEGIN TRANSACTION dangling one
+				-- level deeper than when it was called. Neutralize that here
+				-- rather than patching shared infrastructure -- harmless either
+				-- way since its only pre-RETURN DML is on the success path,
+				-- and this COMMIT is nested inside our own still-open outer
+				-- transaction, which still fully rolls back everything below
+				-- if we abort later.
+				IF @@TRANCOUNT > 1
+					COMMIT TRANSACTION
+
+				IF @ISO_ParentTxnState <> 0
+				BEGIN
+					SET @State = 1
+					SET @Message = 'Warehouse transaction failed for parent item: ' + ISNULL(@ISO_ParentTxnMessage, '')
+					ROLLBACK TRANSACTION
+					RETURN
+				END
+			END
+
+			IF @LineMember IS NOT NULL AND LTRIM(RTRIM(@LineMember)) <> ''
+			BEGIN
+				UPDATE l
+				SET l.ChildQuantityIssued = l.ChildQuantityIssued + nl.ChildIssued, l.LineLastMaintBy = @User, l.LineLastMaintDate = GETDATE()
+				FROM PRO.ShopOrderLine l
+				INNER JOIN OPENJSON(@LineMember) WITH (
+					Line        int            '$.Line',
+					ChildIssued decimal(18,5)  '$.ChildIssued'
+				) nl ON nl.Line = l.Line
+				WHERE l.ShopOrderNumber = @ISO_ShopOrderNumber
+
+				-- Insert brand-new lines added on the fly during this issue
+				-- (Line is null in the payload -- not part of the order's
+				-- original lines).
+				DECLARE @ISO_MaxLine int
+				SELECT @ISO_MaxLine = ISNULL(MAX(Line), 0) FROM PRO.ShopOrderLine WHERE ShopOrderNumber = @ISO_ShopOrderNumber
+
+				INSERT INTO PRO.ShopOrderLine
+				(ShopOrderNumber, ParentItemID, ParentItemCode, Line, ChildItemID, ChildItemCode, ChildQuantityRequired, ChildQuantityIssued, LineWarehouse, ChildItemType, LineCreatedBy, LineCreatedDate)
+				SELECT
+					@ISO_ShopOrderNumber, @ISO_ParentItemID, @ISO_ParentItemCode,
+					@ISO_MaxLine + ROW_NUMBER() OVER (ORDER BY (SELECT NULL)),
+					nl.ChildItemID, im.ItemCode, ISNULL(nl.ChildQuantityRequired, 0), ISNULL(nl.ChildIssued, 0),
+					@ISO_Warehouse, im.ItemType, @User, GETDATE()
+				FROM OPENJSON(@LineMember) WITH (
+					Line                  int             '$.Line',
+					ChildItemID           int             '$.ChildItemID',
+					ChildQuantityRequired decimal(18,5)   '$.ChildQuantityRequired',
+					ChildIssued           decimal(18,5)   '$.ChildIssued'
+				) nl
+				INNER JOIN inv.ItemMaster im ON im.ItemID = nl.ChildItemID
+				WHERE nl.Line IS NULL
+
+				-- Post a "Producation Child (-)" system transaction against
+				-- the warehouse for every line actually issued this release
+				-- (both updated-existing and just-inserted-new lines are
+				-- resolved back to their real PRO.ShopOrderLine row here --
+				-- new lines match by ChildItemID, which is guaranteed unique
+				-- per order by the frontend's duplicate-item guard).
+				DECLARE @ISO_TxnQueue TABLE (RowNum int IDENTITY(1,1) PRIMARY KEY, LineNumber int, ItemID int, Warehouse nvarchar(50), Qty decimal(18,5))
+
+				INSERT INTO @ISO_TxnQueue (LineNumber, ItemID, Warehouse, Qty)
+				SELECT l.Line, l.ChildItemID, l.LineWarehouse, nl.ChildIssued
+				FROM OPENJSON(@LineMember) WITH (
+					Line        int            '$.Line',
+					ChildItemID int            '$.ChildItemID',
+					ChildIssued decimal(18,5)  '$.ChildIssued'
+				) nl
+				INNER JOIN PRO.ShopOrderLine l
+					ON l.ShopOrderNumber = @ISO_ShopOrderNumber
+					AND ((nl.Line IS NOT NULL AND l.Line = nl.Line) OR (nl.Line IS NULL AND l.ChildItemID = nl.ChildItemID))
+				WHERE nl.ChildIssued > 0
+
+				DECLARE @ISO_TxnRow int = 1, @ISO_TxnMax int,
+						@ISO_TxnLine int, @ISO_TxnItemID int, @ISO_TxnWarehouse nvarchar(50), @ISO_TxnQty decimal(18,5),
+						@ISO_TxnLineData nvarchar(max), @ISO_TxnState int, @ISO_TxnMessage nvarchar(500)
+				SELECT @ISO_TxnMax = COUNT(*) FROM @ISO_TxnQueue
+
+				WHILE @ISO_TxnRow <= @ISO_TxnMax
+				BEGIN
+					SELECT @ISO_TxnLine = LineNumber, @ISO_TxnItemID = ItemID, @ISO_TxnWarehouse = Warehouse, @ISO_TxnQty = Qty
+					FROM @ISO_TxnQueue WHERE RowNum = @ISO_TxnRow
+
+					SELECT @ISO_TxnLineData = (
+						SELECT
+							'C' AS TransactionType,
+							GETDATE() AS TransactionDate,
+							@ISO_TxnWarehouse AS TransactionWarehouse,
+							@ISO_TxnLine AS [Line],
+							@ISO_TxnItemID AS ItemID,
+							'' AS LotNo,
+							@ISO_TxnQty AS TransactionQty,
+							'' AS Note,
+							0 AS Customer,
+							0 AS Vendor,
+							0 AS LoadNo,
+							1 AS OrderType,
+							@ISO_ReleaseNo AS ReleaseNo,
+							0 AS Seq,
+							@ISO_ShopOrderNumber AS TransactionNo,
+							'' AS FromWarehouse
+						FOR JSON PATH, WITHOUT_ARRAY_WRAPPER
+					)
+
+					EXEC INV.ItemTransactionSystemHistoryV2
+						@Operation = 'New Transaction',
+						@LineData = @ISO_TxnLineData,
+						@User = @User,
+						@State = @ISO_TxnState OUTPUT,
+						@Message = @ISO_TxnMessage OUTPUT
+
+					-- See the parent-transaction call above: neutralize the
+					-- callee's dangling nested transaction from its RETURN-
+					-- before-COMMIT bug.
+					IF @@TRANCOUNT > 1
+						COMMIT TRANSACTION
+
+					IF @ISO_TxnState <> 0
+					BEGIN
+						SET @State = 1
+						SET @Message = 'Warehouse transaction failed for line ' + CAST(@ISO_TxnLine AS nvarchar(10)) + ': ' + ISNULL(@ISO_TxnMessage, '')
+						ROLLBACK TRANSACTION
+						RETURN
+					END
+
+					SET @ISO_TxnRow += 1
+				END
+			END
+
+			COMMIT TRANSACTION
+		END TRY
+		BEGIN CATCH
+			IF @@TRANCOUNT > 0
+				ROLLBACK TRANSACTION
+			SET @State = 1
+			SET @Message = 'Error issuing shop order: ' + ERROR_MESSAGE()
+			RETURN
+		END CATCH
 
 		SELECT * FROM pro.ShopOrderHeader WHERE ShopOrderNumber = @ISO_ShopOrderNumber
 	end
