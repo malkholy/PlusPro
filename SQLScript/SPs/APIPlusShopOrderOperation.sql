@@ -214,5 +214,40 @@ BEGIN
 
 		SELECT * FROM pro.ShopOrderHeader WHERE ShopOrderNumber = @ISO_ShopOrderNumber
 	end
+
+	-- =============================================
+	-- DELETE SHOP ORDER -- draft only (OrderState = 0). Clears the link
+	-- back from any Planning shift-plan slot before deleting so that slot
+	-- doesn't keep pointing at a deleted Shop Order.
+	-- =============================================
+	if @operation='Delete Shop Order'
+	begin
+		DECLARE @DSO_ShopOrderNumber int, @DSO_State int
+
+		SELECT @DSO_ShopOrderNumber = CAST(@LineData AS int)
+
+		SELECT @DSO_State = OrderState FROM pro.ShopOrderHeader WHERE ShopOrderNumber = @DSO_ShopOrderNumber
+
+		IF @DSO_State IS NULL
+		BEGIN
+			SET @State = 1
+			SET @Message = 'Shop Order not found'
+			RETURN
+		END
+
+		IF @DSO_State <> 0
+		BEGIN
+			SET @State = 1
+			SET @Message = 'Only draft (State 0) Shop Orders can be deleted'
+			RETURN
+		END
+
+		UPDATE [PRO].[PrdItemPlanningShiftPlan] SET ShopOrderNo = NULL WHERE ShopOrderNo = @DSO_ShopOrderNumber
+
+		DELETE FROM [PRO].[ShopOrderLine] WHERE ShopOrderNumber = @DSO_ShopOrderNumber
+		DELETE FROM pro.ShopOrderHeader WHERE ShopOrderNumber = @DSO_ShopOrderNumber
+
+		RETURN
+	end
 end
 GO

@@ -6,7 +6,7 @@ const summaryValueStyle = { fontSize: 13, fontWeight: 700, color: 'var(--text)',
 const thStyle = { textAlign: 'left', padding: '8px 10px', fontSize: 11, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: 0.3, borderBottom: '1px solid var(--border)' };
 const tdStyle = { padding: '8px 10px', fontSize: 13, color: 'var(--text)', borderBottom: '1px solid var(--border)' };
 
-export default function ShopOrderViewDrawer({ user, row, onClose, onEdit, onProduce }) {
+export default function ShopOrderViewDrawer({ user, row, onClose, onEdit, onProduce, onDelete }) {
   const [lines, setLines] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -176,6 +176,17 @@ export default function ShopOrderViewDrawer({ user, row, onClose, onEdit, onProd
           >
             🏭 Producation
           </button>
+          {isDraft && (
+            <button
+              onClick={() => onDelete(row)}
+              style={{
+                padding: '8px 22px', borderRadius: 'var(--radius-xs)', border: '1px solid var(--border2)',
+                background: 'var(--surface)', color: 'var(--red)', fontWeight: 700, fontSize: 13, cursor: 'pointer'
+              }}
+            >
+              🗑 Delete
+            </button>
+          )}
           {isDraft && (
             <button
               onClick={() => onEdit(row)}
