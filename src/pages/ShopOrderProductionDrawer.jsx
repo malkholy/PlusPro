@@ -97,18 +97,34 @@ export default function ShopOrderProductionDrawer({ user, row, onClose, onSaveSu
 
   // Lets a raw material not originally on the order's BOM be issued too --
   // Line: null tells Issue Shop Order to insert it as a brand-new line
-  // rather than update an existing one.
+  // rather than update an existing one. Required Qty is always 0 -- these
+  // are additional/unplanned issues, not a new BOM requirement.
   const addLine = () => {
     newLineKeyRef.current -= 1;
     setLines(prev => [...prev, {
       key: `new-${newLineKeyRef.current}`, isNew: true, line: null,
       childItemID: '', childItemCode: '', childItemDescription: '',
-      quantityRequired: '', alreadyIssued: 0, quantityIssued: '', balance: null
+      quantityRequired: 0, alreadyIssued: 0, quantityIssued: '', balance: null
     }]);
   };
-  const removeLine = (idx) => setLines(prev => prev.filter((_, i) => i !== idx));
+  // Only newly-added lines (never saved, so never issued) can be removed --
+  // a line that already has Issued Qty can't be deleted.
+  const removeLine = (idx) => {
+    const target = lines[idx];
+    if (!target || !target.isNew || Number(target.alreadyIssued || 0) > 0) {
+      setError('Only newly-added lines with no issued quantity can be removed.');
+      return;
+    }
+    setLines(prev => prev.filter((_, i) => i !== idx));
+  };
 
   const updateNewLineItem = async (idx, itemID) => {
+    const alreadyOnOrder = lines.some((l, i) => i !== idx && String(l.childItemID) === String(itemID));
+    if (alreadyOnOrder) {
+      setError('This item is already on the lines for this order.');
+      return;
+    }
+    setError('');
     const opt = itemOptions.find(o => String(o.value) === String(itemID));
     setLines(prev => prev.map((l, i) => i === idx ? {
       ...l, childItemID: itemID, childItemCode: opt?.itemCode || '', childItemDescription: opt?.itemName || '', balance: null
@@ -123,7 +139,6 @@ export default function ShopOrderProductionDrawer({ user, row, onClose, onSaveSu
       // leave balance null -- not shown as short/over, just unknown
     }
   };
-  const updateNewLineRequired = (idx, val) => setLines(prev => prev.map((l, i) => i === idx ? { ...l, quantityRequired: val } : l));
 
   // Defaults every line's release amount to the same proportion of its Qty
   // Required as the header's release amount is of the header's Qty Required
@@ -371,13 +386,9 @@ export default function ShopOrderProductionDrawer({ user, row, onClose, onSaveSu
                           ) : l.childItemCode}
                         </td>
                         <td style={tdStyle}>{l.childItemDescription || '—'}</td>
-                        <td style={{ ...tdStyle, textAlign: 'right', fontFamily: 'var(--mono)' }}>
+                        <td style={{ ...tdStyle, textAlign: 'right', fontFamily: 'var(--mono)', color: l.isNew ? 'var(--hint)' : 'var(--text)' }}>
                           {l.isNew ? (
-                            <input
-                              type="number" step="0.00001" value={l.quantityRequired}
-                              onChange={e => updateNewLineRequired(idx, e.target.value)}
-                              style={{ ...inputStyle, textAlign: 'right' }}
-                            />
+                            <span title="Additional/unplanned issue -- not part of the original BOM requirement">0 (additional)</span>
                           ) : (
                             Number(l.quantityRequired || 0).toLocaleString(undefined, { maximumFractionDigits: 5 })
                           )}
