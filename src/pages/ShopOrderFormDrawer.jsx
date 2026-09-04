@@ -246,7 +246,11 @@ export default function ShopOrderFormDrawer({ user, editRow, onClose, onSaveSucc
         display: 'flex', flexDirection: 'column', fontFamily: 'var(--font)'
       }}>
         <div style={{ padding: '16px 24px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: 'var(--text)' }}>
+          <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: 'var(--text)', display: 'flex', alignItems: 'center', gap: 10 }}>
+            <span style={{
+              display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+              width: 32, height: 32, borderRadius: 'var(--radius-xs)', background: 'var(--orange-soft)', fontSize: 16
+            }}>{isEditMode ? '✏️' : '🧾'}</span>
             {isEditMode ? `Edit Shop Order: ${editRow.ShopOrderNumber}` : 'New Shop Order'}
           </h2>
           <button
@@ -272,6 +276,7 @@ export default function ShopOrderFormDrawer({ user, editRow, onClose, onSaveSucc
           )}
 
           <div style={{ background: 'var(--surface)', padding: 20, borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: 16 }}>
+            <h3 style={{ margin: 0, fontSize: 13, fontWeight: 800, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: 0.4 }}>📋 Order Details</h3>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
               <div>
                 <label style={labelStyle}>Item</label>
@@ -325,8 +330,14 @@ export default function ShopOrderFormDrawer({ user, editRow, onClose, onSaveSucc
             </div>
 
             {!isEditMode && factor > 0 && (
-              <div style={{ fontSize: 11.5, color: 'var(--hint)' }}>
-                = {factor.toLocaleString(undefined, { maximumFractionDigits: 3 })}x batch factor -- each BOM line's per-batch quantity will be scaled by this.
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{
+                  display: 'inline-flex', alignItems: 'center', padding: '3px 10px', borderRadius: 999,
+                  background: 'var(--orange-soft)', color: 'var(--orange2)', fontSize: 11.5, fontWeight: 800
+                }}>
+                  {factor.toLocaleString(undefined, { maximumFractionDigits: 3 })}x batch factor
+                </span>
+                <span style={{ fontSize: 11.5, color: 'var(--hint)' }}>each BOM line's per-batch quantity will be scaled by this</span>
               </div>
             )}
           </div>
@@ -334,7 +345,17 @@ export default function ShopOrderFormDrawer({ user, editRow, onClose, onSaveSucc
           {isEditMode && (
             <div style={{ background: 'var(--surface)', padding: 20, borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-                <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: 'var(--text)' }}>Lines</h3>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: 'var(--text)' }}>📦 Lines</h3>
+                  {lines.length > 0 && (
+                    <span style={{
+                      display: 'inline-flex', alignItems: 'center', padding: '1px 8px', borderRadius: 999,
+                      background: 'var(--soft)', border: '1px solid var(--border)', color: 'var(--muted)', fontSize: 11, fontWeight: 700
+                    }}>
+                      {lines.length}
+                    </span>
+                  )}
+                </div>
                 <div style={{ display: 'flex', gap: 8 }}>
                   <button
                     onClick={handleRebuildFromBOM}
@@ -373,7 +394,7 @@ export default function ShopOrderFormDrawer({ user, editRow, onClose, onSaveSucc
                   </thead>
                   <tbody>
                     {lines.map((l, idx) => (
-                      <tr key={idx}>
+                      <tr key={idx} style={{ background: idx % 2 === 1 ? 'var(--soft)' : 'transparent' }}>
                         <td style={{ padding: '8px 6px', fontSize: 13, color: 'var(--muted)' }}>{idx + 1}</td>
                         <td style={{ padding: '8px 6px', minWidth: 220 }}>
                           <SearchableSelect
@@ -393,7 +414,13 @@ export default function ShopOrderFormDrawer({ user, editRow, onClose, onSaveSucc
                         <td style={{ padding: '8px 6px', width: 40 }}>
                           <button
                             onClick={() => removeLine(idx)}
-                            style={{ background: 'none', border: 'none', color: 'var(--red)', fontSize: 16, cursor: 'pointer' }}
+                            style={{
+                              background: 'none', border: 'none', color: 'var(--muted)', fontSize: 16, lineHeight: 1,
+                              cursor: 'pointer', width: 26, height: 26, borderRadius: '999px', display: 'flex',
+                              alignItems: 'center', justifyContent: 'center'
+                            }}
+                            onMouseEnter={e => { e.currentTarget.style.background = 'var(--red-soft)'; e.currentTarget.style.color = 'var(--red)'; }}
+                            onMouseLeave={e => { e.currentTarget.style.background = 'none'; e.currentTarget.style.color = 'var(--muted)'; }}
                           >×</button>
                         </td>
                       </tr>

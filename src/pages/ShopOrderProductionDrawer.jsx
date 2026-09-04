@@ -9,8 +9,29 @@ const inputStyle = {
   width: '100%', padding: '8px 12px', border: '1px solid var(--border2)', borderRadius: 'var(--radius-xs)',
   boxSizing: 'border-box', background: 'var(--surface)', color: 'var(--text)', fontFamily: 'var(--font)', fontSize: 13
 };
+const readOnlyBoxStyle = {
+  ...inputStyle, background: 'var(--soft)', color: 'var(--muted)', display: 'flex', alignItems: 'center', minHeight: 36, boxSizing: 'border-box'
+};
 const thStyle = { textAlign: 'left', padding: '8px 10px', fontSize: 11, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: 0.3, borderBottom: '1px solid var(--border)' };
 const tdStyle = { padding: '8px 10px', fontSize: 13, color: 'var(--text)', borderBottom: '1px solid var(--border)' };
+
+function StateBadge({ state }) {
+  const n = Number(state);
+  const isDraft = n === 0;
+  const isIssued = n === 10;
+  const label = isDraft ? 'Draft' : isIssued ? 'Issued' : `State ${n}`;
+  const color = isDraft ? 'var(--muted)' : isIssued ? 'var(--green, #16a34a)' : 'var(--orange2)';
+  const bg = isDraft ? 'var(--border)' : isIssued ? 'var(--green-soft, rgba(22,163,74,0.12))' : 'var(--orange-soft)';
+  return (
+    <span style={{
+      display: 'inline-flex', alignItems: 'center', gap: 5, padding: '3px 10px', borderRadius: 999,
+      background: bg, color, fontSize: 11.5, fontWeight: 800, textTransform: 'uppercase', letterSpacing: 0.3
+    }}>
+      <span style={{ width: 6, height: 6, borderRadius: '50%', background: color }} />
+      {label}
+    </span>
+  );
+}
 
 export default function ShopOrderProductionDrawer({ user, row, onClose, onSaveSuccess }) {
   const [issuedQty, setIssuedQty] = useState(row.QuantiftyIssued ?? '');
@@ -110,6 +131,9 @@ export default function ShopOrderProductionDrawer({ user, row, onClose, onSaveSu
     }
   };
 
+  const required = Number(row.QuantityRequired || 0);
+  const pct = required > 0 ? Math.min(100, (Number(issuedQty || 0) / required) * 100) : 0;
+
   return (
     <>
       <div style={{
@@ -118,8 +142,12 @@ export default function ShopOrderProductionDrawer({ user, row, onClose, onSaveSu
         display: 'flex', flexDirection: 'column', fontFamily: 'var(--font)'
       }}>
         <div style={{ padding: '16px 24px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: 'var(--text)' }}>
-            🏭 Production: Shop Order {row.ShopOrderNumber}
+          <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: 'var(--text)', display: 'flex', alignItems: 'center', gap: 10 }}>
+            <span style={{
+              display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+              width: 32, height: 32, borderRadius: 'var(--radius-xs)', background: 'var(--orange-soft)', fontSize: 16
+            }}>🏭</span>
+            Production: Shop Order {row.ShopOrderNumber}
           </h2>
           <button
             onClick={onClose}
@@ -142,6 +170,7 @@ export default function ShopOrderProductionDrawer({ user, row, onClose, onSaveSu
           )}
 
           <div style={{ background: 'var(--surface)', padding: 20, borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }}>
+            <h3 style={{ margin: '0 0 14px 0', fontSize: 13, fontWeight: 800, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: 0.4 }}>📋 Order Details</h3>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16 }}>
               <div>
                 <label style={labelStyle}>Item Code</label>
@@ -153,7 +182,7 @@ export default function ShopOrderProductionDrawer({ user, row, onClose, onSaveSu
               </div>
               <div>
                 <label style={labelStyle}>State</label>
-                <input value={Number(row.OrderState) === 0 ? 'Draft (0)' : row.OrderState} readOnly style={{ ...inputStyle, background: 'var(--soft)', color: 'var(--muted)' }} />
+                <div style={readOnlyBoxStyle}><StateBadge state={row.OrderState} /></div>
               </div>
               <div>
                 <label style={labelStyle}>Date</label>
@@ -185,7 +214,7 @@ export default function ShopOrderProductionDrawer({ user, row, onClose, onSaveSu
               </div>
               <div>
                 <label style={labelStyle}>Qty Required</label>
-                <input value={Number(row.QuantityRequired || 0).toLocaleString(undefined, { maximumFractionDigits: 5 })} readOnly style={{ ...inputStyle, background: 'var(--soft)', color: 'var(--muted)' }} />
+                <input value={required.toLocaleString(undefined, { maximumFractionDigits: 5 })} readOnly style={{ ...inputStyle, background: 'var(--soft)', color: 'var(--muted)' }} />
               </div>
               <div>
                 <label style={labelStyle}>Issued Qty</label>
@@ -196,15 +225,45 @@ export default function ShopOrderProductionDrawer({ user, row, onClose, onSaveSu
                   style={inputStyle}
                 />
               </div>
-              <div>
+              <div style={{ gridColumn: 'span 2' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+                  <label style={labelStyle}>Progress</label>
+                  <span style={{ fontSize: 11, fontWeight: 700, color: pct >= 100 ? 'var(--green, #16a34a)' : 'var(--muted)' }}>{pct.toFixed(0)}%</span>
+                </div>
+                <div style={{ height: 8, borderRadius: 999, background: 'var(--border)', overflow: 'hidden', marginTop: 6 }}>
+                  <div style={{
+                    height: '100%', width: `${pct}%`, borderRadius: 999, transition: 'width 0.15s ease',
+                    background: pct >= 100 ? 'var(--green, #16a34a)' : 'linear-gradient(135deg, var(--orange), var(--orange2))'
+                  }} />
+                </div>
+              </div>
+              <div style={{ gridColumn: 'span 2' }}>
                 <label style={labelStyle}>Number Of Released</label>
-                <input value={`${Number(row.NumberOfReleases || 0)} (saving will be release #${Number(row.NumberOfReleases || 0) + 1})`} readOnly style={{ ...inputStyle, background: 'var(--soft)', color: 'var(--muted)' }} />
+                <div style={readOnlyBoxStyle}>
+                  <span style={{
+                    display: 'inline-flex', alignItems: 'center', padding: '1px 8px', borderRadius: 999,
+                    background: 'var(--orange-soft)', color: 'var(--orange2)', fontSize: 12, fontWeight: 800, marginRight: 8
+                  }}>
+                    {Number(row.NumberOfReleases || 0)}
+                  </span>
+                  <span style={{ fontSize: 12 }}>saving now will be release #{Number(row.NumberOfReleases || 0) + 1}</span>
+                </div>
               </div>
             </div>
           </div>
 
           <div style={{ background: 'var(--surface)', padding: 20, borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }}>
-            <h3 style={{ margin: '0 0 12px 0', fontSize: 15, fontWeight: 700, color: 'var(--text)' }}>Lines</h3>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+              <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: 'var(--text)' }}>📦 Lines</h3>
+              {lines.length > 0 && (
+                <span style={{
+                  display: 'inline-flex', alignItems: 'center', padding: '1px 8px', borderRadius: 999,
+                  background: 'var(--soft)', border: '1px solid var(--border)', color: 'var(--muted)', fontSize: 11, fontWeight: 700
+                }}>
+                  {lines.length}
+                </span>
+              )}
+            </div>
             {linesLoading ? (
               <div style={{ fontSize: 13, color: 'var(--hint)' }}>Loading...</div>
             ) : lines.length === 0 ? (
@@ -226,7 +285,7 @@ export default function ShopOrderProductionDrawer({ user, row, onClose, onSaveSu
                     const short = l.balance !== null && l.balance < Number(l.quantityRequired || 0);
                     const overBalance = l.balance !== null && Number(l.quantityIssued || 0) > l.balance;
                     return (
-                      <tr key={l.line}>
+                      <tr key={l.line} style={{ background: idx % 2 === 1 ? 'var(--soft)' : 'transparent' }}>
                         <td style={tdStyle}>{l.line}</td>
                         <td style={tdStyle}>{l.childItemCode}</td>
                         <td style={tdStyle}>{l.childItemDescription || '—'}</td>
