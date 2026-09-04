@@ -185,7 +185,6 @@ export default function ShopOrderViewDrawer({ user, row, onClose, onEdit, onProd
                     <th style={thStyle}>Item Code</th>
                     <th style={thStyle}>Description</th>
                     <th style={thStyle}>Type</th>
-                    <th style={thStyle}>Warehouse</th>
                     <th style={{ ...thStyle, textAlign: 'right' }}>Qty Required</th>
                     <th style={{ ...thStyle, textAlign: 'right' }}>Qty Issued</th>
                   </tr>
@@ -197,7 +196,6 @@ export default function ShopOrderViewDrawer({ user, row, onClose, onEdit, onProd
                       <td style={tdStyle}>{l.ChildItemCode}</td>
                       <td style={tdStyle}>{l.ItemDescription || '—'}</td>
                       <td style={tdStyle}>{l.ChildItemType || '—'}</td>
-                      <td style={tdStyle}>{l.LineWarehouse || '—'}</td>
                       <td style={{ ...tdStyle, textAlign: 'right', fontFamily: 'var(--mono)' }}>
                         {Number(l.ChildQuantityRequired || 0).toLocaleString(undefined, { maximumFractionDigits: 5 })}
                       </td>
