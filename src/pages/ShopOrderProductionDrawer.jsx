@@ -143,7 +143,7 @@ export default function ShopOrderProductionDrawer({ user, row, onClose, onSaveSu
   return (
     <>
       <div style={{
-        position: 'fixed', top: 0, right: 0, bottom: 0, width: 680, maxWidth: '95vw',
+        position: 'fixed', top: 0, right: 0, bottom: 0, width: 900, maxWidth: '95vw',
         background: 'var(--surface)', boxShadow: 'var(--shadow-lg)', zIndex: 1150,
         display: 'flex', flexDirection: 'column', fontFamily: 'var(--font)'
       }}>
