@@ -25,7 +25,7 @@ INSERT INTO [PLS].[QueryMaster]
 VALUES
 ('Shop Orders Grid', 'Shop Orders Grid', 'Shop order headers, joined to Item Master, Machine Master, BOM Header, and Warehouse Master for readable labels',
 'SELECT
-    a.[ShopOrderNumber], a.[OrderState], a.[ShopOrderDate],
+    a.[ShopOrderNumber], a.[OrderState], st.StateDescription, a.[ShopOrderDate],
     a.[ShopOrderWarehouse], wh.WarhouseDescription AS WarehouseDescription,
     a.[ParentItemID], a.[ParentItemCode], im.ItemDescription,
     a.[QuantityRequired], a.[QuantiftyIssued], a.[NumberOfReleases],
@@ -38,6 +38,7 @@ LEFT OUTER JOIN inv.ItemMaster im ON a.ParentItemID = im.ItemID
 LEFT OUTER JOIN prd.MachineMaster mm ON a.MachineID = mm.MachineID
 LEFT OUTER JOIN prd.BillOfMaterialHeader bh ON a.FlormulaID = bh.FormulaID
 LEFT OUTER JOIN inv.WarehouseMaster wh ON a.ShopOrderWarehouse = wh.Warehouse
+LEFT OUTER JOIN Pro.ShopOrderState st ON a.OrderState = st.StateID
 WHERE 1=1 {FILTER}
 ORDER BY a.ShopOrderNumber DESC;', 'Grid', NULL);
 

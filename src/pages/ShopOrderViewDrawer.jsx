@@ -6,11 +6,11 @@ const summaryValueStyle = { fontSize: 13, fontWeight: 700, color: 'var(--text)',
 const thStyle = { textAlign: 'left', padding: '8px 10px', fontSize: 11, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: 0.3, borderBottom: '1px solid var(--border)' };
 const tdStyle = { padding: '8px 10px', fontSize: 13, color: 'var(--text)', borderBottom: '1px solid var(--border)' };
 
-function StateBadge({ state }) {
+function StateBadge({ state, description }) {
   const n = Number(state);
   const isDraft = n === 0;
   const isIssued = n === 10;
-  const label = isDraft ? 'Draft' : isIssued ? 'Issued' : `State ${n}`;
+  const label = description || (isDraft ? 'New' : isIssued ? 'Issued' : `State ${n}`);
   const color = isDraft ? 'var(--muted)' : isIssued ? 'var(--green, #16a34a)' : 'var(--orange2)';
   const bg = isDraft ? 'var(--soft)' : isIssued ? 'var(--green-soft, rgba(22,163,74,0.12))' : 'var(--orange-soft)';
   return (
@@ -67,7 +67,7 @@ export default function ShopOrderViewDrawer({ user, row, onClose, onEdit, onProd
                 width: 32, height: 32, borderRadius: 'var(--radius-xs)', background: 'var(--orange-soft)', fontSize: 16
               }}>🧾</span>
               Shop Order {row.ShopOrderNumber}
-              <StateBadge state={row.OrderState} />
+              <StateBadge state={row.OrderState} description={row.StateDescription} />
             </h2>
             <button
               onClick={onClose}

@@ -15,11 +15,11 @@ const readOnlyBoxStyle = {
 const thStyle = { textAlign: 'left', padding: '8px 10px', fontSize: 11, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: 0.3, borderBottom: '1px solid var(--border)' };
 const tdStyle = { padding: '8px 10px', fontSize: 13, color: 'var(--text)', borderBottom: '1px solid var(--border)' };
 
-function StateBadge({ state }) {
+function StateBadge({ state, description }) {
   const n = Number(state);
   const isDraft = n === 0;
   const isIssued = n === 10;
-  const label = isDraft ? 'Draft' : isIssued ? 'Issued' : `State ${n}`;
+  const label = description || (isDraft ? 'New' : isIssued ? 'Issued' : `State ${n}`);
   const color = isDraft ? 'var(--muted)' : isIssued ? 'var(--green, #16a34a)' : 'var(--orange2)';
   const bg = isDraft ? 'var(--border)' : isIssued ? 'var(--green-soft, rgba(22,163,74,0.12))' : 'var(--orange-soft)';
   return (
@@ -34,7 +34,11 @@ function StateBadge({ state }) {
 }
 
 export default function ShopOrderProductionDrawer({ user, row, onClose, onSaveSuccess }) {
-  const [issuedQty, setIssuedQty] = useState(row.QuantiftyIssued ?? '');
+  // Issued Qty is now the amount for THIS release, added on top of whatever
+  // was already issued (Qty Issued = Old Qty Issued + New) -- not a
+  // replacement of the running total, so it starts blank rather than
+  // prefilled with row.QuantiftyIssued.
+  const [issuedQty, setIssuedQty] = useState('');
   const [lines, setLines] = useState([]);
   const [linesLoading, setLinesLoading] = useState(true);
 
@@ -65,7 +69,7 @@ export default function ShopOrderProductionDrawer({ user, row, onClose, onSaveSu
           const match = balances[i].find(b => String(b.Warehouse || '').trim().toUpperCase() === String(row.ShopOrderWarehouse || '').trim().toUpperCase());
           return {
             line: l.Line, childItemCode: l.ChildItemCode, childItemDescription: l.ItemDescription,
-            quantityRequired: l.ChildQuantityRequired, quantityIssued: l.ChildQuantityIssued,
+            quantityRequired: l.ChildQuantityRequired, alreadyIssued: l.ChildQuantityIssued, quantityIssued: '',
             balance: match ? Number(match.ItemBalance || 0) : null
           };
         }));
@@ -77,9 +81,9 @@ export default function ShopOrderProductionDrawer({ user, row, onClose, onSaveSu
 
   const updateLineIssued = (idx, val) => setLines(prev => prev.map((l, i) => i === idx ? { ...l, quantityIssued: val } : l));
 
-  // Defaults every line's Qty Issued to the same proportion of its Qty
-  // Required as the header Issued Qty is of the header's Qty Required --
-  // just a starting point, each line can still be edited afterward.
+  // Defaults every line's release amount to the same proportion of its Qty
+  // Required as the header's release amount is of the header's Qty Required
+  // -- just a starting point, each line can still be edited afterward.
   const handleIssuedQtyBlur = () => {
     const required = Number(row.QuantityRequired || 0);
     const issued = Number(issuedQty || 0);
@@ -92,7 +96,7 @@ export default function ShopOrderProductionDrawer({ user, row, onClose, onSaveSu
     setError('');
     setSuccess('');
 
-    if (issuedQty === '' || Number(issuedQty) < 0) { setError('Please enter a valid Issued Qty.'); return; }
+    if (issuedQty === '' || Number(issuedQty) < 0) { setError('Please enter a valid Issue Now quantity.'); return; }
     if (lines.some(l => l.quantityIssued !== '' && l.quantityIssued != null && Number(l.quantityIssued) < 0)) {
       setError('Line issued quantities cannot be negative.');
       return;
@@ -132,7 +136,9 @@ export default function ShopOrderProductionDrawer({ user, row, onClose, onSaveSu
   };
 
   const required = Number(row.QuantityRequired || 0);
-  const pct = required > 0 ? Math.min(100, (Number(issuedQty || 0) / required) * 100) : 0;
+  const alreadyIssued = Number(row.QuantiftyIssued || 0);
+  const newTotal = alreadyIssued + Number(issuedQty || 0);
+  const pct = required > 0 ? Math.min(100, (newTotal / required) * 100) : 0;
 
   return (
     <>
@@ -182,7 +188,7 @@ export default function ShopOrderProductionDrawer({ user, row, onClose, onSaveSu
               </div>
               <div>
                 <label style={labelStyle}>State</label>
-                <div style={readOnlyBoxStyle}><StateBadge state={row.OrderState} /></div>
+                <div style={readOnlyBoxStyle}><StateBadge state={row.OrderState} description={row.StateDescription} /></div>
               </div>
               <div>
                 <label style={labelStyle}>Date</label>
@@ -217,7 +223,11 @@ export default function ShopOrderProductionDrawer({ user, row, onClose, onSaveSu
                 <input value={required.toLocaleString(undefined, { maximumFractionDigits: 5 })} readOnly style={{ ...inputStyle, background: 'var(--soft)', color: 'var(--muted)' }} />
               </div>
               <div>
-                <label style={labelStyle}>Issued Qty</label>
+                <label style={labelStyle}>Already Issued</label>
+                <input value={alreadyIssued.toLocaleString(undefined, { maximumFractionDigits: 5 })} readOnly style={{ ...inputStyle, background: 'var(--soft)', color: 'var(--muted)' }} />
+              </div>
+              <div>
+                <label style={labelStyle}>Issue Now (this release)</label>
                 <input
                   type="number" step="0.00001" value={issuedQty}
                   onChange={e => setIssuedQty(e.target.value)}
@@ -225,10 +235,12 @@ export default function ShopOrderProductionDrawer({ user, row, onClose, onSaveSu
                   style={inputStyle}
                 />
               </div>
-              <div style={{ gridColumn: 'span 2' }}>
+              <div style={{ gridColumn: 'span 4' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-                  <label style={labelStyle}>Progress</label>
-                  <span style={{ fontSize: 11, fontWeight: 700, color: pct >= 100 ? 'var(--green, #16a34a)' : 'var(--muted)' }}>{pct.toFixed(0)}%</span>
+                  <label style={labelStyle}>Progress After This Release</label>
+                  <span style={{ fontSize: 11, fontWeight: 700, color: pct >= 100 ? 'var(--green, #16a34a)' : 'var(--muted)' }}>
+                    {newTotal.toLocaleString(undefined, { maximumFractionDigits: 5 })} / {required.toLocaleString(undefined, { maximumFractionDigits: 5 })} ({pct.toFixed(0)}%)
+                  </span>
                 </div>
                 <div style={{ height: 8, borderRadius: 999, background: 'var(--border)', overflow: 'hidden', marginTop: 6 }}>
                   <div style={{
@@ -276,8 +288,9 @@ export default function ShopOrderProductionDrawer({ user, row, onClose, onSaveSu
                     <th style={thStyle}>Item Code</th>
                     <th style={thStyle}>Description</th>
                     <th style={{ ...thStyle, textAlign: 'right' }}>Qty Required</th>
+                    <th style={{ ...thStyle, textAlign: 'right' }}>Already Issued</th>
                     <th style={{ ...thStyle, textAlign: 'right' }}>Balance ({row.ShopOrderWarehouse || '—'})</th>
-                    <th style={{ ...thStyle, textAlign: 'right' }}>Qty Issued</th>
+                    <th style={{ ...thStyle, textAlign: 'right' }}>Issue Now</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -291,6 +304,9 @@ export default function ShopOrderProductionDrawer({ user, row, onClose, onSaveSu
                         <td style={tdStyle}>{l.childItemDescription || '—'}</td>
                         <td style={{ ...tdStyle, textAlign: 'right', fontFamily: 'var(--mono)' }}>
                           {Number(l.quantityRequired || 0).toLocaleString(undefined, { maximumFractionDigits: 5 })}
+                        </td>
+                        <td style={{ ...tdStyle, textAlign: 'right', fontFamily: 'var(--mono)', color: 'var(--muted)' }}>
+                          {Number(l.alreadyIssued || 0).toLocaleString(undefined, { maximumFractionDigits: 5 })}
                         </td>
                         <td style={{
                           ...tdStyle, textAlign: 'right', fontFamily: 'var(--mono)', fontWeight: 700,

@@ -70,7 +70,7 @@ export default function ShopOrders({ user }) {
     { key: 'ShopOrderNumber', label: 'Order #', width: 110, align: 'right' },
     { key: 'ParentItemCode', label: 'Item Code', width: 150 },
     { key: 'ItemDescription', label: 'Description', flex: 1 },
-    { key: 'OrderState', label: 'State', width: 90, align: 'right' },
+    { key: 'StateDescription', label: 'State', width: 100, render: (val, row) => val || row.OrderState },
     { key: 'ShopOrderDate', label: 'Date', width: 110, render: (val) => val ? val.split('T')[0] : '—' },
     { key: 'ShopOrderWarehouse', label: 'Warehouse', width: 110, render: (val) => val || '—' },
     { key: 'QuantityRequired', label: 'Qty Required', width: 120, align: 'right', render: (val) => Number(val || 0).toLocaleString(undefined, { maximumFractionDigits: 5 }) },

@@ -196,14 +196,17 @@ BEGIN
 			END
 		END
 
+		-- Additive: each Issue call is a new release on top of what's already
+		-- been issued (Qty Issued = Old Qty Issued + this release's amount),
+		-- not a replacement of the running total.
 		UPDATE pro.ShopOrderHeader
-		SET QuantiftyIssued = @ISO_IssuedQty, OrderState = 10, NumberOfReleases = NumberOfReleases + 1, OrderLastMaintBy = @User, OrderLastMaintDate = GETDATE()
+		SET QuantiftyIssued = QuantiftyIssued + @ISO_IssuedQty, OrderState = 10, NumberOfReleases = NumberOfReleases + 1, OrderLastMaintBy = @User, OrderLastMaintDate = GETDATE()
 		WHERE ShopOrderNumber = @ISO_ShopOrderNumber
 
 		IF @LineMember IS NOT NULL AND LTRIM(RTRIM(@LineMember)) <> ''
 		BEGIN
 			UPDATE l
-			SET l.ChildQuantityIssued = nl.ChildIssued, l.LineLastMaintBy = @User, l.LineLastMaintDate = GETDATE()
+			SET l.ChildQuantityIssued = l.ChildQuantityIssued + nl.ChildIssued, l.LineLastMaintBy = @User, l.LineLastMaintDate = GETDATE()
 			FROM PRO.ShopOrderLine l
 			INNER JOIN OPENJSON(@LineMember) WITH (
 				Line        int            '$.Line',
