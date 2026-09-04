@@ -93,6 +93,10 @@ export default function ShopOrderViewDrawer({ user, row, onClose, onEdit, onProd
               <div style={summaryValueStyle}>{Number(row.QuantiftyIssued || 0).toLocaleString(undefined, { maximumFractionDigits: 5 })}</div>
             </div>
             <div>
+              <div style={summaryLabelStyle}>Number Of Released</div>
+              <div style={summaryValueStyle}>{Number(row.NumberOfReleases || 0)}</div>
+            </div>
+            <div>
               <div style={summaryLabelStyle}>Shift</div>
               <div style={summaryValueStyle}>{row.ShiftID ?? '—'}</div>
             </div>

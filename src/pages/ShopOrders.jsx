@@ -43,6 +43,7 @@ export default function ShopOrders({ user }) {
     { key: 'ShopOrderWarehouse', label: 'Warehouse', width: 110, render: (val) => val || '—' },
     { key: 'QuantityRequired', label: 'Qty Required', width: 120, align: 'right', render: (val) => Number(val || 0).toLocaleString(undefined, { maximumFractionDigits: 5 }) },
     { key: 'QuantiftyIssued', label: 'Qty Issued', width: 120, align: 'right', render: (val) => Number(val || 0).toLocaleString(undefined, { maximumFractionDigits: 5 }) },
+    { key: 'NumberOfReleases', label: 'Releases', width: 90, align: 'right' },
     { key: 'MachineCode', label: 'Machine', width: 130, render: (val) => val || '—' },
     { key: 'FormulaCode', label: 'Formula', width: 130, render: (val) => val || '—' },
     { key: 'ShiftID', label: 'Shift', width: 80, align: 'right' },

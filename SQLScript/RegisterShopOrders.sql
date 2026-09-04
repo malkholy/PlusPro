@@ -28,7 +28,7 @@ VALUES
     a.[ShopOrderNumber], a.[OrderState], a.[ShopOrderDate],
     a.[ShopOrderWarehouse], wh.WarhouseDescription AS WarehouseDescription,
     a.[ParentItemID], a.[ParentItemCode], im.ItemDescription,
-    a.[QuantityRequired], a.[QuantiftyIssued],
+    a.[QuantityRequired], a.[QuantiftyIssued], a.[NumberOfReleases],
     a.[MachineID], mm.MachineCode,
     a.[FlormulaID], bh.ParentItemCode AS FormulaCode,
     a.[ShiftID],

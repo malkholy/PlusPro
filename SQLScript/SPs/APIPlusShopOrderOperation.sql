@@ -197,7 +197,7 @@ BEGIN
 		END
 
 		UPDATE pro.ShopOrderHeader
-		SET QuantiftyIssued = @ISO_IssuedQty, OrderState = 10, OrderLastMaintBy = @User, OrderLastMaintDate = GETDATE()
+		SET QuantiftyIssued = @ISO_IssuedQty, OrderState = 10, NumberOfReleases = NumberOfReleases + 1, OrderLastMaintBy = @User, OrderLastMaintDate = GETDATE()
 		WHERE ShopOrderNumber = @ISO_ShopOrderNumber
 
 		IF @LineMember IS NOT NULL AND LTRIM(RTRIM(@LineMember)) <> ''

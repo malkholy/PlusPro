@@ -196,6 +196,10 @@ export default function ShopOrderProductionDrawer({ user, row, onClose, onSaveSu
                   style={inputStyle}
                 />
               </div>
+              <div>
+                <label style={labelStyle}>Number Of Released</label>
+                <input value={`${Number(row.NumberOfReleases || 0)} (saving will be release #${Number(row.NumberOfReleases || 0) + 1})`} readOnly style={{ ...inputStyle, background: 'var(--soft)', color: 'var(--muted)' }} />
+              </div>
             </div>
           </div>
 
