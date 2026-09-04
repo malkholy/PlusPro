@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { apiCall } from '../shared/api.js';
+import SearchableSelect from '../shared/SearchableSelect.jsx';
 
 const labelStyle = {
   display: 'block', fontSize: 11, fontWeight: 700, color: 'var(--muted)', marginBottom: 6,
@@ -41,10 +42,22 @@ export default function ShopOrderProductionDrawer({ user, row, onClose, onSaveSu
   const [issuedQty, setIssuedQty] = useState('');
   const [lines, setLines] = useState([]);
   const [linesLoading, setLinesLoading] = useState(true);
+  const [itemOptions, setItemOptions] = useState([]);
+  const newLineKeyRef = useRef(0);
 
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+
+  useEffect(() => {
+    apiCall('Item Master All', null, { User: user?.Username }, 'lookup').then(d => {
+      if (d.State === 0) {
+        setItemOptions((d.List0 || []).map(i => ({
+          label: `${i.ItemCode} - ${i.ItemName}`, value: i.ItemID, itemCode: i.ItemCode, itemName: i.ItemName
+        })));
+      }
+    }).catch(() => {});
+  }, [user]);
 
   useEffect(() => {
     let cancelled = false;
@@ -68,7 +81,8 @@ export default function ShopOrderProductionDrawer({ user, row, onClose, onSaveSu
         setLines(rawLines.map((l, i) => {
           const match = balances[i].find(b => String(b.Warehouse || '').trim().toUpperCase() === String(row.ShopOrderWarehouse || '').trim().toUpperCase());
           return {
-            line: l.Line, childItemCode: l.ChildItemCode, childItemDescription: l.ItemDescription,
+            key: `existing-${l.Line}`, isNew: false, line: l.Line,
+            childItemID: l.ChildItemID, childItemCode: l.ChildItemCode, childItemDescription: l.ItemDescription,
             quantityRequired: l.ChildQuantityRequired, alreadyIssued: l.ChildQuantityIssued, quantityIssued: '',
             balance: match ? Number(match.ItemBalance || 0) : null
           };
@@ -80,6 +94,36 @@ export default function ShopOrderProductionDrawer({ user, row, onClose, onSaveSu
   }, [row.ShopOrderNumber, row.ShopOrderWarehouse, user]);
 
   const updateLineIssued = (idx, val) => setLines(prev => prev.map((l, i) => i === idx ? { ...l, quantityIssued: val } : l));
+
+  // Lets a raw material not originally on the order's BOM be issued too --
+  // Line: null tells Issue Shop Order to insert it as a brand-new line
+  // rather than update an existing one.
+  const addLine = () => {
+    newLineKeyRef.current -= 1;
+    setLines(prev => [...prev, {
+      key: `new-${newLineKeyRef.current}`, isNew: true, line: null,
+      childItemID: '', childItemCode: '', childItemDescription: '',
+      quantityRequired: '', alreadyIssued: 0, quantityIssued: '', balance: null
+    }]);
+  };
+  const removeLine = (idx) => setLines(prev => prev.filter((_, i) => i !== idx));
+
+  const updateNewLineItem = async (idx, itemID) => {
+    const opt = itemOptions.find(o => String(o.value) === String(itemID));
+    setLines(prev => prev.map((l, i) => i === idx ? {
+      ...l, childItemID: itemID, childItemCode: opt?.itemCode || '', childItemDescription: opt?.itemName || '', balance: null
+    } : l));
+    if (!opt) return;
+    try {
+      const bd = await apiCall('GetGridData', { PageGroupID: 'item_balance', fromItem: opt.itemCode, toItem: opt.itemCode }, { User: user?.Username }, 'plus');
+      if (bd.State !== 0) return;
+      const match = (bd.List0 || []).find(b => String(b.Warehouse || '').trim().toUpperCase() === String(row.ShopOrderWarehouse || '').trim().toUpperCase());
+      setLines(prev => prev.map((l, i) => i === idx ? { ...l, balance: match ? Number(match.ItemBalance || 0) : null } : l));
+    } catch {
+      // leave balance null -- not shown as short/over, just unknown
+    }
+  };
+  const updateNewLineRequired = (idx, val) => setLines(prev => prev.map((l, i) => i === idx ? { ...l, quantityRequired: val } : l));
 
   // Defaults every line's release amount to the same proportion of its Qty
   // Required as the header's release amount is of the header's Qty Required
@@ -97,6 +141,7 @@ export default function ShopOrderProductionDrawer({ user, row, onClose, onSaveSu
     setSuccess('');
 
     if (issuedQty === '' || Number(issuedQty) < 0) { setError('Please enter a valid Issue Now quantity.'); return; }
+    if (lines.some(l => l.isNew && !l.childItemID)) { setError('Every new line needs an item selected.'); return; }
     if (lines.some(l => l.quantityIssued !== '' && l.quantityIssued != null && Number(l.quantityIssued) < 0)) {
       setError('Line issued quantities cannot be negative.');
       return;
@@ -109,10 +154,15 @@ export default function ShopOrderProductionDrawer({ user, row, onClose, onSaveSu
 
     setSaving(true);
     try {
-      const lineMember = lines.map(l => ({
+      const lineMember = lines.map(l => l.isNew ? {
+        Line: null,
+        ChildItemID: Number(l.childItemID),
+        ChildQuantityRequired: Number(l.quantityRequired || 0),
+        ChildIssued: Number(l.quantityIssued || 0)
+      } : {
         Line: l.line,
         ChildIssued: Number(l.quantityIssued || 0)
-      }));
+      });
 
       const res = await apiCall('Issue Shop Order', {
         ShopOrderNo: row.ShopOrderNumber,
@@ -265,21 +315,30 @@ export default function ShopOrderProductionDrawer({ user, row, onClose, onSaveSu
           </div>
 
           <div style={{ background: 'var(--surface)', padding: 20, borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-              <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: 'var(--text)' }}>📦 Lines</h3>
-              {lines.length > 0 && (
-                <span style={{
-                  display: 'inline-flex', alignItems: 'center', padding: '1px 8px', borderRadius: 999,
-                  background: 'var(--soft)', border: '1px solid var(--border)', color: 'var(--muted)', fontSize: 11, fontWeight: 700
-                }}>
-                  {lines.length}
-                </span>
-              )}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: 'var(--text)' }}>📦 Lines</h3>
+                {lines.length > 0 && (
+                  <span style={{
+                    display: 'inline-flex', alignItems: 'center', padding: '1px 8px', borderRadius: 999,
+                    background: 'var(--soft)', border: '1px solid var(--border)', color: 'var(--muted)', fontSize: 11, fontWeight: 700
+                  }}>
+                    {lines.length}
+                  </span>
+                )}
+              </div>
+              <button
+                onClick={addLine}
+                title="Issue a raw material not originally on this order's BOM"
+                style={{ padding: '6px 14px', borderRadius: 'var(--radius-xs)', border: '1px solid var(--border2)', background: 'var(--surface)', color: 'var(--text)', fontWeight: 600, fontSize: 12.5, cursor: 'pointer' }}
+              >
+                + Add Line
+              </button>
             </div>
             {linesLoading ? (
               <div style={{ fontSize: 13, color: 'var(--hint)' }}>Loading...</div>
             ) : lines.length === 0 ? (
-              <div style={{ fontSize: 13, color: 'var(--hint)' }}>No lines found for this shop order.</div>
+              <div style={{ fontSize: 13, color: 'var(--hint)' }}>No lines yet -- click "Add Line" to issue a raw material.</div>
             ) : (
               <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                 <thead>
@@ -291,6 +350,7 @@ export default function ShopOrderProductionDrawer({ user, row, onClose, onSaveSu
                     <th style={{ ...thStyle, textAlign: 'right' }}>Already Issued</th>
                     <th style={{ ...thStyle, textAlign: 'right' }}>Balance ({row.ShopOrderWarehouse || '—'})</th>
                     <th style={{ ...thStyle, textAlign: 'right' }}>Issue Now</th>
+                    <th style={{ borderBottom: '1px solid var(--border)' }}></th>
                   </tr>
                 </thead>
                 <tbody>
@@ -298,12 +358,29 @@ export default function ShopOrderProductionDrawer({ user, row, onClose, onSaveSu
                     const short = l.balance !== null && l.balance < Number(l.quantityRequired || 0);
                     const overBalance = l.balance !== null && Number(l.quantityIssued || 0) > l.balance;
                     return (
-                      <tr key={l.line} style={{ background: idx % 2 === 1 ? 'var(--soft)' : 'transparent' }}>
-                        <td style={tdStyle}>{l.line}</td>
-                        <td style={tdStyle}>{l.childItemCode}</td>
+                      <tr key={l.key} style={{ background: idx % 2 === 1 ? 'var(--soft)' : 'transparent' }}>
+                        <td style={tdStyle}>{l.isNew ? <span style={{ color: 'var(--orange2)', fontWeight: 700 }}>new</span> : l.line}</td>
+                        <td style={{ ...tdStyle, minWidth: 200 }}>
+                          {l.isNew ? (
+                            <SearchableSelect
+                              value={l.childItemID}
+                              onChange={(id) => updateNewLineItem(idx, id)}
+                              options={itemOptions}
+                              placeholder="Search item..."
+                            />
+                          ) : l.childItemCode}
+                        </td>
                         <td style={tdStyle}>{l.childItemDescription || '—'}</td>
                         <td style={{ ...tdStyle, textAlign: 'right', fontFamily: 'var(--mono)' }}>
-                          {Number(l.quantityRequired || 0).toLocaleString(undefined, { maximumFractionDigits: 5 })}
+                          {l.isNew ? (
+                            <input
+                              type="number" step="0.00001" value={l.quantityRequired}
+                              onChange={e => updateNewLineRequired(idx, e.target.value)}
+                              style={{ ...inputStyle, textAlign: 'right' }}
+                            />
+                          ) : (
+                            Number(l.quantityRequired || 0).toLocaleString(undefined, { maximumFractionDigits: 5 })
+                          )}
                         </td>
                         <td style={{ ...tdStyle, textAlign: 'right', fontFamily: 'var(--mono)', color: 'var(--muted)' }}>
                           {Number(l.alreadyIssued || 0).toLocaleString(undefined, { maximumFractionDigits: 5 })}
@@ -324,6 +401,20 @@ export default function ShopOrderProductionDrawer({ user, row, onClose, onSaveSu
                               background: overBalance ? 'var(--red-soft)' : 'var(--surface)'
                             }}
                           />
+                        </td>
+                        <td style={{ ...tdStyle, width: 40 }}>
+                          {l.isNew && (
+                            <button
+                              onClick={() => removeLine(idx)}
+                              style={{
+                                background: 'none', border: 'none', color: 'var(--muted)', fontSize: 16, lineHeight: 1,
+                                cursor: 'pointer', width: 26, height: 26, borderRadius: '999px', display: 'flex',
+                                alignItems: 'center', justifyContent: 'center'
+                              }}
+                              onMouseEnter={e => { e.currentTarget.style.background = 'var(--red-soft)'; e.currentTarget.style.color = 'var(--red)'; }}
+                              onMouseLeave={e => { e.currentTarget.style.background = 'none'; e.currentTarget.style.color = 'var(--muted)'; }}
+                            >×</button>
+                          )}
                         </td>
                       </tr>
                     );

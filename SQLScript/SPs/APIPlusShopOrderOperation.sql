@@ -170,8 +170,14 @@ BEGIN
 			RETURN
 		END
 
-		-- Reject the whole issue if any line's ChildIssued exceeds that item's
-		-- balance (summed across lots) in the line's warehouse.
+		DECLARE @ISO_Warehouse nvarchar(50), @ISO_ParentItemID int, @ISO_ParentItemCode nvarchar(50)
+		SELECT @ISO_Warehouse = ShopOrderWarehouse, @ISO_ParentItemID = ParentItemID, @ISO_ParentItemCode = ParentItemCode
+		FROM pro.ShopOrderHeader WHERE ShopOrderNumber = @ISO_ShopOrderNumber
+
+		-- Reject the whole issue if any line -- existing (matched by Line) or
+		-- brand-new (Line is null, added on the fly during this issue) --
+		-- would issue more than what's in stock (summed across lots) in the
+		-- order's warehouse.
 		IF @LineMember IS NOT NULL AND LTRIM(RTRIM(@LineMember)) <> ''
 		BEGIN
 			DECLARE @ISO_BadItemCode nvarchar(50), @ISO_BadBalance decimal(18,5), @ISO_BadIssued decimal(18,5)
@@ -185,6 +191,18 @@ BEGIN
 					ChildIssued decimal(18,5)  '$.ChildIssued'
 				) nl
 				INNER JOIN PRO.ShopOrderLine l ON l.Line = nl.Line AND l.ShopOrderNumber = @ISO_ShopOrderNumber
+
+				UNION ALL
+
+				SELECT im.ItemCode, nl.ChildIssued,
+					ISNULL((SELECT SUM(b.ItemBalance) FROM inv.ItemBalance b WHERE b.ItemID = nl.ChildItemID AND b.Warehouse = @ISO_Warehouse), 0)
+				FROM OPENJSON(@LineMember) WITH (
+					Line        int            '$.Line',
+					ChildItemID int            '$.ChildItemID',
+					ChildIssued decimal(18,5)  '$.ChildIssued'
+				) nl
+				INNER JOIN inv.ItemMaster im ON im.ItemID = nl.ChildItemID
+				WHERE nl.Line IS NULL
 			) x
 			WHERE x.ChildIssued > x.AvailBalance
 
@@ -213,6 +231,27 @@ BEGIN
 				ChildIssued decimal(18,5)  '$.ChildIssued'
 			) nl ON nl.Line = l.Line
 			WHERE l.ShopOrderNumber = @ISO_ShopOrderNumber
+
+			-- Insert brand-new lines added on the fly during this issue (Line is
+			-- null in the payload -- not part of the order's original lines).
+			DECLARE @ISO_MaxLine int
+			SELECT @ISO_MaxLine = ISNULL(MAX(Line), 0) FROM PRO.ShopOrderLine WHERE ShopOrderNumber = @ISO_ShopOrderNumber
+
+			INSERT INTO PRO.ShopOrderLine
+			(ShopOrderNumber, ParentItemID, ParentItemCode, Line, ChildItemID, ChildItemCode, ChildQuantityRequired, ChildQuantityIssued, LineWarehouse, ChildItemType, LineCreatedBy, LineCreatedDate)
+			SELECT
+				@ISO_ShopOrderNumber, @ISO_ParentItemID, @ISO_ParentItemCode,
+				@ISO_MaxLine + ROW_NUMBER() OVER (ORDER BY (SELECT NULL)),
+				nl.ChildItemID, im.ItemCode, ISNULL(nl.ChildQuantityRequired, 0), ISNULL(nl.ChildIssued, 0),
+				@ISO_Warehouse, im.ItemType, @User, GETDATE()
+			FROM OPENJSON(@LineMember) WITH (
+				Line                  int             '$.Line',
+				ChildItemID           int             '$.ChildItemID',
+				ChildQuantityRequired decimal(18,5)   '$.ChildQuantityRequired',
+				ChildIssued           decimal(18,5)   '$.ChildIssued'
+			) nl
+			INNER JOIN inv.ItemMaster im ON im.ItemID = nl.ChildItemID
+			WHERE nl.Line IS NULL
 		END
 
 		SELECT * FROM pro.ShopOrderHeader WHERE ShopOrderNumber = @ISO_ShopOrderNumber
