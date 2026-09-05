@@ -137,6 +137,12 @@ export default function PlanningShowPlan({ user, onClose }) {
   const [confirmDialog, setConfirmDialog] = useState(null);
 
   useEffect(() => {
+    // Loaded here (not just inside handleGenerate) so the "+ Assign"
+    // modal's Machine combo works even before the main calendar has ever
+    // been generated.
+    apiCall('Machine Master All', null, { User: user?.Username }, 'lookup').then(d => {
+      if (d.State === 0) setMachines(d.List0 || []);
+    });
     apiCall('Item Master All', null, { User: user?.Username }, 'lookup').then(d => {
       if (d.State === 0) {
         setItemOptions((d.List0 || []).map(i => ({
