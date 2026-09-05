@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { apiCall } from '../shared/api.js';
 import SearchableSelect from '../shared/SearchableSelect.jsx';
 import ShopOrderProductionDrawer from './ShopOrderProductionDrawer.jsx';
@@ -104,6 +104,25 @@ export default function PlanningShowPlan({ user, onClose }) {
   const [assignSaving, setAssignSaving] = useState(false);
   const [assignError, setAssignError] = useState('');
 
+  // "+ Assign" -- pick a Machine + Date Range, list several items with
+  // their own Qty/Production Time, and let the save distribute each one
+  // across however many empty slots its Qty actually needs (packed in
+  // sequence across the range's empty slots). Separate from the existing
+  // click-empty-cells-then-assign flow above, which stays for quick
+  // single-item assignment.
+  const [bulkAssignModalOpen, setBulkAssignModalOpen] = useState(false);
+  const [bulkMachineID, setBulkMachineID] = useState('');
+  const [bulkFromDate, setBulkFromDate] = useState('');
+  const [bulkToDate, setBulkToDate] = useState('');
+  const [bulkWarehouse, setBulkWarehouse] = useState('');
+  const [bulkLines, setBulkLines] = useState([]);
+  const [bulkSaving, setBulkSaving] = useState(false);
+  const [bulkError, setBulkError] = useState('');
+  const [planningItemRows, setPlanningItemRows] = useState([]);
+  const [bulkAvailableSlots, setBulkAvailableSlots] = useState(null);
+  const [bulkCheckingSlots, setBulkCheckingSlots] = useState(false);
+  const bulkLineKeyRef = useRef(0);
+
   // Right-click on an assigned slot -> "Show Formula" / "Create Shop Order".
   const [contextMenu, setContextMenu] = useState(null);
   const [formulaModal, setFormulaModal] = useState(null);
@@ -142,6 +161,10 @@ export default function PlanningShowPlan({ user, onClose }) {
       if (d.State === 0) {
         setWarehouseOptions((d.List0 || []).map(w => ({ label: `${w.Warehouse} - ${w.WarhouseDescription}`, value: w.Warehouse })));
       }
+    });
+    // For the "+ Assign" grid's per-item Default Formula resolution.
+    apiCall('GetGridData', { PageGroupID: 'planning_item_master' }, { User: user?.Username }, 'plus').then(d => {
+      if (d.State === 0) setPlanningItemRows(d.List0 || []);
     });
   }, [user]);
 
@@ -243,6 +266,172 @@ export default function PlanningShowPlan({ user, onClose }) {
   };
   const selectedCount = selectedList.length;
   const selectedMachineCount = new Set(selectedList.map(([, s]) => s.machineID)).size;
+
+  // ============================================================
+  // "+ Assign" -- Machine + Date Range + multi-item grid
+  // ============================================================
+  const openBulkAssignModal = () => {
+    setBulkError('');
+    setBulkMachineID('');
+    setBulkFromDate(startDate || todayStr);
+    setBulkToDate(endDate || addDays(todayStr, 6));
+    setBulkWarehouse('');
+    setBulkLines([]);
+    setBulkAvailableSlots(null);
+    setBulkAssignModalOpen(true);
+  };
+
+  const resolveDefaultFormula = (itemID) => {
+    const planRow = planningItemRows.find(r => String(r.ItemID) === String(itemID));
+    const defaultFormulaID = planRow?.DefaultFormula;
+    if (!defaultFormulaID) return null;
+    const formula = formulaOptions.find(f => String(f.value) === String(defaultFormulaID));
+    if (!formula) return null;
+    return { formulaID: defaultFormulaID, formulaCode: formula.label, batchQuantity: Number(formula.batchQuantity || 0) };
+  };
+
+  const addBulkLine = () => {
+    bulkLineKeyRef.current -= 1;
+    setBulkLines(prev => [...prev, { key: bulkLineKeyRef.current, itemID: '', itemCode: '', itemDescription: '', qty: '', productionTime: '' }]);
+  };
+  const removeBulkLine = (idx) => setBulkLines(prev => prev.filter((_, i) => i !== idx));
+  const updateBulkLineItem = (idx, itemID) => {
+    const opt = itemOptions.find(o => String(o.value) === String(itemID));
+    setBulkLines(prev => prev.map((l, i) => i === idx ? { ...l, itemID, itemCode: opt?.itemCode || '', itemDescription: opt?.itemName || '' } : l));
+  };
+  const updateBulkLineQty = (idx, val) => setBulkLines(prev => prev.map((l, i) => i === idx ? { ...l, qty: val } : l));
+  const updateBulkLineProdTime = (idx, val) => setBulkLines(prev => prev.map((l, i) => i === idx ? { ...l, productionTime: val } : l));
+
+  // Live per-line capacity math, same formula as the single-item modal.
+  const bulkLineComputed = bulkLines.map(l => {
+    const resolved = l.itemID ? resolveDefaultFormula(l.itemID) : null;
+    const qty = Number(l.qty || 0);
+    const prodTime = Number(l.productionTime || 0);
+    const unitsPerShift = resolved && resolved.batchQuantity > 0 && prodTime > 0 ? (SHIFT_SECONDS / prodTime) * resolved.batchQuantity : 0;
+    const slotsNeeded = unitsPerShift > 0 && qty > 0 ? Math.ceil(qty / unitsPerShift) : 0;
+    return { ...l, resolved, qty, prodTime, slotsNeeded };
+  });
+  const bulkTotalSlotsNeeded = bulkLineComputed.reduce((sum, l) => sum + (l.slotsNeeded || 0), 0);
+
+  // Fetches every empty (Machine, Date, Shift) slot in the chosen range,
+  // live, as Machine/dates change -- so the grid can show "needs X / Y
+  // available" before the user even tries to save.
+  useEffect(() => {
+    if (!bulkAssignModalOpen || !bulkMachineID || !bulkFromDate || !bulkToDate || bulkFromDate > bulkToDate) {
+      setBulkAvailableSlots(null);
+      return;
+    }
+    let cancelled = false;
+    setBulkCheckingSlots(true);
+    apiCall('Get Planning Shift Calendar', { FromDate: bulkFromDate, ToDate: bulkToDate }, { User: user?.Username }, 'planning')
+      .then(d => {
+        if (cancelled) return;
+        if (d.State !== 0) { setBulkAvailableSlots(null); return; }
+        const occupied = new Set(
+          (d.List0 || [])
+            .filter(r => String(r.MachineID) === String(bulkMachineID))
+            .map(r => `${r.ShiftDate.split('T')[0]}|${r.ShiftNo}`)
+        );
+        const dayCount = Math.round((new Date(bulkToDate) - new Date(bulkFromDate)) / 86400000) + 1;
+        const slots = [];
+        for (let i = 0; i < dayCount; i++) {
+          const date = addDays(bulkFromDate, i);
+          for (const shiftNo of [1, 2]) {
+            if (!occupied.has(`${date}|${shiftNo}`)) slots.push({ date, shiftNo });
+          }
+        }
+        slots.sort((a, b) => (a.date !== b.date ? (a.date < b.date ? -1 : 1) : a.shiftNo - b.shiftNo));
+        setBulkAvailableSlots(slots);
+      })
+      .catch(() => setBulkAvailableSlots(null))
+      .finally(() => { if (!cancelled) setBulkCheckingSlots(false); });
+    return () => { cancelled = true; };
+  }, [bulkAssignModalOpen, bulkMachineID, bulkFromDate, bulkToDate, user]);
+
+  const handleBulkAssignSave = async () => {
+    setBulkError('');
+    if (!bulkMachineID) { setBulkError('Please select a machine.'); return; }
+    if (!bulkFromDate || !bulkToDate || bulkFromDate > bulkToDate) { setBulkError('Please select a valid date range.'); return; }
+    if (!bulkWarehouse) { setBulkError('Please select a warehouse.'); return; }
+    if (bulkLines.length === 0) { setBulkError('Add at least one item line.'); return; }
+    if (bulkLines.some(l => !l.itemID)) { setBulkError('Every line needs an item selected.'); return; }
+    if (bulkLines.some(l => !l.qty || Number(l.qty) <= 0)) { setBulkError('Every line needs a Qty greater than 0.'); return; }
+    if (bulkLines.some(l => !l.productionTime || Number(l.productionTime) <= 0)) { setBulkError('Every line needs a Production Time greater than 0.'); return; }
+
+    const resolvedLines = [];
+    for (const l of bulkLines) {
+      const resolved = resolveDefaultFormula(l.itemID);
+      if (!resolved) { setBulkError(`"${l.itemCode}" has no Default Formula set in Planning Item Master.`); return; }
+      if (resolved.batchQuantity <= 0) { setBulkError(`"${l.itemCode}"'s default formula has no Batch Quantity set.`); return; }
+      const qty = Number(l.qty);
+      const prodTime = Number(l.productionTime);
+      const unitsPerShift = (SHIFT_SECONDS / prodTime) * resolved.batchQuantity;
+      const slotsNeeded = Math.max(1, Math.ceil(qty / unitsPerShift));
+      resolvedLines.push({ ...l, formulaID: resolved.formulaID, formulaBatch: resolved.batchQuantity, qty, prodTime, slotsNeeded });
+    }
+
+    if (!bulkAvailableSlots) { setBulkError('Could not verify slot availability -- try again.'); return; }
+    const totalNeeded = resolvedLines.reduce((sum, l) => sum + l.slotsNeeded, 0);
+    if (totalNeeded > bulkAvailableSlots.length) {
+      setBulkError(`Need ${totalNeeded} empty shift${totalNeeded > 1 ? 's' : ''} total for this Qty at these rates, but only ${bulkAvailableSlots.length} ${bulkAvailableSlots.length === 1 ? 'is' : 'are'} empty for this machine in this date range. Widen the range, trim Qty, or shorten Production Time.`);
+      return;
+    }
+
+    setBulkSaving(true);
+    try {
+      let cursor = 0;
+      for (const l of resolvedLines) {
+        const mySlots = bulkAvailableSlots.slice(cursor, cursor + l.slotsNeeded);
+        cursor += l.slotsNeeded;
+        const qtyPerSlot = l.qty / l.slotsNeeded;
+
+        let cumulative = 0;
+        const lineMember = mySlots.map((s, idx) => {
+          const shiftStart = new Date(s.date + 'T00:00:00');
+          shiftStart.setHours(shiftStartHour(s.shiftNo), 0, 0, 0);
+          const shiftEnd = new Date(shiftStart.getTime() + SHIFT_SECONDS * 1000);
+          cumulative += qtyPerSlot;
+          return {
+            ShiftIndex: idx + 1,
+            ShiftDate: s.date,
+            ShiftNo: Number(s.shiftNo),
+            StartTime: toLocalDateTimeStr(shiftStart),
+            EndTime: toLocalDateTimeStr(shiftEnd),
+            PlannedQty: qtyPerSlot,
+            CumulativeQty: cumulative
+          };
+        });
+
+        const dates = mySlots.map(s => s.date);
+        const payload = {
+          ItemID: Number(l.itemID),
+          ItemCode: l.itemCode,
+          StartDate: dates.reduce((a, b) => (a < b ? a : b)),
+          EndDate: dates.reduce((a, b) => (a > b ? a : b)),
+          PlannedQty: l.qty,
+          FormulaID: Number(l.formulaID),
+          MachineID: Number(bulkMachineID),
+          FormulaBatch: l.formulaBatch,
+          ProductionTime: l.prodTime,
+          Warehouse: bulkWarehouse
+        };
+
+        const res = await apiCall('New Planning History', payload, { User: user?.Username, LineMember: JSON.stringify(lineMember) }, 'planning');
+        if (res.State !== 0) throw new Error(`"${l.itemCode}": ${res.Message || 'Failed to assign.'}`);
+      }
+
+      setBulkAssignModalOpen(false);
+      setBulkLines([]);
+      setBulkMachineID('');
+      setBulkWarehouse('');
+      setBulkAvailableSlots(null);
+      await handleGenerate();
+    } catch (e) {
+      setBulkError(e.message);
+    } finally {
+      setBulkSaving(false);
+    }
+  };
 
   const handleAssignItemChange = (id) => {
     setAssignItemID(id);
@@ -765,6 +954,17 @@ export default function PlanningShowPlan({ user, onClose }) {
           >
             {loading ? 'Loading...' : 'Generate'}
           </button>
+          <button
+            onClick={openBulkAssignModal}
+            style={{
+              padding: '9px 20px', borderRadius: 'var(--radius-xs)', border: '1px solid var(--border2)',
+              background: 'var(--surface)', color: 'var(--text)', fontWeight: 700, fontSize: 13, cursor: 'pointer'
+            }}
+            onMouseEnter={e => { e.currentTarget.style.background = 'var(--soft)'; e.currentTarget.style.borderColor = 'var(--orange)'; e.currentTarget.style.color = 'var(--orange2)'; }}
+            onMouseLeave={e => { e.currentTarget.style.background = 'var(--surface)'; e.currentTarget.style.borderColor = 'var(--border2)'; e.currentTarget.style.color = 'var(--text)'; }}
+          >
+            + Assign
+          </button>
           {error && (
             <div style={{
               color: 'var(--red)', background: 'var(--red-soft)', fontSize: 12.5, fontWeight: 600,
@@ -1088,6 +1288,177 @@ export default function PlanningShowPlan({ user, onClose }) {
             </div>
           </div>
           <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 1150 }} onClick={() => !assignSaving && setAssignModalOpen(false)} />
+        </>
+      )}
+
+      {bulkAssignModalOpen && (
+        <>
+          <div style={{
+            position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%, -50%)',
+            width: 920, maxWidth: '95vw', maxHeight: '88vh', background: 'var(--surface)', borderRadius: 'var(--radius)',
+            boxShadow: 'var(--shadow-lg)', border: '1px solid var(--border)', zIndex: 1200,
+            fontFamily: 'var(--font)', overflow: 'hidden', display: 'flex', flexDirection: 'column'
+          }}>
+            <div style={{ padding: '16px 24px', borderBottom: '1px solid var(--border)' }}>
+              <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: 'var(--text)' }}>Assign Items to Machine</h3>
+              <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4 }}>
+                Pick a machine and date range, list the items to produce, and each one is scheduled across as many empty shifts as its Qty needs.
+              </div>
+            </div>
+
+            <div style={{ flex: 1, overflowY: 'auto', padding: 20, display: 'flex', flexDirection: 'column', gap: 16 }}>
+              {bulkError && (
+                <div style={{
+                  color: 'var(--red)', background: 'var(--red-soft)', fontSize: 12.5, fontWeight: 600,
+                  padding: '8px 12px', borderRadius: 'var(--radius-xs)', border: '1px solid rgba(220,38,38,0.15)'
+                }}>
+                  {bulkError}
+                </div>
+              )}
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr 1fr 1fr', gap: 16 }}>
+                <div>
+                  <label style={labelStyle}>Machine</label>
+                  <SearchableSelect
+                    value={bulkMachineID}
+                    onChange={setBulkMachineID}
+                    options={machines.map(m => ({ label: `${m.MachineCode} - ${m.MachineDescription || ''}`, value: m.MachineID }))}
+                    placeholder="Search machine..."
+                  />
+                </div>
+                <div>
+                  <label style={labelStyle}>From Date</label>
+                  <input type="date" value={bulkFromDate} onChange={e => setBulkFromDate(e.target.value)} style={{ ...inputStyle, width: '100%' }} />
+                </div>
+                <div>
+                  <label style={labelStyle}>To Date</label>
+                  <input type="date" value={bulkToDate} onChange={e => setBulkToDate(e.target.value)} style={{ ...inputStyle, width: '100%' }} />
+                </div>
+                <div>
+                  <label style={labelStyle}>Warehouse</label>
+                  <SearchableSelect value={bulkWarehouse} onChange={setBulkWarehouse} options={warehouseOptions} placeholder="Search warehouse..." />
+                </div>
+              </div>
+
+              {bulkMachineID && bulkFromDate && bulkToDate && (
+                <div style={{
+                  fontSize: 11.5, fontWeight: 600, padding: '6px 10px', borderRadius: 'var(--radius-xs)',
+                  color: bulkCheckingSlots ? 'var(--muted)' : (bulkAvailableSlots == null ? 'var(--muted)' : bulkTotalSlotsNeeded > bulkAvailableSlots.length ? 'var(--red)' : 'var(--green)'),
+                  background: bulkCheckingSlots ? 'var(--soft)' : (bulkAvailableSlots == null ? 'var(--soft)' : bulkTotalSlotsNeeded > bulkAvailableSlots.length ? 'var(--red-soft)' : 'var(--green-soft)')
+                }}>
+                  {bulkCheckingSlots
+                    ? 'Checking availability...'
+                    : bulkAvailableSlots == null
+                    ? 'Could not check availability.'
+                    : `${bulkAvailableSlots.length} empty shift${bulkAvailableSlots.length === 1 ? '' : 's'} available for this machine in this range -- ${bulkTotalSlotsNeeded} needed across the grid below.`}
+                </div>
+              )}
+
+              <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                  <h4 style={{ margin: 0, fontSize: 13, fontWeight: 800, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: 0.4 }}>
+                    Items
+                  </h4>
+                  <button
+                    onClick={addBulkLine}
+                    style={{ padding: '6px 14px', borderRadius: 'var(--radius-xs)', border: '1px solid var(--border2)', background: 'var(--surface)', color: 'var(--text)', fontWeight: 600, fontSize: 12.5, cursor: 'pointer' }}
+                  >
+                    + Add Line
+                  </button>
+                </div>
+
+                {bulkLineComputed.length === 0 ? (
+                  <div style={{ fontSize: 13, color: 'var(--hint)' }}>No items yet -- click "Add Line" to add one.</div>
+                ) : (
+                  <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                    <thead>
+                      <tr>
+                        <th style={{ textAlign: 'left', padding: '8px 6px', fontSize: 11, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', borderBottom: '1px solid var(--border)' }}>Item</th>
+                        <th style={{ textAlign: 'right', padding: '8px 6px', fontSize: 11, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', borderBottom: '1px solid var(--border)' }}>Qty</th>
+                        <th style={{ textAlign: 'right', padding: '8px 6px', fontSize: 11, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', borderBottom: '1px solid var(--border)' }}>Prod. Time (s/batch)</th>
+                        <th style={{ textAlign: 'left', padding: '8px 6px', fontSize: 11, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', borderBottom: '1px solid var(--border)' }}>Formula</th>
+                        <th style={{ textAlign: 'right', padding: '8px 6px', fontSize: 11, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', borderBottom: '1px solid var(--border)' }}>Shifts Needed</th>
+                        <th style={{ borderBottom: '1px solid var(--border)' }}></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {bulkLineComputed.map((l, idx) => (
+                        <tr key={l.key} style={{ background: idx % 2 === 1 ? 'var(--soft)' : 'transparent' }}>
+                          <td style={{ padding: '8px 6px', minWidth: 220 }}>
+                            <SearchableSelect
+                              value={l.itemID}
+                              onChange={(id) => updateBulkLineItem(idx, id)}
+                              options={itemOptions}
+                              placeholder="Search item..."
+                            />
+                          </td>
+                          <td style={{ padding: '8px 6px', width: 110 }}>
+                            <input
+                              type="number" step="0.00001" value={l.qty === 0 ? '' : l.qty || ''}
+                              onChange={e => updateBulkLineQty(idx, e.target.value)}
+                              style={{ ...inputStyle, textAlign: 'right', width: '100%' }}
+                            />
+                          </td>
+                          <td style={{ padding: '8px 6px', width: 130 }}>
+                            <input
+                              type="number" value={l.prodTime === 0 ? '' : l.prodTime || ''}
+                              onChange={e => updateBulkLineProdTime(idx, e.target.value)}
+                              style={{ ...inputStyle, textAlign: 'right', width: '100%' }}
+                            />
+                          </td>
+                          <td style={{ padding: '8px 6px', fontSize: 12, color: 'var(--muted)' }}>
+                            {l.itemID
+                              ? (l.resolved ? l.resolved.formulaCode : <span style={{ color: 'var(--red)' }}>no default formula</span>)
+                              : '—'}
+                          </td>
+                          <td style={{ padding: '8px 6px', textAlign: 'right', fontFamily: 'var(--mono)', fontWeight: 700, color: l.slotsNeeded > 0 ? 'var(--text)' : 'var(--hint)' }}>
+                            {l.slotsNeeded > 0 ? l.slotsNeeded : '—'}
+                          </td>
+                          <td style={{ padding: '8px 6px', width: 40 }}>
+                            <button
+                              onClick={() => removeBulkLine(idx)}
+                              style={{
+                                background: 'none', border: 'none', color: 'var(--muted)', fontSize: 16, lineHeight: 1,
+                                cursor: 'pointer', width: 26, height: 26, borderRadius: '999px', display: 'flex',
+                                alignItems: 'center', justifyContent: 'center'
+                              }}
+                              onMouseEnter={e => { e.currentTarget.style.background = 'var(--red-soft)'; e.currentTarget.style.color = 'var(--red)'; }}
+                              onMouseLeave={e => { e.currentTarget.style.background = 'none'; e.currentTarget.style.color = 'var(--muted)'; }}
+                            >×</button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+            </div>
+
+            <div style={{ padding: '14px 20px', borderTop: '1px solid var(--border)', background: 'var(--soft)', display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+              <button
+                onClick={() => setBulkAssignModalOpen(false)}
+                disabled={bulkSaving}
+                style={{
+                  padding: '8px 16px', borderRadius: 'var(--radius-xs)', border: '1px solid var(--border2)',
+                  background: 'var(--surface)', color: 'var(--text)', fontWeight: 600, fontSize: 13, cursor: 'pointer'
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleBulkAssignSave}
+                disabled={bulkSaving}
+                style={{
+                  padding: '8px 20px', borderRadius: 'var(--radius-xs)', border: 'none',
+                  background: bulkSaving ? 'var(--hint)' : 'linear-gradient(135deg, var(--orange), var(--orange2))',
+                  color: '#fff', fontWeight: 700, fontSize: 13, cursor: bulkSaving ? 'not-allowed' : 'pointer'
+                }}
+              >
+                {bulkSaving ? 'Assigning...' : 'Save'}
+              </button>
+            </div>
+          </div>
+          <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 1150 }} onClick={() => !bulkSaving && setBulkAssignModalOpen(false)} />
         </>
       )}
 
