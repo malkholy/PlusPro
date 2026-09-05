@@ -262,7 +262,9 @@ BEGIN
             bh.ParentItemCode AS FormulaCode,
             sp.FormulaBatch,
             sp.ProductionTime,
-            sp.Warehouse
+            sp.Warehouse,
+            sp.StartTime,
+            sp.EndTime
         FROM [PRO].[PrdItemPlanningShiftPlan] sp
         LEFT OUTER JOIN prd.MachineMaster mm ON sp.MachineID = mm.MachineID
         LEFT OUTER JOIN inv.ItemMaster im ON sp.ItemID = im.ItemID
@@ -366,6 +368,203 @@ BEGIN
         UPDATE [PRO].[PrdItemPlanningShiftPlan]
         SET PlannedQty = ISNULL(@ESP_PlannedQty, 0)
         WHERE ShiftPlanID = @ESP_ShiftPlanID
+
+        RETURN
+    END
+
+    -- =============================================
+    -- SHIFT MACHINE PLAN (Show Plan "Shift Plan" button) -- moves a whole
+    -- machine's shift-plan slots by a uniform offset (1 shift or 1 day,
+    -- forward or backward). The frontend computes each slot's new
+    -- date/shift/time window and sends the full batch; this operation is
+    -- all-or-nothing (one failing slot rolls back the whole move) so the
+    -- plan's internal sequencing never ends up half-shifted.
+    -- A slot already linked to a Shop Order can still be moved as long as
+    -- that order is still in 'New' state (0) -- once Issued/Closed, moving
+    -- its slot would misrepresent when production actually happened, so
+    -- it's rejected (frontend is expected to exclude those before calling).
+    -- =============================================
+    IF @Operation = 'Shift Machine Plan'
+    BEGIN
+        DECLARE @SMP_MachineID int
+        SELECT @SMP_MachineID = MachineID FROM OPENJSON(@LineData) WITH (MachineID int '$.MachineID')
+
+        IF @SMP_MachineID IS NULL
+        BEGIN
+            SET @State = 1
+            SET @Message = 'MachineID is required'
+            RETURN
+        END
+
+        IF @LineMember IS NULL OR LTRIM(RTRIM(@LineMember)) = ''
+        BEGIN
+            SET @State = 1
+            SET @Message = 'No slots to shift'
+            RETURN
+        END
+
+        DECLARE @SMP_Rows TABLE (ShiftPlanID int, NewShiftDate date, NewShiftNo int, NewStartTime datetime, NewEndTime datetime)
+        INSERT INTO @SMP_Rows
+        SELECT ShiftPlanID, NewShiftDate, NewShiftNo, NewStartTime, NewEndTime
+        FROM OPENJSON(@LineMember) WITH (
+            ShiftPlanID  int      '$.ShiftPlanID',
+            NewShiftDate date     '$.NewShiftDate',
+            NewShiftNo   int      '$.NewShiftNo',
+            NewStartTime datetime '$.NewStartTime',
+            NewEndTime   datetime '$.NewEndTime'
+        )
+
+        IF EXISTS (
+            SELECT 1 FROM @SMP_Rows r
+            LEFT OUTER JOIN [PRO].[PrdItemPlanningShiftPlan] sp ON sp.ShiftPlanID = r.ShiftPlanID
+            LEFT OUTER JOIN [Pro].[ShopOrderHeader] so ON so.ShopOrderNumber = sp.ShopOrderNo
+            WHERE sp.ShiftPlanID IS NULL
+               OR sp.MachineID <> @SMP_MachineID
+               OR (sp.ShopOrderNo IS NOT NULL AND ISNULL(so.OrderState, -1) <> 0)
+        )
+        BEGIN
+            SET @State = 1
+            SET @Message = 'One or more slots cannot be shifted -- not found, not on this machine, or linked to a Shop Order that is no longer New.'
+            RETURN
+        END
+
+        -- A shifted slot's new time window must not overlap any OTHER slot
+        -- on this machine that is not itself part of this batch (a
+        -- stationary slot left behind because it couldn't move).
+        IF EXISTS (
+            SELECT 1
+            FROM @SMP_Rows r
+            INNER JOIN [PRO].[PrdItemPlanningShiftPlan] other
+                ON other.MachineID = @SMP_MachineID
+                AND other.ShiftPlanID NOT IN (SELECT ShiftPlanID FROM @SMP_Rows)
+                AND other.ShiftDate = r.NewShiftDate AND other.ShiftNo = r.NewShiftNo
+                AND other.StartTime < r.NewEndTime AND r.NewStartTime < other.EndTime
+        )
+        BEGIN
+            SET @State = 1
+            SET @Message = 'Shifting would overlap a slot that is not part of this move.'
+            RETURN
+        END
+
+        BEGIN TRY
+            BEGIN TRANSACTION
+
+            UPDATE sp
+            SET sp.ShiftDate = r.NewShiftDate, sp.ShiftNo = r.NewShiftNo, sp.StartTime = r.NewStartTime, sp.EndTime = r.NewEndTime
+            FROM [PRO].[PrdItemPlanningShiftPlan] sp
+            INNER JOIN @SMP_Rows r ON r.ShiftPlanID = sp.ShiftPlanID
+
+            COMMIT TRANSACTION
+        END TRY
+        BEGIN CATCH
+            IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION
+            SET @State = 1
+            SET @Message = 'Failed to shift plan: ' + ERROR_MESSAGE()
+            RETURN
+        END CATCH
+
+        RETURN
+    END
+
+    -- =============================================
+    -- SPLIT SHIFT PLAN SLOT (Show Plan drag-and-drop, partial move) --
+    -- carves a portion of one slot's Qty/time off into a brand-new slot at
+    -- a different (date, shift) on the SAME machine, shrinking the
+    -- original slot's Qty/EndTime by that same amount (its StartTime never
+    -- changes, so it can only shrink toward its own start -- never creates
+    -- a new overlap on that side). Only unlinked slots can be split (same
+    -- rule intent as Delete/Edit Shift Plan Slot) since a Shop Order's Qty
+    -- bookkeeping assumes exactly one slot's worth of production per line.
+    -- =============================================
+    IF @Operation = 'Split Shift Plan Slot'
+    BEGIN
+        DECLARE @SPL_ShiftPlanID int, @SPL_RemainingQty decimal(18,5), @SPL_RemainingEndTime datetime
+        SELECT @SPL_ShiftPlanID = ShiftPlanID, @SPL_RemainingQty = RemainingQty, @SPL_RemainingEndTime = RemainingEndTime
+        FROM OPENJSON(@LineData) WITH (
+            ShiftPlanID      int      '$.ShiftPlanID',
+            RemainingQty     decimal(18,5) '$.RemainingQty',
+            RemainingEndTime datetime '$.RemainingEndTime'
+        )
+
+        DECLARE @SPL_ItemID int, @SPL_ItemCode nvarchar(50), @SPL_MachineID int, @SPL_FormulaID int,
+                @SPL_FormulaBatch decimal(18,5), @SPL_ProductionTime int, @SPL_Warehouse nvarchar(50), @SPL_ShopOrderNo int
+
+        SELECT @SPL_ItemID = ItemID, @SPL_ItemCode = ItemCode, @SPL_MachineID = MachineID, @SPL_FormulaID = FormulaID,
+               @SPL_FormulaBatch = FormulaBatch, @SPL_ProductionTime = ProductionTime, @SPL_Warehouse = Warehouse, @SPL_ShopOrderNo = ShopOrderNo
+        FROM [PRO].[PrdItemPlanningShiftPlan] WHERE ShiftPlanID = @SPL_ShiftPlanID
+
+        IF @SPL_ItemID IS NULL
+        BEGIN
+            SET @State = 1
+            SET @Message = 'Shift plan slot not found'
+            RETURN
+        END
+
+        IF @SPL_ShopOrderNo IS NOT NULL
+        BEGIN
+            SET @State = 1
+            SET @Message = 'Cannot split -- Shop Order ' + CAST(@SPL_ShopOrderNo AS nvarchar(20)) + ' is already linked to this slot'
+            RETURN
+        END
+
+        IF @SPL_RemainingQty IS NULL OR @SPL_RemainingQty <= 0
+        BEGIN
+            SET @State = 1
+            SET @Message = 'Remaining Qty must be greater than zero -- use a full move instead of a split.'
+            RETURN
+        END
+
+        DECLARE @SPL_NewDate date, @SPL_NewShiftNo int, @SPL_NewStart datetime, @SPL_NewEnd datetime, @SPL_NewQty decimal(18,5)
+        SELECT @SPL_NewDate = ShiftDate, @SPL_NewShiftNo = ShiftNo, @SPL_NewStart = StartTime, @SPL_NewEnd = EndTime, @SPL_NewQty = PlannedQty
+        FROM OPENJSON(@LineMember) WITH (
+            ShiftDate  date     '$.ShiftDate',
+            ShiftNo    int      '$.ShiftNo',
+            StartTime  datetime '$.StartTime',
+            EndTime    datetime '$.EndTime',
+            PlannedQty decimal(18,5) '$.PlannedQty'
+        )
+
+        IF @SPL_NewQty IS NULL OR @SPL_NewQty <= 0
+        BEGIN
+            SET @State = 1
+            SET @Message = 'Split-off Qty must be greater than zero'
+            RETURN
+        END
+
+        -- Real time-overlap guard against whatever else is on the target
+        -- machine/shift (same rule as New Planning History).
+        IF EXISTS (
+            SELECT 1 FROM [PRO].[PrdItemPlanningShiftPlan] sp
+            WHERE sp.MachineID = @SPL_MachineID AND sp.ShiftDate = @SPL_NewDate AND sp.ShiftNo = @SPL_NewShiftNo
+              AND sp.StartTime < @SPL_NewEnd AND @SPL_NewStart < sp.EndTime
+        )
+        BEGIN
+            SET @State = 1
+            SET @Message = 'Target time window overlaps an item already scheduled on this machine.'
+            RETURN
+        END
+
+        BEGIN TRY
+            BEGIN TRANSACTION
+
+            UPDATE [PRO].[PrdItemPlanningShiftPlan]
+            SET PlannedQty = @SPL_RemainingQty, EndTime = @SPL_RemainingEndTime
+            WHERE ShiftPlanID = @SPL_ShiftPlanID
+
+            INSERT INTO [PRO].[PrdItemPlanningShiftPlan]
+                (ItemID, ItemCode, MachineID, FormulaID, FormulaBatch, ProductionTime, Warehouse, ShiftIndex, ShiftDate, ShiftNo, StartTime, EndTime, PlannedQty, CumulativeQty, CreatedBy, CreatedDate)
+            VALUES
+                (@SPL_ItemID, @SPL_ItemCode, @SPL_MachineID, @SPL_FormulaID, ISNULL(@SPL_FormulaBatch, 0), ISNULL(@SPL_ProductionTime, 0), ISNULL(@SPL_Warehouse, ''),
+                 1, @SPL_NewDate, @SPL_NewShiftNo, @SPL_NewStart, @SPL_NewEnd, @SPL_NewQty, @SPL_NewQty, @User, GETDATE())
+
+            COMMIT TRANSACTION
+        END TRY
+        BEGIN CATCH
+            IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION
+            SET @State = 1
+            SET @Message = 'Failed to split slot: ' + ERROR_MESSAGE()
+            RETURN
+        END CATCH
 
         RETURN
     END

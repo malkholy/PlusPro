@@ -2,6 +2,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import { apiCall } from '../shared/api.js';
 import SearchableSelect from '../shared/SearchableSelect.jsx';
 import ShopOrderProductionDrawer from './ShopOrderProductionDrawer.jsx';
+import ProductionBulkModal from './ProductionBulkModal.jsx';
+import ShiftPlanModal from './ShiftPlanModal.jsx';
 
 // Local (not UTC) date/time helpers -- toISOString() would shift the
 // calendar date backward for any timezone ahead of UTC (Egypt, UTC+2).
@@ -138,6 +140,17 @@ export default function PlanningShowPlan({ user, onClose }) {
 
   // Manual "select empty slots, then assign an item" flow.
   const [selectedSlots, setSelectedSlots] = useState({});
+  // Drag-and-drop an assigned slot onto an empty cell on the SAME machine
+  // row, to move it to a different day/shift -- reuses "Shift Machine Plan"
+  // with a single-row batch (that operation already enforces the New-state
+  // Shop Order rule and rejects collisions).
+  const [draggedSlot, setDraggedSlot] = useState(null);
+  const [dragOverKey, setDragOverKey] = useState(null);
+  // Prompted only when the dragged slot shares its cell with another item
+  // (so a plain full move is ambiguous) -- lets the user move all of it
+  // (default) or edit the Qty down to split off just part of it.
+  const [splitMoveDialog, setSplitMoveDialog] = useState(null);
+  const [splitMoveError, setSplitMoveError] = useState('');
   // Separate "select already-assigned slots, then combine into one Shop
   // Order" flow -- e.g. Shift 1 + Shift 2 + Shift 1 (same item/machine,
   // different dates/shifts) all covered by a single Shop Order. Keyed by
@@ -189,6 +202,33 @@ export default function PlanningShowPlan({ user, onClose }) {
   // no-op inside some embedded/webview hosts (returns immediately without
   // blocking), which would skip straight past the delete every time.
   const [confirmDialog, setConfirmDialog] = useState(null);
+
+  // "Shop Order" button flow -- create a Shop Order from multiple unlinked slots
+  const [createShopOrderModalOpen, setCreateShopOrderModalOpen] = useState(false);
+  const [createSOMachineID, setCreateSOMachineID] = useState('');
+  const [createSOUnlinkedSlots, setCreateSOUnlinkedSlots] = useState([]);
+  const [createSOSelectedSlots, setCreateSOSelectedSlots] = useState({});
+  const [createSOLoadingSlots, setCreateSOLoadingSlots] = useState(false);
+  const [createSOError, setCreateSOError] = useState('');
+  const [createSOSaving, setCreateSOSaving] = useState(false);
+
+  // "Calculate Raw" button -- rolls up the raw materials (BillOfMaterialLineL1)
+  // needed for everything currently on the generated calendar, per machine
+  // and as a grand total across all machines.
+  const [calcRawModalOpen, setCalcRawModalOpen] = useState(false);
+  const [calcRawLoading, setCalcRawLoading] = useState(false);
+  const [calcRawError, setCalcRawError] = useState('');
+  const [calcRawPerMachine, setCalcRawPerMachine] = useState([]);
+  const [calcRawGrandTotal, setCalcRawGrandTotal] = useState([]);
+  const [calcRawMissingItems, setCalcRawMissingItems] = useState([]);
+
+  // "Production" button -- bulk-issue every Shop Order scheduled for a
+  // given Date+Shift+MachineType in one action (ProductionBulkModal.jsx).
+  const [productionModalOpen, setProductionModalOpen] = useState(false);
+
+  // "Shift Plan" button -- move a whole machine's plan by 1 shift/day,
+  // forward or backward (ShiftPlanModal.jsx).
+  const [shiftPlanModalOpen, setShiftPlanModalOpen] = useState(false);
 
   useEffect(() => {
     // Loaded here (not just inside handleGenerate) so the "+ Assign"
@@ -274,7 +314,8 @@ export default function PlanningShowPlan({ user, onClose }) {
           formulaID: r.FormulaID || null, formulaCode: r.FormulaCode || '',
           formulaBatch: Number(r.FormulaBatch || 0), productionTime: Number(r.ProductionTime || 0),
           warehouse: r.Warehouse || '', machineID: r.MachineID, shiftDate: dateStr, shiftNo: r.ShiftNo,
-          shiftPlanID: r.ShiftPlanID, shopOrderNo: r.ShopOrderNo || null
+          shiftPlanID: r.ShiftPlanID, shopOrderNo: r.ShopOrderNo || null,
+          startTime: r.StartTime || null, endTime: r.EndTime || null
         });
       });
 
@@ -308,6 +349,133 @@ export default function PlanningShowPlan({ user, onClose }) {
       }
       return next;
     });
+  };
+
+  // A row's actual duration -- from its real StartTime/EndTime when known,
+  // falling back to a whole 12h shift for older/edge-case rows that somehow
+  // don't have them.
+  const rowDurationSeconds = (row) => (row?.startTime && row?.endTime)
+    ? (new Date(row.endTime) - new Date(row.startTime)) / 1000
+    : SHIFT_SECONDS;
+
+  // How much of a (machine, date, shift) cell's 12h is already spoken for
+  // by its current occupants (optionally excluding one, e.g. the row being
+  // dragged out of it).
+  const cellUsedSeconds = (items, excludeShiftPlanID) => items
+    .filter(it => it.shiftPlanID !== excludeShiftPlanID)
+    .reduce((sum, it) => sum + rowDurationSeconds(it), 0);
+
+  const computeSlotTimes = (date, shiftNo, offsetSeconds, durationSeconds) => {
+    const base = new Date(date + 'T00:00:00');
+    base.setHours(shiftStartHour(shiftNo), 0, 0, 0);
+    const start = new Date(base.getTime() + offsetSeconds * 1000);
+    const end = new Date(start.getTime() + durationSeconds * 1000);
+    return { start: toLocalDateTimeStr(start), end: toLocalDateTimeStr(end) };
+  };
+
+  // Moves the WHOLE dragged row into a target cell, continuing right after
+  // whatever's already using that cell's time (offsetSeconds) -- same
+  // gap-free convention as the "+ Assign" continuous packer.
+  const performFullMove = async (dragged, machine, date, shiftNo, offsetSeconds = 0) => {
+    const { start, end } = computeSlotTimes(date, shiftNo, offsetSeconds, rowDurationSeconds(dragged));
+    try {
+      const res = await apiCall('Shift Machine Plan', { MachineID: Number(machine.MachineID) }, {
+        User: user?.Username,
+        LineMember: JSON.stringify([{
+          ShiftPlanID: dragged.shiftPlanID, NewShiftDate: date, NewShiftNo: Number(shiftNo),
+          NewStartTime: start, NewEndTime: end
+        }])
+      }, 'planning');
+      if (res.State !== 0) throw new Error(res.Message || 'Failed to move slot.');
+      setShopOrderNotice({ type: 'success', message: `Moved ${dragged.itemCode} to ${date} Shift ${shiftNo}.` });
+      await handleGenerate();
+    } catch (e) {
+      setShopOrderNotice({ type: 'error', message: e.message });
+    }
+  };
+
+  const handleDropSlot = async (machine, date, shiftNo) => {
+    const dragged = draggedSlot;
+    setDraggedSlot(null);
+    setDragOverKey(null);
+    if (!dragged) return;
+    if (String(dragged.machineID) !== String(machine.MachineID)) {
+      setShopOrderNotice({ type: 'error', message: 'Drag-and-drop only works within the same machine row for now -- use "Shift Plan" to move a slot to a different machine.' });
+      return;
+    }
+    if (dragged.shiftDate === date && String(dragged.shiftNo) === String(shiftNo)) return; // dropped on its own cell
+
+    const targetKey = `${machine.MachineID}|${date}|${shiftNo}`;
+    const targetItems = cellMap[targetKey] || [];
+    const targetUsedSeconds = cellUsedSeconds(targetItems, null);
+    const targetRemainingSeconds = Math.max(0, SHIFT_SECONDS - targetUsedSeconds);
+    const draggedDurationSeconds = rowDurationSeconds(dragged);
+    // Estimate only -- a HINT for the default/max shown in the prompt, not
+    // a hard gate. Real-world StartTime/EndTime on existing rows can be
+    // imprecise (e.g. a row stamped to the full shift span despite a
+    // smaller actual Qty), so the backend's real overlap check is always
+    // the final word -- never silently refuse an attempt based on this
+    // estimate alone.
+    const maxMovableQty = draggedDurationSeconds > 0
+      ? dragged.qty * (Math.min(targetRemainingSeconds, draggedDurationSeconds) / draggedDurationSeconds)
+      : dragged.qty;
+
+    // Ambiguous (needs a Qty decision) whenever the source cell shares its
+    // item with another, OR the target already has something in it --
+    // either way only offered for unlinked slots (a Shop Order's Qty
+    // bookkeeping assumes one slot's worth of production per line).
+    const needsDecision = dragged.sourceItemCount > 1 || targetItems.length > 0;
+
+    if (needsDecision && !dragged.shopOrderNo) {
+      setSplitMoveDialog({
+        dragged, target: { machine, date, shiftNo }, offsetSeconds: targetUsedSeconds,
+        maxMovableQty: Math.max(maxMovableQty, 0), qty: dragged.qty
+      });
+      return;
+    }
+    await performFullMove(dragged, machine, date, shiftNo, targetUsedSeconds);
+  };
+
+  const handleSplitMoveConfirm = async () => {
+    const { dragged, target, offsetSeconds } = splitMoveDialog;
+    const { machine, date, shiftNo } = target;
+    const qtyToMove = Number(splitMoveDialog.qty);
+    setSplitMoveError('');
+
+    if (!qtyToMove || qtyToMove <= 0) { setSplitMoveError('Enter a Qty greater than 0.'); return; }
+    if (qtyToMove > dragged.qty + 0.00001) { setSplitMoveError(`Only ${dragged.qty.toLocaleString(undefined, { maximumFractionDigits: 3 })} is available to move.`); return; }
+
+    setSplitMoveDialog(null);
+
+    // Moving the full amount is just a normal move -- no split needed.
+    if (qtyToMove >= dragged.qty - 0.00001) {
+      await performFullMove(dragged, machine, date, shiftNo, offsetSeconds);
+      return;
+    }
+
+    const originalDurationSeconds = rowDurationSeconds(dragged);
+    const splitSeconds = originalDurationSeconds * (qtyToMove / dragged.qty);
+    const { start, end } = computeSlotTimes(date, shiftNo, offsetSeconds, splitSeconds);
+
+    const remainingQty = dragged.qty - qtyToMove;
+    const remainingSeconds = originalDurationSeconds - splitSeconds;
+    const remainingEndTime = dragged.startTime
+      ? toLocalDateTimeStr(new Date(new Date(dragged.startTime).getTime() + remainingSeconds * 1000))
+      : dragged.endTime;
+
+    try {
+      const res = await apiCall('Split Shift Plan Slot', {
+        ShiftPlanID: dragged.shiftPlanID, RemainingQty: remainingQty, RemainingEndTime: remainingEndTime
+      }, {
+        User: user?.Username,
+        LineMember: JSON.stringify([{ ShiftDate: date, ShiftNo: Number(shiftNo), StartTime: start, EndTime: end, PlannedQty: qtyToMove }])
+      }, 'planning');
+      if (res.State !== 0) throw new Error(res.Message || 'Failed to split slot.');
+      setShopOrderNotice({ type: 'success', message: `Moved ${qtyToMove.toLocaleString(undefined, { maximumFractionDigits: 3 })} of ${dragged.itemCode} to ${date} Shift ${shiftNo} (${remainingQty.toLocaleString(undefined, { maximumFractionDigits: 3 })} left behind).` });
+      await handleGenerate();
+    } catch (e) {
+      setShopOrderNotice({ type: 'error', message: e.message });
+    }
   };
 
   const selectedList = Object.entries(selectedSlots);
@@ -541,6 +709,210 @@ export default function PlanningShowPlan({ user, onClose }) {
     setAssignItemCode(opt?.itemCode || '');
     setAssignItemDescription(opt?.itemName || '');
     setAssignFormulaID('');
+  };
+
+  const openCreateShopOrderModal = () => {
+    setCreateSOError('');
+    setCreateSOMachineID('');
+    setCreateSOUnlinkedSlots([]);
+    setCreateSOSelectedSlots({});
+    setCreateShopOrderModalOpen(true);
+  };
+
+  const handleCreateSOMachineChange = async (machineID) => {
+    setCreateSOMachineID(machineID);
+    setCreateSOLoadingSlots(true);
+    setCreateSOError('');
+    try {
+      const d = await apiCall('Get Planning Shift Calendar', { FromDate: startDate, ToDate: endDate }, { User: user?.Username }, 'planning');
+      if (d.State !== 0) { setCreateSOError(d.Message || 'Failed to load shifts.'); setCreateSOLoadingSlots(false); return; }
+      const unlinked = (d.List0 || []).filter(r => String(r.MachineID) === String(machineID) && !r.ShopOrderNo);
+      setCreateSOUnlinkedSlots(unlinked);
+    } catch (e) {
+      setCreateSOError(e.message);
+    } finally {
+      setCreateSOLoadingSlots(false);
+    }
+  };
+
+  // A Shop Order has exactly one item/formula/warehouse (machine is already
+  // fixed -- this list is filtered to one machine already) -- once any slot
+  // is selected, every other slot is locked to that same combination.
+  const createSOSelectedAnchor = (() => {
+    const ids = Object.keys(createSOSelectedSlots);
+    if (ids.length === 0) return null;
+    return createSOUnlinkedSlots.find(s => String(s.ShiftPlanID) === ids[0]) || null;
+  })();
+
+  const toggleCreateSOSlot = (shiftPlanID) => {
+    const isSelected = !!createSOSelectedSlots[shiftPlanID];
+    if (!isSelected) {
+      const slot = createSOUnlinkedSlots.find(s => String(s.ShiftPlanID) === String(shiftPlanID));
+      if (createSOSelectedAnchor && slot) {
+        if (String(slot.ItemID) !== String(createSOSelectedAnchor.ItemID)) {
+          setCreateSOError(`A Shop Order can only contain one item -- deselect the current item's slots first to pick "${slot.ItemCode}".`);
+          return;
+        }
+        if (String(slot.FormulaID) !== String(createSOSelectedAnchor.FormulaID) ||
+            String(slot.Warehouse).trim().toUpperCase() !== String(createSOSelectedAnchor.Warehouse).trim().toUpperCase()) {
+          setCreateSOError(`This slot uses a different formula/warehouse than the ones already selected -- a Shop Order must use the same formula and warehouse throughout.`);
+          return;
+        }
+      }
+      setCreateSOError('');
+    }
+    setCreateSOSelectedSlots(prev => {
+      const next = { ...prev };
+      if (next[shiftPlanID]) delete next[shiftPlanID];
+      else next[shiftPlanID] = true;
+      return next;
+    });
+  };
+
+  const handleCreateSOSave = async () => {
+    setCreateSOError('');
+    const selectedIDs = Object.keys(createSOSelectedSlots);
+    if (selectedIDs.length === 0) { setCreateSOError('Select at least one slot.'); return; }
+    const selectedSlots = createSOUnlinkedSlots.filter(s => selectedIDs.includes(String(s.ShiftPlanID)));
+    const first = selectedSlots[0];
+    const qty = selectedSlots.reduce((sum, s) => sum + Number(s.PlannedQty || 0), 0);
+
+    // Same check as toggleCreateSOSlot's proactive guard -- kept here too as
+    // a safety net in case selection state gets out of sync with it. A Shop
+    // Order has exactly one item/machine/formula/warehouse, same rule as
+    // handleCreateShopOrderBulk's combine flow.
+    const mismatch = selectedSlots.some(s =>
+      String(s.ItemID) !== String(first.ItemID) ||
+      String(s.MachineID) !== String(first.MachineID) ||
+      String(s.FormulaID) !== String(first.FormulaID) ||
+      String(s.Warehouse).trim().toUpperCase() !== String(first.Warehouse).trim().toUpperCase()
+    );
+    if (mismatch) {
+      setCreateSOError('A Shop Order can only contain one item -- all selected slots must be the same item, machine, formula, and warehouse.');
+      return;
+    }
+
+    const sortedSlots = [...selectedSlots].sort((a, b) => {
+      const ad = a.ShiftDate, bd = b.ShiftDate;
+      if (ad !== bd) return ad < bd ? -1 : 1;
+      return Number(a.ShiftNo) - Number(b.ShiftNo);
+    });
+    const earliest = sortedSlots[0];
+
+    setCreateSOSaving(true);
+    try {
+      const createRes = await apiCall('New Shop Order', {
+        ShopOrderDate: earliest.ShiftDate?.split('T')[0],
+        Warehouse: first.Warehouse,
+        // Same case-sensitive OPENJSON key casing as ShopOrderFormDrawer.jsx.
+        ParentITemID: Number(first.ItemID),
+        FormulaID: Number(first.FormulaID),
+        MAchineID: Number(first.MachineID),
+        Qty: qty,
+        ShiftNo: Number(earliest.ShiftNo)
+      }, { User: user?.Username }, 'shop_order');
+
+      if (createRes.State !== 0) throw new Error(createRes.Message || 'Failed to create Shop Order.');
+      const shopOrderNumber = createRes.List0?.[0]?.ShopOrderNumber;
+      if (!shopOrderNumber) throw new Error('Shop Order created but number not returned.');
+
+      for (const slot of selectedSlots) {
+        const linkRes = await apiCall('Link Shop Order To Shift', { ShiftPlanID: slot.ShiftPlanID, ShopOrderNo: shopOrderNumber }, { User: user?.Username }, 'planning');
+        if (linkRes.State !== 0) throw new Error(`Shop Order ${shopOrderNumber} created, but couldn't link one or more slots: ${linkRes.Message}`);
+      }
+
+      setCreateShopOrderModalOpen(false);
+      setShopOrderNotice({ type: 'success', message: `Shop Order ${shopOrderNumber} created and linked to ${selectedIDs.length} slot${selectedIDs.length > 1 ? 's' : ''}!` });
+      await handleGenerate();
+    } catch (e) {
+      setCreateSOError(e.message);
+    } finally {
+      setCreateSOSaving(false);
+    }
+  };
+
+  // "Calculate Raw" -- rolls up raw-material needs (BillOfMaterialLineL1,
+  // scaled by BillOfMaterialHeaderL1's BatchQty) for every item currently on
+  // the generated calendar, grouped by machine plus a combined grand total.
+  // Reuses the existing BOM L1 Header/Line read operations (same ones
+  // BOMHeader.jsx/BOMDrawer.jsx already use) instead of a new endpoint.
+  const openCalculateRawModal = async () => {
+    if (!generated) {
+      setError('Generate the plan first, then Calculate Raw.');
+      return;
+    }
+    setCalcRawModalOpen(true);
+    setCalcRawLoading(true);
+    setCalcRawError('');
+    setCalcRawPerMachine([]);
+    setCalcRawGrandTotal([]);
+    setCalcRawMissingItems([]);
+    try {
+      const hdrRes = await apiCall('BOM L1 Header', null, { User: user?.Username });
+      if (hdrRes.State !== 0) throw new Error(hdrRes.Message || 'Failed to load BOM headers.');
+      const batchQtyByCode = {};
+      (hdrRes.List0 || []).forEach(h => { batchQtyByCode[h.ParentItemCode] = Number(h.BatchQty || 0); });
+
+      const allSlots = Object.values(cellMap).flat();
+      const uniqueItemCodes = [...new Set(allSlots.map(s => s.itemCode).filter(Boolean))];
+
+      const lineResponses = await Promise.all(
+        uniqueItemCodes.map(code => apiCall('BOM L1 Line', { ParentItemCode: code }, { User: user?.Username }))
+      );
+      const linesByItemCode = {};
+      uniqueItemCodes.forEach((code, idx) => {
+        linesByItemCode[code] = lineResponses[idx].State === 0 ? (lineResponses[idx].List0 || []) : [];
+      });
+
+      const perMachine = {}; // machineID -> { machineCode, materials: { childItemCode -> {desc, qty} } }
+      const grandTotal = {}; // childItemCode -> { desc, qty }
+      const missing = new Set();
+
+      allSlots.forEach(slot => {
+        const code = slot.itemCode;
+        if (!code || !slot.qty) return;
+        const batchQty = batchQtyByCode[code];
+        const lines = linesByItemCode[code] || [];
+        if (!batchQty || lines.length === 0) { missing.add(code); return; }
+
+        if (!perMachine[slot.machineID]) {
+          const m = machines.find(mm => String(mm.MachineID) === String(slot.machineID));
+          perMachine[slot.machineID] = { machineCode: m?.MachineCode || `Machine ${slot.machineID}`, materials: {} };
+        }
+        const bucket = perMachine[slot.machineID].materials;
+
+        lines.forEach(line => {
+          const need = (Number(line.Quantity || 0) / batchQty) * Number(slot.qty || 0);
+          const key = line.ChildItemCode;
+          if (!bucket[key]) bucket[key] = { desc: line.ChildItemDescription, qty: 0 };
+          bucket[key].qty += need;
+          if (!grandTotal[key]) grandTotal[key] = { desc: line.ChildItemDescription, qty: 0 };
+          grandTotal[key].qty += need;
+        });
+      });
+
+      const perMachineArr = Object.entries(perMachine)
+        .map(([machineID, v]) => ({
+          machineID,
+          machineCode: v.machineCode,
+          materials: Object.entries(v.materials)
+            .map(([code, m]) => ({ code, desc: m.desc, qty: m.qty }))
+            .sort((a, b) => a.code.localeCompare(b.code))
+        }))
+        .sort((a, b) => a.machineCode.localeCompare(b.machineCode));
+
+      const grandTotalArr = Object.entries(grandTotal)
+        .map(([code, m]) => ({ code, desc: m.desc, qty: m.qty }))
+        .sort((a, b) => a.code.localeCompare(b.code));
+
+      setCalcRawPerMachine(perMachineArr);
+      setCalcRawGrandTotal(grandTotalArr);
+      setCalcRawMissingItems([...missing]);
+    } catch (e) {
+      setCalcRawError(e.message);
+    } finally {
+      setCalcRawLoading(false);
+    }
   };
 
   const assignItemFormulaOptions = formulaOptions.filter(f => String(f.parentItemID) === String(assignItemID));
@@ -930,8 +1302,15 @@ export default function PlanningShowPlan({ user, onClose }) {
     const isToday = d === todayStr;
     const isEmpty = items.length === 0;
     const isSelected = !!selectedSlots[key];
+    const isSameCellAsDragged = draggedSlot && draggedSlot.shiftDate === d && String(draggedSlot.shiftNo) === String(shiftNo) && String(draggedSlot.machineID) === String(m.MachineID);
+    // Any different cell on the same machine row is a valid drop target,
+    // occupied or not -- how much actually fits is a Qty-prompt estimate,
+    // not a hard client-side gate (real StartTime/EndTime data can be
+    // imprecise, so the backend's real overlap check is the final word).
+    const isValidDropTarget = !!draggedSlot && String(draggedSlot.machineID) === String(m.MachineID) && !isSameCellAsDragged;
+    const isDragOver = dragOverKey === key;
 
-    const baseBg = isSelected ? 'var(--orange-glow)' : (isToday ? 'var(--orange-glow)' : 'transparent');
+    const baseBg = isDragOver ? 'var(--green-soft)' : isSelected ? 'var(--orange-glow)' : (isToday ? 'var(--orange-glow)' : 'transparent');
 
     return (
       <td
@@ -939,12 +1318,16 @@ export default function PlanningShowPlan({ user, onClose }) {
         onClick={isEmpty ? () => toggleSlot(m, d, shiftNo) : undefined}
         onMouseEnter={isEmpty ? (e) => { if (!isSelected) e.currentTarget.style.background = 'var(--soft)'; } : undefined}
         onMouseLeave={isEmpty ? (e) => { if (!isSelected) e.currentTarget.style.background = baseBg; } : undefined}
+        onDragOver={isValidDropTarget ? (e) => e.preventDefault() : undefined}
+        onDragEnter={isValidDropTarget ? () => setDragOverKey(key) : undefined}
+        onDragLeave={isValidDropTarget ? () => setDragOverKey(prev => (prev === key ? null : prev)) : undefined}
+        onDrop={isValidDropTarget ? (e) => { e.preventDefault(); handleDropSlot(m, d, shiftNo); } : undefined}
         style={{
           padding: '6px 8px', fontSize: 11.5, verticalAlign: 'top', minHeight: 34,
           borderBottom: '1px solid var(--border)',
           borderLeft: shiftNo === 1 ? '1px solid var(--border)' : '1px solid var(--soft)',
           background: baseBg,
-          boxShadow: isSelected ? 'inset 0 0 0 2px var(--orange)' : 'none',
+          boxShadow: isDragOver ? 'inset 0 0 0 2px var(--green)' : isSelected ? 'inset 0 0 0 2px var(--orange)' : 'none',
           cursor: isEmpty ? 'pointer' : 'default'
         }}
       >
@@ -954,13 +1337,25 @@ export default function PlanningShowPlan({ user, onClose }) {
           return (
           <div
             key={i}
+            draggable
+            onDragStart={(e) => {
+              e.stopPropagation();
+              setDraggedSlot({
+                shiftPlanID: c.shiftPlanID, machineID: c.machineID, itemID: c.itemID, itemCode: c.itemCode,
+                formulaID: c.formulaID, formulaBatch: c.formulaBatch, productionTime: c.productionTime,
+                warehouse: c.warehouse, qty: c.qty, startTime: c.startTime, endTime: c.endTime,
+                shopOrderNo: c.shopOrderNo, sourceItemCount: items.length,
+                shiftDate: c.shiftDate, shiftNo: c.shiftNo
+              });
+            }}
+            onDragEnd={() => { setDraggedSlot(null); setDragOverKey(null); }}
             onClick={() => toggleAssignedSlot(c)}
             onContextMenu={(e) => { e.preventDefault(); setContextMenu({ x: e.clientX, y: e.clientY, item: c }); }}
-            title={c.shopOrderNo ? undefined : 'Click to select -- combine multiple selected slots into one Shop Order via right-click'}
+            title={c.shopOrderNo ? 'Drag to move this slot within the same machine row' : 'Click to select -- combine multiple selected slots into one Shop Order via right-click. Drag to move within the same machine row.'}
             style={{
               marginBottom: 4, padding: '4px 6px 4px 8px', borderRadius: 'var(--radius-xs)',
               borderLeft: `3px solid ${accent.bar}`, background: accent.soft,
-              cursor: c.shopOrderNo ? 'context-menu' : 'pointer',
+              cursor: 'grab',
               boxShadow: isAssignedSelected ? 'inset 0 0 0 2px var(--orange)' : 'none'
             }}
           >
@@ -1066,6 +1461,50 @@ export default function PlanningShowPlan({ user, onClose }) {
             onMouseLeave={e => { e.currentTarget.style.background = 'var(--surface)'; e.currentTarget.style.borderColor = 'var(--border2)'; e.currentTarget.style.color = 'var(--text)'; }}
           >
             + Assign
+          </button>
+          <button
+            onClick={openCreateShopOrderModal}
+            style={{
+              padding: '9px 20px', borderRadius: 'var(--radius-xs)', border: '1px solid var(--border2)',
+              background: 'var(--surface)', color: 'var(--text)', fontWeight: 700, fontSize: 13, cursor: 'pointer'
+            }}
+            onMouseEnter={e => { e.currentTarget.style.background = 'var(--soft)'; e.currentTarget.style.borderColor = 'var(--green)'; e.currentTarget.style.color = 'var(--green)'; }}
+            onMouseLeave={e => { e.currentTarget.style.background = 'var(--surface)'; e.currentTarget.style.borderColor = 'var(--border2)'; e.currentTarget.style.color = 'var(--text)'; }}
+          >
+            🏭 Shop Order
+          </button>
+          <button
+            onClick={openCalculateRawModal}
+            style={{
+              padding: '9px 20px', borderRadius: 'var(--radius-xs)', border: '1px solid var(--border2)',
+              background: 'var(--surface)', color: 'var(--text)', fontWeight: 700, fontSize: 13, cursor: 'pointer'
+            }}
+            onMouseEnter={e => { e.currentTarget.style.background = 'var(--soft)'; e.currentTarget.style.borderColor = 'var(--purple)'; e.currentTarget.style.color = 'var(--purple)'; }}
+            onMouseLeave={e => { e.currentTarget.style.background = 'var(--surface)'; e.currentTarget.style.borderColor = 'var(--border2)'; e.currentTarget.style.color = 'var(--text)'; }}
+          >
+            🧮 Calculate Raw
+          </button>
+          <button
+            onClick={() => setProductionModalOpen(true)}
+            style={{
+              padding: '9px 20px', borderRadius: 'var(--radius-xs)', border: '1px solid var(--border2)',
+              background: 'var(--surface)', color: 'var(--text)', fontWeight: 700, fontSize: 13, cursor: 'pointer'
+            }}
+            onMouseEnter={e => { e.currentTarget.style.background = 'var(--soft)'; e.currentTarget.style.borderColor = 'var(--teal)'; e.currentTarget.style.color = 'var(--teal)'; }}
+            onMouseLeave={e => { e.currentTarget.style.background = 'var(--surface)'; e.currentTarget.style.borderColor = 'var(--border2)'; e.currentTarget.style.color = 'var(--text)'; }}
+          >
+            ⚙️ Production
+          </button>
+          <button
+            onClick={() => setShiftPlanModalOpen(true)}
+            style={{
+              padding: '9px 20px', borderRadius: 'var(--radius-xs)', border: '1px solid var(--border2)',
+              background: 'var(--surface)', color: 'var(--text)', fontWeight: 700, fontSize: 13, cursor: 'pointer'
+            }}
+            onMouseEnter={e => { e.currentTarget.style.background = 'var(--soft)'; e.currentTarget.style.borderColor = 'var(--pink)'; e.currentTarget.style.color = 'var(--pink)'; }}
+            onMouseLeave={e => { e.currentTarget.style.background = 'var(--surface)'; e.currentTarget.style.borderColor = 'var(--border2)'; e.currentTarget.style.color = 'var(--text)'; }}
+          >
+            ↔️ Shift Plan
           </button>
           {error && (
             <div style={{
@@ -1568,6 +2007,240 @@ export default function PlanningShowPlan({ user, onClose }) {
         </>
       )}
 
+      {createShopOrderModalOpen && (
+        <>
+          <div style={{
+            position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', zIndex: 1200,
+            background: 'var(--surface)', borderRadius: 'var(--radius)', boxShadow: 'var(--shadow-lg)',
+            border: '1px solid var(--border)', fontFamily: 'var(--font)', maxHeight: '85vh', overflow: 'hidden',
+            display: 'flex', flexDirection: 'column', width: '90%', maxWidth: 900
+          }}>
+            <div style={{ padding: '20px 24px', borderBottom: '1px solid var(--border)', background: 'var(--surface)' }}>
+              <h3 style={{ margin: 0, fontSize: 18, fontWeight: 800, color: 'var(--text)' }}>Create Shop Order from Unlinked Slots</h3>
+              <p style={{ margin: '6px 0 0 0', fontSize: 12, color: 'var(--hint)' }}>
+                Select a machine, then pick multiple time slots to combine into one Shop Order
+              </p>
+            </div>
+
+            <div style={{ flex: 1, overflow: 'auto', padding: '20px 24px' }}>
+              <div style={{ marginBottom: 20 }}>
+                <label style={labelStyle}>Machine</label>
+                <SearchableSelect
+                  value={createSOMachineID}
+                  onChange={handleCreateSOMachineChange}
+                  options={machines.map(m => ({ label: `${m.MachineCode} - ${m.MachineDescription || ''}`, value: m.MachineID }))}
+                  placeholder="Select machine..."
+                />
+              </div>
+
+              {createSOError && (
+                <div style={{
+                  background: 'var(--red-soft)', border: '1px solid var(--red)', color: 'var(--red)',
+                  padding: '10px 14px', borderRadius: 'var(--radius-xs)', marginBottom: 16, fontSize: 12.5
+                }}>
+                  {createSOError}
+                </div>
+              )}
+
+              {createSOLoadingSlots && (
+                <div style={{ fontSize: 12, color: 'var(--hint)' }}>Loading unlinked slots...</div>
+              )}
+
+              {!createSOLoadingSlots && createSOMachineID && createSOUnlinkedSlots.length === 0 && (
+                <div style={{ fontSize: 12, color: 'var(--hint)' }}>No unlinked slots found for this machine in the selected date range.</div>
+              )}
+
+              {!createSOLoadingSlots && createSOUnlinkedSlots.length > 0 && (
+                <>
+                  <h4 style={{ margin: '0 0 12px 0', fontSize: 12, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: 0.4 }}>
+                    Unlinked Slots ({createSOUnlinkedSlots.length})
+                  </h4>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                    <thead>
+                      <tr>
+                        <th style={{ textAlign: 'center', padding: '6px', width: 30, borderBottom: '1px solid var(--border)' }}></th>
+                        <th style={{ textAlign: 'left', padding: '6px', borderBottom: '1px solid var(--border)' }}>Date</th>
+                        <th style={{ textAlign: 'center', padding: '6px', width: 50, borderBottom: '1px solid var(--border)' }}>Shift</th>
+                        <th style={{ textAlign: 'left', padding: '6px', borderBottom: '1px solid var(--border)' }}>Item</th>
+                        <th style={{ textAlign: 'right', padding: '6px', borderBottom: '1px solid var(--border)' }}>Qty</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {createSOUnlinkedSlots.map((slot, idx) => {
+                        const isChecked = !!createSOSelectedSlots[slot.ShiftPlanID];
+                        const isLockedOut = !!createSOSelectedAnchor && !isChecked && (
+                          String(slot.ItemID) !== String(createSOSelectedAnchor.ItemID) ||
+                          String(slot.FormulaID) !== String(createSOSelectedAnchor.FormulaID) ||
+                          String(slot.Warehouse).trim().toUpperCase() !== String(createSOSelectedAnchor.Warehouse).trim().toUpperCase()
+                        );
+                        return (
+                        <tr
+                          key={slot.ShiftPlanID}
+                          style={{ background: idx % 2 === 1 ? 'var(--soft)' : 'transparent', opacity: isLockedOut ? 0.4 : 1 }}
+                          title={isLockedOut ? 'A Shop Order can only contain one item' : undefined}
+                        >
+                          <td style={{ textAlign: 'center', padding: '6px' }}>
+                            <input
+                              type="checkbox"
+                              checked={isChecked}
+                              disabled={isLockedOut}
+                              onChange={() => toggleCreateSOSlot(slot.ShiftPlanID)}
+                              style={{ cursor: isLockedOut ? 'not-allowed' : 'pointer' }}
+                            />
+                          </td>
+                          <td style={{ padding: '6px' }}>{slot.ShiftDate?.split('T')[0]}</td>
+                          <td style={{ textAlign: 'center', padding: '6px' }}>S{slot.ShiftNo}</td>
+                          <td style={{ padding: '6px' }}>{slot.ItemCode}</td>
+                          <td style={{ textAlign: 'right', padding: '6px', fontFamily: 'var(--mono)' }}>{Number(slot.PlannedQty).toLocaleString(undefined, { maximumFractionDigits: 2 })}</td>
+                        </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </>
+              )}
+            </div>
+
+            <div style={{ padding: '14px 20px', borderTop: '1px solid var(--border)', background: 'var(--soft)', display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+              <button
+                onClick={() => setCreateShopOrderModalOpen(false)}
+                disabled={createSOSaving}
+                style={{
+                  padding: '8px 16px', borderRadius: 'var(--radius-xs)', border: '1px solid var(--border2)',
+                  background: 'var(--surface)', color: 'var(--text)', fontWeight: 600, fontSize: 13, cursor: 'pointer'
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleCreateSOSave}
+                disabled={createSOSaving || Object.keys(createSOSelectedSlots).length === 0}
+                style={{
+                  padding: '8px 20px', borderRadius: 'var(--radius-xs)', border: 'none',
+                  background: createSOSaving || Object.keys(createSOSelectedSlots).length === 0 ? 'var(--hint)' : 'linear-gradient(135deg, var(--green), var(--green))',
+                  color: '#fff', fontWeight: 700, fontSize: 13, cursor: Object.keys(createSOSelectedSlots).length === 0 ? 'not-allowed' : 'pointer'
+                }}
+              >
+                {createSOSaving ? 'Creating...' : `Create Shop Order (${Object.keys(createSOSelectedSlots).length})`}
+              </button>
+            </div>
+          </div>
+          <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 1150 }} onClick={() => !createSOSaving && setCreateShopOrderModalOpen(false)} />
+        </>
+      )}
+
+      {calcRawModalOpen && (
+        <>
+          <div style={{
+            position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', zIndex: 1200,
+            background: 'var(--surface)', borderRadius: 'var(--radius)', boxShadow: 'var(--shadow-lg)',
+            border: '1px solid var(--border)', fontFamily: 'var(--font)', maxHeight: '85vh', overflow: 'hidden',
+            display: 'flex', flexDirection: 'column', width: '90%', maxWidth: 900
+          }}>
+            <div style={{ padding: '20px 24px', borderBottom: '1px solid var(--border)', background: 'var(--surface)' }}>
+              <h3 style={{ margin: 0, fontSize: 18, fontWeight: 800, color: 'var(--text)' }}>Raw Materials Needed</h3>
+              <p style={{ margin: '6px 0 0 0', fontSize: 12, color: 'var(--hint)' }}>
+                Based on the currently generated plan ({startDate} to {endDate}), per machine and combined
+              </p>
+            </div>
+
+            <div style={{ flex: 1, overflow: 'auto', padding: '20px 24px' }}>
+              {calcRawLoading && (
+                <div style={{ fontSize: 13, color: 'var(--hint)' }}>Calculating...</div>
+              )}
+
+              {calcRawError && (
+                <div style={{
+                  background: 'var(--red-soft)', border: '1px solid var(--red)', color: 'var(--red)',
+                  padding: '10px 14px', borderRadius: 'var(--radius-xs)', marginBottom: 16, fontSize: 12.5
+                }}>
+                  {calcRawError}
+                </div>
+              )}
+
+              {!calcRawLoading && !calcRawError && calcRawMissingItems.length > 0 && (
+                <div style={{
+                  background: 'var(--amber-soft)', border: '1px solid var(--amber)', color: 'var(--amber)',
+                  padding: '10px 14px', borderRadius: 'var(--radius-xs)', marginBottom: 16, fontSize: 12
+                }}>
+                  No BOM (BillOfMaterialLineL1) found for: {calcRawMissingItems.join(', ')} -- excluded from these totals.
+                </div>
+              )}
+
+              {!calcRawLoading && !calcRawError && calcRawGrandTotal.length === 0 && calcRawMissingItems.length === 0 && (
+                <div style={{ fontSize: 13, color: 'var(--hint)' }}>Nothing planned in the current date range.</div>
+              )}
+
+              {!calcRawLoading && calcRawGrandTotal.length > 0 && (
+                <>
+                  <h4 style={{ margin: '0 0 12px 0', fontSize: 12.5, fontWeight: 800, color: 'var(--text)', textTransform: 'uppercase', letterSpacing: 0.4 }}>
+                    Total -- All Machines
+                  </h4>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5, marginBottom: 28 }}>
+                    <thead>
+                      <tr>
+                        <th style={{ textAlign: 'left', padding: '6px', borderBottom: '1px solid var(--border)' }}>Raw Material</th>
+                        <th style={{ textAlign: 'left', padding: '6px', borderBottom: '1px solid var(--border)' }}>Description</th>
+                        <th style={{ textAlign: 'right', padding: '6px', borderBottom: '1px solid var(--border)' }}>Qty Needed</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {calcRawGrandTotal.map((m, idx) => (
+                        <tr key={m.code} style={{ background: idx % 2 === 1 ? 'var(--soft)' : 'transparent' }}>
+                          <td style={{ padding: '6px', fontFamily: 'var(--mono)', fontWeight: 700 }}>{m.code}</td>
+                          <td style={{ padding: '6px' }}>{m.desc || '—'}</td>
+                          <td style={{ textAlign: 'right', padding: '6px', fontFamily: 'var(--mono)' }}>{m.qty.toLocaleString(undefined, { maximumFractionDigits: 3 })}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+
+                  <h4 style={{ margin: '0 0 12px 0', fontSize: 12.5, fontWeight: 800, color: 'var(--text)', textTransform: 'uppercase', letterSpacing: 0.4 }}>
+                    Per Machine
+                  </h4>
+                  {calcRawPerMachine.map(mach => (
+                    <div key={mach.machineID} style={{ marginBottom: 20 }}>
+                      <div style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--purple)', marginBottom: 8 }}>{mach.machineCode}</div>
+                      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                        <thead>
+                          <tr>
+                            <th style={{ textAlign: 'left', padding: '5px 6px', borderBottom: '1px solid var(--border)' }}>Raw Material</th>
+                            <th style={{ textAlign: 'left', padding: '5px 6px', borderBottom: '1px solid var(--border)' }}>Description</th>
+                            <th style={{ textAlign: 'right', padding: '5px 6px', borderBottom: '1px solid var(--border)' }}>Qty Needed</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {mach.materials.map((m, idx) => (
+                            <tr key={m.code} style={{ background: idx % 2 === 1 ? 'var(--soft)' : 'transparent' }}>
+                              <td style={{ padding: '5px 6px', fontFamily: 'var(--mono)' }}>{m.code}</td>
+                              <td style={{ padding: '5px 6px' }}>{m.desc || '—'}</td>
+                              <td style={{ textAlign: 'right', padding: '5px 6px', fontFamily: 'var(--mono)' }}>{m.qty.toLocaleString(undefined, { maximumFractionDigits: 3 })}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  ))}
+                </>
+              )}
+            </div>
+
+            <div style={{ padding: '14px 20px', borderTop: '1px solid var(--border)', background: 'var(--soft)', display: 'flex', justifyContent: 'flex-end' }}>
+              <button
+                onClick={() => setCalcRawModalOpen(false)}
+                style={{
+                  padding: '8px 16px', borderRadius: 'var(--radius-xs)', border: '1px solid var(--border2)',
+                  background: 'var(--surface)', color: 'var(--text)', fontWeight: 600, fontSize: 13, cursor: 'pointer'
+                }}
+              >
+                Close
+              </button>
+            </div>
+          </div>
+          <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 1150 }} onClick={() => setCalcRawModalOpen(false)} />
+        </>
+      )}
+
       {contextMenu && (
         <>
           <div
@@ -1847,6 +2520,65 @@ export default function PlanningShowPlan({ user, onClose }) {
             </div>
           </div>
         </div>
+      )}
+
+      {splitMoveDialog && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.45)', zIndex: 1300, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ width: 420, maxWidth: '90vw', background: 'var(--bg)', borderRadius: 14, boxShadow: '0 10px 40px rgba(0,0,0,0.3)' }}>
+            <div style={{ padding: '20px 22px' }}>
+              <h3 style={{ margin: 0, fontSize: 16, fontWeight: 800, color: 'var(--text)' }}>Move {splitMoveDialog.dragged.itemCode}</h3>
+              <p style={{ margin: '10px 0 14px 0', fontSize: 12.5, color: 'var(--muted)', lineHeight: 1.5 }}>
+                {splitMoveDialog.maxMovableQty < splitMoveDialog.dragged.qty - 0.00001
+                  ? `Roughly ${splitMoveDialog.maxMovableQty.toLocaleString(undefined, { maximumFractionDigits: 3 })} looks like it fits in the destination's remaining time this shift (estimate) -- move all of it, or lower the Qty to split off just part. The destination will reject it if it truly doesn't fit.`
+                  : 'This slot shares its shift with another item. Move all of it, or lower the Qty to split off just part -- the rest stays behind in its current shift.'}
+              </p>
+              {splitMoveError && (
+                <div style={{ padding: '8px 12px', background: 'var(--red-soft)', color: 'var(--red)', borderRadius: 'var(--radius-xs)', fontSize: 12, fontWeight: 600, marginBottom: 12 }}>{splitMoveError}</div>
+              )}
+              <label style={labelStyle}>Qty to Move (of {splitMoveDialog.dragged.qty.toLocaleString(undefined, { maximumFractionDigits: 3 })})</label>
+              <input
+                type="number" step="0.00001" value={splitMoveDialog.qty}
+                onChange={e => setSplitMoveDialog(prev => ({ ...prev, qty: e.target.value }))}
+                style={inputStyle}
+                autoFocus
+              />
+            </div>
+            <div style={{ padding: '14px 22px', borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'flex-end', gap: 12 }}>
+              <button
+                onClick={() => { setSplitMoveDialog(null); setSplitMoveError(''); }}
+                style={{ height: 36, padding: '0 20px', background: 'var(--soft)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 12.5, fontWeight: 700, cursor: 'pointer' }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSplitMoveConfirm}
+                style={{
+                  height: 36, padding: '0 24px',
+                  background: 'linear-gradient(135deg, var(--orange), var(--orange2))',
+                  color: '#fff', border: 'none', borderRadius: 8, fontSize: 12.5, fontWeight: 700, cursor: 'pointer'
+                }}
+              >
+                Move
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {productionModalOpen && (
+        <ProductionBulkModal
+          user={user}
+          onClose={() => setProductionModalOpen(false)}
+          onProduced={handleGenerate}
+        />
+      )}
+
+      {shiftPlanModalOpen && (
+        <ShiftPlanModal
+          user={user}
+          onClose={() => setShiftPlanModalOpen(false)}
+          onShifted={handleGenerate}
+        />
       )}
     </>
   );
