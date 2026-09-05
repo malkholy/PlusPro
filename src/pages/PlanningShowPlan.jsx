@@ -85,11 +85,6 @@ export default function PlanningShowPlan({ user, onClose }) {
 
   // Manual "select empty slots, then assign an item" flow.
   const [selectedSlots, setSelectedSlots] = useState({});
-  // Separate "select already-assigned slots, then combine into one Shop
-  // Order" flow -- e.g. Shift 1 + Shift 2 + Shift 1 (same item/machine,
-  // different dates/shifts) all covered by a single Shop Order. Keyed by
-  // ShiftPlanID.
-  const [selectedAssignedSlots, setSelectedAssignedSlots] = useState({});
   const [itemOptions, setItemOptions] = useState([]);
   const [formulaOptions, setFormulaOptions] = useState([]);
   const [warehouseOptions, setWarehouseOptions] = useState([]);
@@ -264,6 +259,13 @@ export default function PlanningShowPlan({ user, onClose }) {
   const assignProdTime = Number(assignProductionTime || 0);
   const unitsPerShift = assignBatchQty > 0 && assignProdTime > 0 ? (SHIFT_SECONDS / assignProdTime) * assignBatchQty : 0;
   const slotsNeeded = unitsPerShift > 0 && Number(assignQty) > 0 ? Math.ceil(Number(assignQty) / unitsPerShift) : 0;
+  // Total production time for the full Qty (independent of how many 12h
+  // shifts that spans) -- e.g. 30h needed vs. 3 x 12h shifts to fit it in.
+  const totalTimeSeconds = assignBatchQty > 0 && assignProdTime > 0 && Number(assignQty) > 0
+    ? (Number(assignQty) / assignBatchQty) * assignProdTime
+    : 0;
+  const totalTimeLabel = formatDuration(Number(assignQty), assignBatchQty, assignProdTime);
+  const totalTimeHoursExact = totalTimeSeconds > 0 ? totalTimeSeconds / 3600 : 0;
 
   const handleAssignSave = async () => {
     setAssignError('');
@@ -1004,6 +1006,19 @@ export default function PlanningShowPlan({ user, onClose }) {
                   onChange={e => setAssignProductionTime(e.target.value)}
                   style={{ ...inputStyle, width: '100%' }}
                 />
+                {totalTimeLabel && (
+                  <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, marginTop: 6 }}>
+                    <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: 0.3 }}>
+                      Total Time
+                    </span>
+                    <span style={{ fontSize: 13, fontWeight: 800, color: 'var(--text)', fontFamily: 'var(--mono)' }}>
+                      {totalTimeLabel}
+                    </span>
+                    <span style={{ fontSize: 11, color: 'var(--hint)' }}>
+                      ({totalTimeHoursExact.toLocaleString(undefined, { maximumFractionDigits: 2 })} h)
+                    </span>
+                  </div>
+                )}
                 {slotsNeeded > 0 && (
                   <div style={{
                     fontSize: 11.5, fontWeight: 600, marginTop: 6, padding: '6px 10px', borderRadius: 'var(--radius-xs)',
@@ -1011,10 +1026,10 @@ export default function PlanningShowPlan({ user, onClose }) {
                     background: slotsNeeded > selectedCount ? 'var(--red-soft)' : (slotsNeeded < selectedCount ? 'var(--orange-soft)' : 'var(--green-soft)')
                   }}>
                     {slotsNeeded > selectedCount
-                      ? `This Qty needs ${slotsNeeded} shift${slotsNeeded > 1 ? 's' : ''} at this rate -- select ${slotsNeeded - selectedCount} more empty slot${slotsNeeded - selectedCount > 1 ? 's' : ''}.`
+                      ? `${totalTimeLabel} needed -- that's ${slotsNeeded} shift${slotsNeeded > 1 ? 's' : ''} at 12h each. Select ${slotsNeeded - selectedCount} more empty slot${slotsNeeded - selectedCount > 1 ? 's' : ''}.`
                       : slotsNeeded < selectedCount
-                      ? `This Qty only needs ${slotsNeeded} shift${slotsNeeded > 1 ? 's' : ''} -- ${selectedCount - slotsNeeded} of the ${selectedCount} selected will sit underfilled.`
-                      : `Fits exactly across ${slotsNeeded} shift${slotsNeeded > 1 ? 's' : ''}.`}
+                      ? `${totalTimeLabel} needed -- that's only ${slotsNeeded} shift${slotsNeeded > 1 ? 's' : ''} at 12h each. ${selectedCount - slotsNeeded} of the ${selectedCount} selected will sit underfilled.`
+                      : `${totalTimeLabel} needed -- fits exactly across ${slotsNeeded} shift${slotsNeeded > 1 ? 's' : ''} at 12h each.`}
                   </div>
                 )}
               </div>
