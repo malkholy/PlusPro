@@ -193,15 +193,20 @@ BEGIN
                 RETURN
             END
 
+            -- Reject only on a REAL time overlap, not just "same shift" --
+            -- a shift's leftover capacity can now be shared by more than
+            -- one item (continuous/gap-free packing packs a new item's
+            -- segment into whatever time is left after an existing one).
             IF EXISTS (
                 SELECT 1
-                FROM OPENJSON(@LineMember) WITH (ShiftDate date '$.ShiftDate', ShiftNo int '$.ShiftNo') nl
-                INNER JOIN [PRO].[PrdItemPlanningShiftPlan] sp ON sp.ShiftDate = nl.ShiftDate AND sp.ShiftNo = nl.ShiftNo
-                WHERE sp.MachineID = @PH_MachineID
+                FROM OPENJSON(@LineMember) WITH (ShiftDate date '$.ShiftDate', ShiftNo int '$.ShiftNo', StartTime datetime '$.StartTime', EndTime datetime '$.EndTime') nl
+                INNER JOIN [PRO].[PrdItemPlanningShiftPlan] sp
+                    ON sp.ShiftDate = nl.ShiftDate AND sp.ShiftNo = nl.ShiftNo AND sp.MachineID = @PH_MachineID
+                    AND sp.StartTime < nl.EndTime AND nl.StartTime < sp.EndTime
             )
             BEGIN
                 SET @State = 1
-                SET @Message = 'One or more selected time slots are already assigned to another item on this machine.'
+                SET @Message = 'One or more selected time windows overlap an item already scheduled on this machine.'
                 RETURN
             END
         END

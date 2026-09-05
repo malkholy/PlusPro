@@ -58,6 +58,41 @@ function formatDuration(qty, formulaBatch, productionTime) {
   return `${h}h ${m}m`;
 }
 
+// Continuous (gap-free) time packing across a shift timeline. Each shift is
+// a divisible 12h bucket of `remainingSeconds` capacity, not an atomic
+// all-or-nothing slot -- an item that doesn't fill a shift leaves its
+// leftover capacity for the very next item to continue into (no idle gap,
+// no fresh slot opened early). Items are packed in the order given; an
+// item's own time need can span a shift boundary, in which case it gets one
+// segment per shift it touches. Returns `ok: false` (with the last item's
+// shortfall) if the timeline runs out before every item is fully placed --
+// callers should pre-check total needed vs total available and reject
+// before calling this, so this should only ever run when it can succeed.
+function packContinuous(timeline, items) {
+  const tl = timeline.map(t => ({ ...t }));
+  let cursor = 0;
+  const results = [];
+  for (const item of items) {
+    let remaining = item.neededSeconds;
+    const segments = [];
+    while (remaining > 0.5) {
+      while (cursor < tl.length && tl[cursor].remainingSeconds <= 0.5) cursor++;
+      if (cursor >= tl.length) {
+        results.push({ ...item, segments, shortfallSeconds: remaining });
+        return { results, ok: false };
+      }
+      const shift = tl[cursor];
+      const offsetSeconds = SHIFT_SECONDS - shift.remainingSeconds;
+      const take = Math.min(remaining, shift.remainingSeconds);
+      segments.push({ date: shift.date, shiftNo: shift.shiftNo, offsetSeconds, seconds: take });
+      shift.remainingSeconds -= take;
+      remaining -= take;
+    }
+    results.push({ ...item, segments, shortfallSeconds: 0 });
+  }
+  return { results, ok: true };
+}
+
 const inputStyle = {
   padding: '8px 12px', border: '1px solid var(--border2)', borderRadius: 'var(--radius-xs)',
   boxSizing: 'border-box', background: 'var(--surface)', color: 'var(--text)', fontFamily: 'var(--font)', fontSize: 13
@@ -67,10 +102,28 @@ const labelStyle = {
   textTransform: 'uppercase', letterSpacing: 0.4
 };
 
-const SHIFT_ACCENT = {
-  1: { fg: 'var(--orange2)', soft: 'var(--orange-soft)', bar: 'var(--orange)' },
-  2: { fg: 'var(--blue)', soft: 'var(--blue-soft)', bar: 'var(--blue)' }
-};
+// Calendar cells are colored by ITEM, not by shift -- so the same item shows
+// the same color everywhere it appears (a single item's blocks are easy to
+// follow across shifts/days at a glance), while Shift 1 vs Shift 2 is
+// already conveyed by column position/header, not color.
+const ITEM_PALETTE = [
+  { fg: 'var(--orange2)', soft: 'var(--orange-soft)', bar: 'var(--orange)' },
+  { fg: 'var(--blue)', soft: 'var(--blue-soft)', bar: 'var(--blue)' },
+  { fg: 'var(--green)', soft: 'var(--green-soft)', bar: 'var(--green)' },
+  { fg: 'var(--purple)', soft: 'var(--purple-soft)', bar: 'var(--purple)' },
+  { fg: 'var(--pink)', soft: 'var(--pink-soft)', bar: 'var(--pink)' },
+  { fg: 'var(--teal)', soft: 'var(--teal-soft)', bar: 'var(--teal)' },
+  { fg: 'var(--amber)', soft: 'var(--amber-soft)', bar: 'var(--amber)' },
+  { fg: 'var(--red)', soft: 'var(--red-soft)', bar: 'var(--red)' },
+  { fg: 'var(--cyan)', soft: 'var(--cyan-soft)', bar: 'var(--cyan)' },
+  { fg: 'var(--lime)', soft: 'var(--lime-soft)', bar: 'var(--lime)' }
+];
+function getItemColor(key) {
+  const str = String(key ?? '');
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) hash = (hash * 31 + str.charCodeAt(i)) | 0;
+  return ITEM_PALETTE[Math.abs(hash) % ITEM_PALETTE.length];
+}
 
 export default function PlanningShowPlan({ user, onClose }) {
   const todayStr = toLocalDateStr(new Date());
@@ -119,8 +172,9 @@ export default function PlanningShowPlan({ user, onClose }) {
   const [bulkSaving, setBulkSaving] = useState(false);
   const [bulkError, setBulkError] = useState('');
   const [planningItemRows, setPlanningItemRows] = useState([]);
-  const [bulkAvailableSlots, setBulkAvailableSlots] = useState(null);
+  const [bulkShiftTimeline, setBulkShiftTimeline] = useState(null);
   const [bulkCheckingSlots, setBulkCheckingSlots] = useState(false);
+  const [bulkAvailabilityError, setBulkAvailabilityError] = useState('');
   const bulkLineKeyRef = useRef(0);
 
   // Right-click on an assigned slot -> "Show Formula" / "Create Shop Order".
@@ -283,7 +337,8 @@ export default function PlanningShowPlan({ user, onClose }) {
     setBulkToDate(endDate || addDays(todayStr, 6));
     setBulkWarehouse('');
     setBulkLines([]);
-    setBulkAvailableSlots(null);
+    setBulkShiftTimeline(null);
+    setBulkAvailabilityError('');
     setBulkAssignModalOpen(true);
   };
 
@@ -315,49 +370,74 @@ export default function PlanningShowPlan({ user, onClose }) {
   const updateBulkLineQty = (idx, val) => setBulkLines(prev => prev.map((l, i) => i === idx ? { ...l, qty: val } : l));
   const updateBulkLineProdTime = (idx, val) => setBulkLines(prev => prev.map((l, i) => i === idx ? { ...l, productionTime: val } : l));
 
-  // Live per-line capacity math, same formula as the single-item modal.
+  // Live per-line capacity math, same formula as the single-item modal --
+  // expressed as raw time need (seconds), not a whole-shift count, since
+  // items now pack back-to-back within and across shifts.
   const bulkLineComputed = bulkLines.map(l => {
     const formula = l.formulaID ? formulaOptions.find(f => String(f.value) === String(l.formulaID)) : null;
     const batchQuantity = Number(formula?.batchQuantity || 0);
     const qty = Number(l.qty || 0);
     const prodTime = Number(l.productionTime || 0);
-    const unitsPerShift = batchQuantity > 0 && prodTime > 0 ? (SHIFT_SECONDS / prodTime) * batchQuantity : 0;
-    const slotsNeeded = unitsPerShift > 0 && qty > 0 ? Math.ceil(qty / unitsPerShift) : 0;
-    return { ...l, batchQuantity, qty, prodTime, slotsNeeded };
+    const neededSeconds = batchQuantity > 0 && prodTime > 0 && qty > 0 ? (qty * prodTime) / batchQuantity : 0;
+    return { ...l, batchQuantity, qty, prodTime, neededSeconds };
   });
-  const bulkTotalSlotsNeeded = bulkLineComputed.reduce((sum, l) => sum + (l.slotsNeeded || 0), 0);
+  const bulkTotalNeededSeconds = bulkLineComputed.reduce((sum, l) => sum + (l.neededSeconds || 0), 0);
+  const bulkTotalAvailableSeconds = bulkShiftTimeline
+    ? bulkShiftTimeline.reduce((sum, t) => sum + Math.max(0, t.remainingSeconds), 0)
+    : null;
 
-  // Fetches every empty (Machine, Date, Shift) slot in the chosen range,
-  // live, as Machine/dates change -- so the grid can show "needs X / Y
-  // available" before the user even tries to save.
+  // Fetches every (Machine, Date, Shift) row in the chosen range, live, as
+  // Machine/dates change, and reduces it to REMAINING capacity per shift
+  // (12h minus whatever's already time-booked there) -- not just a binary
+  // empty/occupied flag -- so continuous packing can flow new items into
+  // any shift's leftover capacity, not only fully-empty shifts.
   useEffect(() => {
     if (!bulkAssignModalOpen || !bulkMachineID || !bulkFromDate || !bulkToDate || bulkFromDate > bulkToDate) {
-      setBulkAvailableSlots(null);
+      setBulkShiftTimeline(null);
       return;
     }
     let cancelled = false;
     setBulkCheckingSlots(true);
+    setBulkAvailabilityError('');
     apiCall('Get Planning Shift Calendar', { FromDate: bulkFromDate, ToDate: bulkToDate }, { User: user?.Username }, 'planning')
       .then(d => {
         if (cancelled) return;
-        if (d.State !== 0) { setBulkAvailableSlots(null); return; }
-        const occupied = new Set(
-          (d.List0 || [])
-            .filter(r => String(r.MachineID) === String(bulkMachineID))
-            .map(r => `${r.ShiftDate.split('T')[0]}|${r.ShiftNo}`)
-        );
+        if (d.State !== 0) {
+          setBulkShiftTimeline(null);
+          setBulkAvailabilityError(d.Message || 'Server rejected the availability check.');
+          return;
+        }
+        const usedByKey = {};
+        (d.List0 || [])
+          .filter(r => String(r.MachineID) === String(bulkMachineID))
+          .forEach(r => {
+            const date = r.ShiftDate.split('T')[0];
+            const key = `${date}|${r.ShiftNo}`;
+            const batch = Number(r.FormulaBatch || 0);
+            const pt = Number(r.ProductionTime || 0);
+            const qty = Number(r.PlannedQty || 0);
+            // Can't compute a real duration for this row -> assume it eats
+            // the whole shift, rather than risk overbooking on top of it.
+            const seconds = (batch > 0 && pt > 0) ? (qty / batch) * pt : SHIFT_SECONDS;
+            usedByKey[key] = (usedByKey[key] || 0) + seconds;
+          });
         const dayCount = Math.round((new Date(bulkToDate) - new Date(bulkFromDate)) / 86400000) + 1;
-        const slots = [];
+        const timeline = [];
         for (let i = 0; i < dayCount; i++) {
           const date = addDays(bulkFromDate, i);
           for (const shiftNo of [1, 2]) {
-            if (!occupied.has(`${date}|${shiftNo}`)) slots.push({ date, shiftNo });
+            const used = Math.min(SHIFT_SECONDS, usedByKey[`${date}|${shiftNo}`] || 0);
+            timeline.push({ date, shiftNo, remainingSeconds: SHIFT_SECONDS - used });
           }
         }
-        slots.sort((a, b) => (a.date !== b.date ? (a.date < b.date ? -1 : 1) : a.shiftNo - b.shiftNo));
-        setBulkAvailableSlots(slots);
+        setBulkShiftTimeline(timeline);
       })
-      .catch(() => setBulkAvailableSlots(null))
+      .catch(e => {
+        if (cancelled) return;
+        setBulkShiftTimeline(null);
+        setBulkAvailabilityError(e?.message || 'Request failed.');
+        console.error('Get Planning Shift Calendar failed:', e);
+      })
       .finally(() => { if (!cancelled) setBulkCheckingSlots(false); });
     return () => { cancelled = true; };
   }, [bulkAssignModalOpen, bulkMachineID, bulkFromDate, bulkToDate, user]);
@@ -380,44 +460,51 @@ export default function PlanningShowPlan({ user, onClose }) {
       if (formulaBatch <= 0) { setBulkError(`"${l.itemCode}"'s selected formula has no Batch Quantity set.`); return; }
       const qty = Number(l.qty);
       const prodTime = Number(l.productionTime);
-      const unitsPerShift = (SHIFT_SECONDS / prodTime) * formulaBatch;
-      const slotsNeeded = Math.max(1, Math.ceil(qty / unitsPerShift));
-      resolvedLines.push({ ...l, formulaID: l.formulaID, formulaBatch, qty, prodTime, slotsNeeded });
+      const neededSeconds = (qty * prodTime) / formulaBatch;
+      resolvedLines.push({ ...l, formulaID: l.formulaID, formulaBatch, qty, prodTime, neededSeconds });
     }
 
-    if (!bulkAvailableSlots) { setBulkError('Could not verify slot availability -- try again.'); return; }
-    const totalNeeded = resolvedLines.reduce((sum, l) => sum + l.slotsNeeded, 0);
-    if (totalNeeded > bulkAvailableSlots.length) {
-      setBulkError(`Need ${totalNeeded} empty shift${totalNeeded > 1 ? 's' : ''} total for this Qty at these rates, but only ${bulkAvailableSlots.length} ${bulkAvailableSlots.length === 1 ? 'is' : 'are'} empty for this machine in this date range. Widen the range, trim Qty, or shorten Production Time.`);
+    if (!bulkShiftTimeline) { setBulkError('Could not verify shift availability -- try again.'); return; }
+    const totalNeededSeconds = resolvedLines.reduce((sum, l) => sum + l.neededSeconds, 0);
+    const totalAvailableSeconds = bulkShiftTimeline.reduce((sum, t) => sum + Math.max(0, t.remainingSeconds), 0);
+    if (totalNeededSeconds > totalAvailableSeconds + 0.5) {
+      setBulkError(`Need ${(totalNeededSeconds / 3600).toFixed(1)}h total for this Qty at these rates, but only ${(totalAvailableSeconds / 3600).toFixed(1)}h is free for this machine in this date range (production packs back-to-back with no gaps). Widen the range, trim Qty, or shorten Production Time.`);
       return;
     }
 
+    // Continuous packing: items are placed in grid order, each one
+    // consuming the timeline's leftover shift capacity from wherever the
+    // previous item left off -- so a partly-used shift's remaining time
+    // flows straight into the next item instead of sitting idle.
+    const timeline = bulkShiftTimeline.map(t => ({ ...t }));
+    timeline.sort((a, b) => (a.date !== b.date ? (a.date < b.date ? -1 : 1) : a.shiftNo - b.shiftNo));
+    const { results: packed, ok } = packContinuous(timeline, resolvedLines);
+    if (!ok) { setBulkError('Ran out of shift capacity while packing -- try again.'); return; }
+
     setBulkSaving(true);
     try {
-      let cursor = 0;
-      for (const l of resolvedLines) {
-        const mySlots = bulkAvailableSlots.slice(cursor, cursor + l.slotsNeeded);
-        cursor += l.slotsNeeded;
-        const qtyPerSlot = l.qty / l.slotsNeeded;
-
+      for (const l of packed) {
         let cumulative = 0;
-        const lineMember = mySlots.map((s, idx) => {
-          const shiftStart = new Date(s.date + 'T00:00:00');
-          shiftStart.setHours(shiftStartHour(s.shiftNo), 0, 0, 0);
-          const shiftEnd = new Date(shiftStart.getTime() + SHIFT_SECONDS * 1000);
-          cumulative += qtyPerSlot;
+        const lineMember = l.segments.map((seg, idx) => {
+          const shiftBaseStart = new Date(seg.date + 'T00:00:00');
+          shiftBaseStart.setHours(shiftStartHour(seg.shiftNo), 0, 0, 0);
+          const segStart = new Date(shiftBaseStart.getTime() + seg.offsetSeconds * 1000);
+          const segEnd = new Date(segStart.getTime() + seg.seconds * 1000);
+          const isLast = idx === l.segments.length - 1;
+          const segQty = isLast ? (l.qty - cumulative) : (seg.seconds * l.formulaBatch) / l.prodTime;
+          cumulative += segQty;
           return {
             ShiftIndex: idx + 1,
-            ShiftDate: s.date,
-            ShiftNo: Number(s.shiftNo),
-            StartTime: toLocalDateTimeStr(shiftStart),
-            EndTime: toLocalDateTimeStr(shiftEnd),
-            PlannedQty: qtyPerSlot,
+            ShiftDate: seg.date,
+            ShiftNo: Number(seg.shiftNo),
+            StartTime: toLocalDateTimeStr(segStart),
+            EndTime: toLocalDateTimeStr(segEnd),
+            PlannedQty: segQty,
             CumulativeQty: cumulative
           };
         });
 
-        const dates = mySlots.map(s => s.date);
+        const dates = l.segments.map(s => s.date);
         const payload = {
           ItemID: Number(l.itemID),
           ItemCode: l.itemCode,
@@ -439,7 +526,7 @@ export default function PlanningShowPlan({ user, onClose }) {
       setBulkLines([]);
       setBulkMachineID('');
       setBulkWarehouse('');
-      setBulkAvailableSlots(null);
+      setBulkShiftTimeline(null);
       await handleGenerate();
     } catch (e) {
       setBulkError(e.message);
@@ -840,7 +927,6 @@ export default function PlanningShowPlan({ user, onClose }) {
   const renderCell = (m, d, shiftNo) => {
     const key = `${m.MachineID}|${d}|${shiftNo}`;
     const items = cellMap[key] || [];
-    const accent = SHIFT_ACCENT[shiftNo];
     const isToday = d === todayStr;
     const isEmpty = items.length === 0;
     const isSelected = !!selectedSlots[key];
@@ -864,6 +950,7 @@ export default function PlanningShowPlan({ user, onClose }) {
       >
         {items.map((c, i) => {
           const isAssignedSelected = !!selectedAssignedSlots[c.shiftPlanID];
+          const accent = getItemColor(c.itemID ?? c.itemCode);
           return (
           <div
             key={i}
@@ -1358,14 +1445,14 @@ export default function PlanningShowPlan({ user, onClose }) {
               {bulkMachineID && bulkFromDate && bulkToDate && (
                 <div style={{
                   fontSize: 11.5, fontWeight: 600, padding: '6px 10px', borderRadius: 'var(--radius-xs)',
-                  color: bulkCheckingSlots ? 'var(--muted)' : (bulkAvailableSlots == null ? 'var(--muted)' : bulkTotalSlotsNeeded > bulkAvailableSlots.length ? 'var(--red)' : 'var(--green)'),
-                  background: bulkCheckingSlots ? 'var(--soft)' : (bulkAvailableSlots == null ? 'var(--soft)' : bulkTotalSlotsNeeded > bulkAvailableSlots.length ? 'var(--red-soft)' : 'var(--green-soft)')
+                  color: bulkCheckingSlots ? 'var(--muted)' : (bulkTotalAvailableSeconds == null ? 'var(--muted)' : bulkTotalNeededSeconds > bulkTotalAvailableSeconds ? 'var(--red)' : 'var(--green)'),
+                  background: bulkCheckingSlots ? 'var(--soft)' : (bulkTotalAvailableSeconds == null ? 'var(--soft)' : bulkTotalNeededSeconds > bulkTotalAvailableSeconds ? 'var(--red-soft)' : 'var(--green-soft)')
                 }}>
                   {bulkCheckingSlots
                     ? 'Checking availability...'
-                    : bulkAvailableSlots == null
-                    ? 'Could not check availability.'
-                    : `${bulkAvailableSlots.length} empty shift${bulkAvailableSlots.length === 1 ? '' : 's'} available for this machine in this range -- ${bulkTotalSlotsNeeded} needed across the grid below.`}
+                    : bulkTotalAvailableSeconds == null
+                    ? `Could not check availability${bulkAvailabilityError ? ': ' + bulkAvailabilityError : '.'}`
+                    : `${(bulkTotalAvailableSeconds / 3600).toFixed(1)}h available for this machine in this range -- ${(bulkTotalNeededSeconds / 3600).toFixed(1)}h needed across the grid below (packs back-to-back, no gaps).`}
                 </div>
               )}
 
@@ -1392,7 +1479,7 @@ export default function PlanningShowPlan({ user, onClose }) {
                         <th style={{ textAlign: 'right', padding: '8px 6px', fontSize: 11, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', borderBottom: '1px solid var(--border)' }}>Qty</th>
                         <th style={{ textAlign: 'right', padding: '8px 6px', fontSize: 11, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', borderBottom: '1px solid var(--border)' }}>Prod. Time (s/batch)</th>
                         <th style={{ textAlign: 'left', padding: '8px 6px', fontSize: 11, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', borderBottom: '1px solid var(--border)' }}>Formula</th>
-                        <th style={{ textAlign: 'right', padding: '8px 6px', fontSize: 11, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', borderBottom: '1px solid var(--border)' }}>Shifts Needed</th>
+                        <th style={{ textAlign: 'right', padding: '8px 6px', fontSize: 11, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', borderBottom: '1px solid var(--border)' }}>Time Needed</th>
                         <th style={{ borderBottom: '1px solid var(--border)' }}></th>
                       </tr>
                     </thead>
@@ -1430,8 +1517,8 @@ export default function PlanningShowPlan({ user, onClose }) {
                               disabled={!l.itemID}
                             />
                           </td>
-                          <td style={{ padding: '8px 6px', textAlign: 'right', fontFamily: 'var(--mono)', fontWeight: 700, color: l.slotsNeeded > 0 ? 'var(--text)' : 'var(--hint)' }}>
-                            {l.slotsNeeded > 0 ? l.slotsNeeded : '—'}
+                          <td style={{ padding: '8px 6px', textAlign: 'right', fontFamily: 'var(--mono)', fontWeight: 700, color: l.neededSeconds > 0 ? 'var(--text)' : 'var(--hint)' }}>
+                            {l.neededSeconds > 0 ? formatDuration(l.qty, l.batchQuantity, l.prodTime) : '—'}
                           </td>
                           <td style={{ padding: '8px 6px', width: 40 }}>
                             <button
