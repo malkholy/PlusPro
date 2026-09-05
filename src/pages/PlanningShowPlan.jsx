@@ -85,6 +85,11 @@ export default function PlanningShowPlan({ user, onClose }) {
 
   // Manual "select empty slots, then assign an item" flow.
   const [selectedSlots, setSelectedSlots] = useState({});
+  // Separate "select already-assigned slots, then combine into one Shop
+  // Order" flow -- e.g. Shift 1 + Shift 2 + Shift 1 (same item/machine,
+  // different dates/shifts) all covered by a single Shop Order. Keyed by
+  // ShiftPlanID.
+  const [selectedAssignedSlots, setSelectedAssignedSlots] = useState({});
   const [itemOptions, setItemOptions] = useState([]);
   const [formulaOptions, setFormulaOptions] = useState([]);
   const [warehouseOptions, setWarehouseOptions] = useState([]);
@@ -200,6 +205,7 @@ export default function PlanningShowPlan({ user, onClose }) {
       setDays(dayList);
       setGenerated(true);
       setSelectedSlots({});
+      setSelectedAssignedSlots({});
     } catch (e) {
       setError(e.message);
     } finally {
@@ -222,6 +228,19 @@ export default function PlanningShowPlan({ user, onClose }) {
   };
 
   const selectedList = Object.entries(selectedSlots);
+
+  // Toggle an already-assigned slot in/out of the "combine into one Shop
+  // Order" selection. Slots that already have a linked Shop Order can't be
+  // added -- they're already covered.
+  const toggleAssignedSlot = (item) => {
+    if (!item.shiftPlanID || item.shopOrderNo) return;
+    setSelectedAssignedSlots(prev => {
+      const next = { ...prev };
+      if (next[item.shiftPlanID]) delete next[item.shiftPlanID];
+      else next[item.shiftPlanID] = item;
+      return next;
+    });
+  };
   const selectedCount = selectedList.length;
   const selectedMachineCount = new Set(selectedList.map(([, s]) => s.machineID)).size;
 
@@ -408,6 +427,88 @@ export default function PlanningShowPlan({ user, onClose }) {
     }
   };
 
+  // Combines every selected assigned slot into ONE Shop Order -- e.g. Shift 1
+  // + Shift 2 + Shift 1 across two dates, same item/machine, all covered by
+  // a single order sized to their combined Qty. All selected slots must
+  // share the same item/machine/formula/warehouse (a Shop Order has exactly
+  // one of each); the earliest slot (by date, then shift) supplies the
+  // order's date/shift.
+  const handleCreateShopOrderBulk = async () => {
+    setContextMenu(null);
+    const items = Object.values(selectedAssignedSlots);
+    if (items.length < 2) return;
+
+    if (items.some(it => it.shopOrderNo)) {
+      setShopOrderNotice({ type: 'error', message: 'One or more selected slots already have a linked Shop Order.' });
+      return;
+    }
+    if (items.some(it => !it.itemID || !it.formulaID || !it.machineID || !it.warehouse || !it.qty)) {
+      setShopOrderNotice({ type: 'error', message: 'One or more selected slots are missing item/formula/machine/warehouse/qty.' });
+      return;
+    }
+
+    const first = items[0];
+    const mismatch = items.some(it =>
+      String(it.itemID) !== String(first.itemID) ||
+      String(it.machineID) !== String(first.machineID) ||
+      String(it.formulaID) !== String(first.formulaID) ||
+      String(it.warehouse).trim().toUpperCase() !== String(first.warehouse).trim().toUpperCase()
+    );
+    if (mismatch) {
+      setShopOrderNotice({ type: 'error', message: 'Selected slots must all be the same item, machine, formula, and warehouse to combine into one Shop Order.' });
+      return;
+    }
+
+    const totalQty = items.reduce((sum, it) => sum + Number(it.qty || 0), 0);
+    const earliest = [...items].sort((a, b) => {
+      if (a.shiftDate !== b.shiftDate) return a.shiftDate < b.shiftDate ? -1 : 1;
+      return Number(a.shiftNo) - Number(b.shiftNo);
+    })[0];
+
+    setCreatingShopOrder(true);
+    setShopOrderNotice(null);
+    try {
+      const createRes = await apiCall('New Shop Order', {
+        ShopOrderDate: earliest.shiftDate,
+        Warehouse: first.warehouse,
+        // Same case-sensitive OPENJSON key casing as ShopOrderFormDrawer.jsx.
+        ParentITemID: Number(first.itemID),
+        FormulaID: Number(first.formulaID),
+        MAchineID: Number(first.machineID),
+        Qty: totalQty,
+        ShiftNo: Number(earliest.shiftNo)
+      }, { User: user?.Username }, 'shop_order');
+
+      if (createRes.State !== 0) {
+        setShopOrderNotice({ type: 'error', message: createRes.Message || 'Failed to create Shop Order.' });
+        return;
+      }
+
+      const shopOrderNumber = createRes.List0?.[0]?.ShopOrderNumber;
+
+      for (const it of items) {
+        if (!it.shiftPlanID) continue;
+        const linkRes = await apiCall('Link Shop Order To Shift', {
+          ShiftPlanID: it.shiftPlanID, ShopOrderNo: shopOrderNumber
+        }, { User: user?.Username }, 'planning');
+        if (linkRes.State !== 0) {
+          setShopOrderNotice({ type: 'error', message: `Shop Order ${shopOrderNumber} created, but couldn't link one or more slots: ${linkRes.Message}` });
+          setSelectedAssignedSlots({});
+          await handleGenerate();
+          return;
+        }
+      }
+
+      setShopOrderNotice({ type: 'success', message: `Shop Order ${shopOrderNumber} created and linked to ${items.length} selected slots.` });
+      setSelectedAssignedSlots({});
+      await handleGenerate();
+    } catch (e) {
+      setShopOrderNotice({ type: 'error', message: e.message });
+    } finally {
+      setCreatingShopOrder(false);
+    }
+  };
+
   // Right-click "Delete Slot" -- blocked (server-side too) once a Shop
   // Order's been created from this slot.
   const handleDeleteSlot = (item) => {
@@ -527,13 +628,19 @@ export default function PlanningShowPlan({ user, onClose }) {
           cursor: isEmpty ? 'pointer' : 'default'
         }}
       >
-        {items.map((c, i) => (
+        {items.map((c, i) => {
+          const isAssignedSelected = !!selectedAssignedSlots[c.shiftPlanID];
+          return (
           <div
             key={i}
+            onClick={() => toggleAssignedSlot(c)}
             onContextMenu={(e) => { e.preventDefault(); setContextMenu({ x: e.clientX, y: e.clientY, item: c }); }}
+            title={c.shopOrderNo ? undefined : 'Click to select -- combine multiple selected slots into one Shop Order via right-click'}
             style={{
               marginBottom: 4, padding: '4px 6px 4px 8px', borderRadius: 'var(--radius-xs)',
-              borderLeft: `3px solid ${accent.bar}`, background: accent.soft, cursor: 'context-menu'
+              borderLeft: `3px solid ${accent.bar}`, background: accent.soft,
+              cursor: c.shopOrderNo ? 'context-menu' : 'pointer',
+              boxShadow: isAssignedSelected ? 'inset 0 0 0 2px var(--orange)' : 'none'
             }}
           >
             <div style={{ fontWeight: 700, color: 'var(--text)' }}>{c.itemCode}</div>
@@ -564,7 +671,8 @@ export default function PlanningShowPlan({ user, onClose }) {
               </div>
             )}
           </div>
-        ))}
+          );
+        })}
         {isEmpty && isSelected && (
           <div style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--orange2)', textAlign: 'center' }}>✓ selected</div>
         )}
@@ -766,6 +874,28 @@ export default function PlanningShowPlan({ user, onClose }) {
           </div>
         )}
 
+        {selectedCount === 0 && Object.keys(selectedAssignedSlots).length > 0 && (
+          <div style={{
+            position: 'absolute', bottom: 20, left: '50%', transform: 'translateX(-50%)',
+            background: 'var(--surface)', border: '1px solid var(--border)', boxShadow: 'var(--shadow-lg)',
+            borderRadius: 'var(--radius)', padding: '10px 14px', display: 'flex', alignItems: 'center', gap: 12, zIndex: 60
+          }}>
+            <span style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--text)' }}>
+              {Object.keys(selectedAssignedSlots).length} slot{Object.keys(selectedAssignedSlots).length > 1 ? 's' : ''} selected
+              {Object.keys(selectedAssignedSlots).length >= 2 ? ' -- right-click one to combine into one Shop Order' : ' -- select at least one more to combine'}
+            </span>
+            <button
+              onClick={() => setSelectedAssignedSlots({})}
+              style={{
+                padding: '7px 14px', borderRadius: 'var(--radius-xs)', border: '1px solid var(--border2)',
+                background: 'var(--surface)', color: 'var(--muted)', fontWeight: 600, fontSize: 12.5, cursor: 'pointer'
+              }}
+            >
+              Clear
+            </button>
+          </div>
+        )}
+
         {shopOrderNotice && (
           <div style={{
             position: 'absolute', top: 90, right: 20, zIndex: 70, maxWidth: 340,
@@ -953,19 +1083,28 @@ export default function PlanningShowPlan({ user, onClose }) {
             >
               ✏ Edit Shift Plan
             </button>
-            <button
-              onClick={() => handleCreateShopOrder(contextMenu.item)}
-              disabled={creatingShopOrder}
-              style={{
-                display: 'block', width: '100%', textAlign: 'left', padding: '10px 14px', border: 'none',
-                borderTop: '1px solid var(--border)', background: 'none', fontSize: 12.5, fontWeight: 600,
-                color: 'var(--text)', cursor: creatingShopOrder ? 'not-allowed' : 'pointer', opacity: creatingShopOrder ? 0.6 : 1
-              }}
-              onMouseEnter={e => { if (!creatingShopOrder) { e.currentTarget.style.background = 'var(--soft)'; e.currentTarget.style.color = 'var(--orange2)'; } }}
-              onMouseLeave={e => { e.currentTarget.style.background = 'none'; e.currentTarget.style.color = 'var(--text)'; }}
-            >
-              {creatingShopOrder ? 'Creating...' : '🏭 Create Shop Order'}
-            </button>
+            {(() => {
+              const bulkEligible = !!selectedAssignedSlots[contextMenu.item.shiftPlanID] && Object.keys(selectedAssignedSlots).length >= 2;
+              return (
+                <button
+                  onClick={() => bulkEligible ? handleCreateShopOrderBulk() : handleCreateShopOrder(contextMenu.item)}
+                  disabled={creatingShopOrder}
+                  style={{
+                    display: 'block', width: '100%', textAlign: 'left', padding: '10px 14px', border: 'none',
+                    borderTop: '1px solid var(--border)', background: 'none', fontSize: 12.5, fontWeight: 600,
+                    color: 'var(--text)', cursor: creatingShopOrder ? 'not-allowed' : 'pointer', opacity: creatingShopOrder ? 0.6 : 1
+                  }}
+                  onMouseEnter={e => { if (!creatingShopOrder) { e.currentTarget.style.background = 'var(--soft)'; e.currentTarget.style.color = 'var(--orange2)'; } }}
+                  onMouseLeave={e => { e.currentTarget.style.background = 'none'; e.currentTarget.style.color = 'var(--text)'; }}
+                >
+                  {creatingShopOrder
+                    ? 'Creating...'
+                    : bulkEligible
+                    ? `🏭 Create Shop Order for ${Object.keys(selectedAssignedSlots).length} Selected Slots`
+                    : '🏭 Create Shop Order'}
+                </button>
+              );
+            })()}
             <button
               onClick={() => handleOpenProduction(contextMenu.item)}
               disabled={openingProduction}
