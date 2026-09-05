@@ -85,6 +85,11 @@ export default function PlanningShowPlan({ user, onClose }) {
 
   // Manual "select empty slots, then assign an item" flow.
   const [selectedSlots, setSelectedSlots] = useState({});
+  // Separate "select already-assigned slots, then combine into one Shop
+  // Order" flow -- e.g. Shift 1 + Shift 2 + Shift 1 (same item/machine,
+  // different dates/shifts) all covered by a single Shop Order. Keyed by
+  // ShiftPlanID.
+  const [selectedAssignedSlots, setSelectedAssignedSlots] = useState({});
   const [itemOptions, setItemOptions] = useState([]);
   const [formulaOptions, setFormulaOptions] = useState([]);
   const [warehouseOptions, setWarehouseOptions] = useState([]);
