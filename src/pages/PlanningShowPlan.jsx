@@ -298,24 +298,32 @@ export default function PlanningShowPlan({ user, onClose }) {
 
   const addBulkLine = () => {
     bulkLineKeyRef.current -= 1;
-    setBulkLines(prev => [...prev, { key: bulkLineKeyRef.current, itemID: '', itemCode: '', itemDescription: '', qty: '', productionTime: '' }]);
+    setBulkLines(prev => [...prev, { key: bulkLineKeyRef.current, itemID: '', itemCode: '', itemDescription: '', formulaID: '', qty: '', productionTime: '' }]);
   };
   const removeBulkLine = (idx) => setBulkLines(prev => prev.filter((_, i) => i !== idx));
   const updateBulkLineItem = (idx, itemID) => {
     const opt = itemOptions.find(o => String(o.value) === String(itemID));
-    setBulkLines(prev => prev.map((l, i) => i === idx ? { ...l, itemID, itemCode: opt?.itemCode || '', itemDescription: opt?.itemName || '' } : l));
+    // Defaults to the item's Default Formula as a starting point -- still
+    // editable per line via its own combo below.
+    const defaultFormula = resolveDefaultFormula(itemID);
+    setBulkLines(prev => prev.map((l, i) => i === idx ? {
+      ...l, itemID, itemCode: opt?.itemCode || '', itemDescription: opt?.itemName || '',
+      formulaID: defaultFormula?.formulaID || ''
+    } : l));
   };
+  const updateBulkLineFormula = (idx, formulaID) => setBulkLines(prev => prev.map((l, i) => i === idx ? { ...l, formulaID } : l));
   const updateBulkLineQty = (idx, val) => setBulkLines(prev => prev.map((l, i) => i === idx ? { ...l, qty: val } : l));
   const updateBulkLineProdTime = (idx, val) => setBulkLines(prev => prev.map((l, i) => i === idx ? { ...l, productionTime: val } : l));
 
   // Live per-line capacity math, same formula as the single-item modal.
   const bulkLineComputed = bulkLines.map(l => {
-    const resolved = l.itemID ? resolveDefaultFormula(l.itemID) : null;
+    const formula = l.formulaID ? formulaOptions.find(f => String(f.value) === String(l.formulaID)) : null;
+    const batchQuantity = Number(formula?.batchQuantity || 0);
     const qty = Number(l.qty || 0);
     const prodTime = Number(l.productionTime || 0);
-    const unitsPerShift = resolved && resolved.batchQuantity > 0 && prodTime > 0 ? (SHIFT_SECONDS / prodTime) * resolved.batchQuantity : 0;
+    const unitsPerShift = batchQuantity > 0 && prodTime > 0 ? (SHIFT_SECONDS / prodTime) * batchQuantity : 0;
     const slotsNeeded = unitsPerShift > 0 && qty > 0 ? Math.ceil(qty / unitsPerShift) : 0;
-    return { ...l, resolved, qty, prodTime, slotsNeeded };
+    return { ...l, batchQuantity, qty, prodTime, slotsNeeded };
   });
   const bulkTotalSlotsNeeded = bulkLineComputed.reduce((sum, l) => sum + (l.slotsNeeded || 0), 0);
 
@@ -361,19 +369,20 @@ export default function PlanningShowPlan({ user, onClose }) {
     if (!bulkWarehouse) { setBulkError('Please select a warehouse.'); return; }
     if (bulkLines.length === 0) { setBulkError('Add at least one item line.'); return; }
     if (bulkLines.some(l => !l.itemID)) { setBulkError('Every line needs an item selected.'); return; }
+    if (bulkLines.some(l => !l.formulaID)) { setBulkError('Every line needs a formula selected.'); return; }
     if (bulkLines.some(l => !l.qty || Number(l.qty) <= 0)) { setBulkError('Every line needs a Qty greater than 0.'); return; }
     if (bulkLines.some(l => !l.productionTime || Number(l.productionTime) <= 0)) { setBulkError('Every line needs a Production Time greater than 0.'); return; }
 
     const resolvedLines = [];
     for (const l of bulkLines) {
-      const resolved = resolveDefaultFormula(l.itemID);
-      if (!resolved) { setBulkError(`"${l.itemCode}" has no Default Formula set in Planning Item Master.`); return; }
-      if (resolved.batchQuantity <= 0) { setBulkError(`"${l.itemCode}"'s default formula has no Batch Quantity set.`); return; }
+      const formula = formulaOptions.find(f => String(f.value) === String(l.formulaID));
+      const formulaBatch = Number(formula?.batchQuantity || 0);
+      if (formulaBatch <= 0) { setBulkError(`"${l.itemCode}"'s selected formula has no Batch Quantity set.`); return; }
       const qty = Number(l.qty);
       const prodTime = Number(l.productionTime);
-      const unitsPerShift = (SHIFT_SECONDS / prodTime) * resolved.batchQuantity;
+      const unitsPerShift = (SHIFT_SECONDS / prodTime) * formulaBatch;
       const slotsNeeded = Math.max(1, Math.ceil(qty / unitsPerShift));
-      resolvedLines.push({ ...l, formulaID: resolved.formulaID, formulaBatch: resolved.batchQuantity, qty, prodTime, slotsNeeded });
+      resolvedLines.push({ ...l, formulaID: l.formulaID, formulaBatch, qty, prodTime, slotsNeeded });
     }
 
     if (!bulkAvailableSlots) { setBulkError('Could not verify slot availability -- try again.'); return; }
@@ -1412,10 +1421,14 @@ export default function PlanningShowPlan({ user, onClose }) {
                               style={{ ...inputStyle, textAlign: 'right', width: '100%' }}
                             />
                           </td>
-                          <td style={{ padding: '8px 6px', fontSize: 12, color: 'var(--muted)' }}>
-                            {l.itemID
-                              ? (l.resolved ? l.resolved.formulaCode : <span style={{ color: 'var(--red)' }}>no default formula</span>)
-                              : '—'}
+                          <td style={{ padding: '8px 6px', minWidth: 180 }}>
+                            <SearchableSelect
+                              value={l.formulaID}
+                              onChange={(id) => updateBulkLineFormula(idx, id)}
+                              options={formulaOptions.filter(f => String(f.parentItemID) === String(l.itemID))}
+                              placeholder={l.itemID ? 'Search formula...' : 'Select an item first'}
+                              disabled={!l.itemID}
+                            />
                           </td>
                           <td style={{ padding: '8px 6px', textAlign: 'right', fontFamily: 'var(--mono)', fontWeight: 700, color: l.slotsNeeded > 0 ? 'var(--text)' : 'var(--hint)' }}>
                             {l.slotsNeeded > 0 ? l.slotsNeeded : '—'}
