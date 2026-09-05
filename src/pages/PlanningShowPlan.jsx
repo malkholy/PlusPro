@@ -434,12 +434,14 @@ export default function PlanningShowPlan({ user, onClose }) {
     }
   };
 
-  // Combines every selected assigned slot into ONE Shop Order -- e.g. Shift 1
-  // + Shift 2 + Shift 1 across two dates, same item/machine, all covered by
-  // a single order sized to their combined Qty. All selected slots must
-  // share the same item/machine/formula/warehouse (a Shop Order has exactly
-  // one of each); the earliest slot (by date, then shift) supplies the
-  // order's date/shift.
+  // Combines selected assigned slots into ONE Shop Order -- e.g. Shift 1 +
+  // Shift 2 + Shift 1 across two dates, same item/machine, all covered by a
+  // single order sized to their combined Qty. All selected slots must share
+  // the same item/machine/formula/warehouse (a Shop Order has exactly one of
+  // each); the earliest slot (by date, then shift) supplies the order's
+  // date/shift. If the combined Qty's production rate only needs fewer
+  // shifts than were selected, only the earliest ones actually needed get
+  // linked -- the rest are left alone (not consumed by this order).
   const handleCreateShopOrderBulk = async () => {
     setContextMenu(null);
     const items = Object.values(selectedAssignedSlots);
@@ -467,10 +469,26 @@ export default function PlanningShowPlan({ user, onClose }) {
     }
 
     const totalQty = items.reduce((sum, it) => sum + Number(it.qty || 0), 0);
-    const earliest = [...items].sort((a, b) => {
+    const sortedItems = [...items].sort((a, b) => {
       if (a.shiftDate !== b.shiftDate) return a.shiftDate < b.shiftDate ? -1 : 1;
       return Number(a.shiftNo) - Number(b.shiftNo);
-    })[0];
+    });
+
+    // If the combined Qty's own production rate (batch size / production
+    // time) only needs fewer 12h shifts than were selected, only link the
+    // earliest ones that are actually needed -- the order's Qty stays the
+    // full combined total either way (that's still how much to produce),
+    // it just doesn't need every selected slot's worth of shift time.
+    // Excess slot(s) are simply left unlinked, not folded into the order.
+    const unitsPerShift = Number(first.formulaBatch || 0) > 0 && Number(first.productionTime || 0) > 0
+      ? (SHIFT_SECONDS / Number(first.productionTime)) * Number(first.formulaBatch)
+      : 0;
+    const slotsNeeded = unitsPerShift > 0
+      ? Math.min(sortedItems.length, Math.max(1, Math.ceil(totalQty / unitsPerShift)))
+      : sortedItems.length;
+    const usedItems = sortedItems.slice(0, slotsNeeded);
+    const droppedItems = sortedItems.slice(slotsNeeded);
+    const earliest = usedItems[0];
 
     setCreatingShopOrder(true);
     setShopOrderNotice(null);
@@ -493,7 +511,7 @@ export default function PlanningShowPlan({ user, onClose }) {
 
       const shopOrderNumber = createRes.List0?.[0]?.ShopOrderNumber;
 
-      for (const it of items) {
+      for (const it of usedItems) {
         if (!it.shiftPlanID) continue;
         const linkRes = await apiCall('Link Shop Order To Shift', {
           ShiftPlanID: it.shiftPlanID, ShopOrderNo: shopOrderNumber
@@ -506,7 +524,12 @@ export default function PlanningShowPlan({ user, onClose }) {
         }
       }
 
-      setShopOrderNotice({ type: 'success', message: `Shop Order ${shopOrderNumber} created and linked to ${items.length} selected slots.` });
+      setShopOrderNotice({
+        type: 'success',
+        message: droppedItems.length > 0
+          ? `Shop Order ${shopOrderNumber} created (Qty ${totalQty.toLocaleString(undefined, { maximumFractionDigits: 3 })}) and linked to ${usedItems.length} of ${items.length} selected slots -- the rest weren't needed for this Qty at this rate and were left unlinked.`
+          : `Shop Order ${shopOrderNumber} created and linked to ${items.length} selected slots.`
+      });
       setSelectedAssignedSlots({});
       await handleGenerate();
     } catch (e) {
