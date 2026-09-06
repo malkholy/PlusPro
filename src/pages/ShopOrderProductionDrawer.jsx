@@ -34,12 +34,22 @@ function StateBadge({ state, description }) {
   );
 }
 
-export default function ShopOrderProductionDrawer({ user, row, onClose, onSaveSuccess }) {
-  // Issued Qty is now the amount for THIS release, added on top of whatever
-  // was already issued (Qty Issued = Old Qty Issued + New) -- not a
-  // replacement of the running total, so it starts blank rather than
-  // prefilled with row.QuantiftyIssued.
-  const [issuedQty, setIssuedQty] = useState('');
+export default function ShopOrderProductionDrawer({ user, row, onClose, onSaveSuccess, initialIssuedQty, linkedShiftPlanID }) {
+  // Issued Qty is the amount for THIS release, added on top of whatever was
+  // already issued (Qty Issued = Old Qty Issued + New) -- not a replacement
+  // of the running total. Defaults to a "produce it all" starting point --
+  // still fully editable for a partial release.
+  //
+  // Prefers initialIssuedQty (the specific shift SLOT's own Planned Qty,
+  // passed in when opened from one slot on Show Plan -- a Shop Order can
+  // span multiple slots/shifts, each with its own smaller Planned Qty, so
+  // the order's overall QuantityRequired would be the wrong default there).
+  // Falls back to the order's QuantityRequired when opened with no specific
+  // slot in mind (e.g. from the Shop Orders grid).
+  const defaultIssuedQty = Number(initialIssuedQty) > 0
+    ? Number(initialIssuedQty)
+    : (Number(row.QuantityRequired) > 0 ? Number(row.QuantityRequired) : '');
+  const [issuedQty, setIssuedQty] = useState(defaultIssuedQty);
   const [lines, setLines] = useState([]);
   const [linesLoading, setLinesLoading] = useState(true);
   const [itemOptions, setItemOptions] = useState([]);
@@ -78,12 +88,18 @@ export default function ShopOrderProductionDrawer({ user, row, onClose, onSaveSu
         ));
         if (cancelled) return;
 
+        // Same proportional split as handleIssuedQtyBlur, applied up front
+        // so the lines match the header's own default Issue Now.
+        const required = Number(row.QuantityRequired || 0);
+        const defaultFactor = required > 0 && defaultIssuedQty !== '' ? Number(defaultIssuedQty) / required : 0;
+
         setLines(rawLines.map((l, i) => {
           const match = balances[i].find(b => String(b.Warehouse || '').trim().toUpperCase() === String(row.ShopOrderWarehouse || '').trim().toUpperCase());
           return {
             key: `existing-${l.Line}`, isNew: false, line: l.Line,
             childItemID: l.ChildItemID, childItemCode: l.ChildItemCode, childItemDescription: l.ItemDescription,
-            quantityRequired: l.ChildQuantityRequired, alreadyIssued: l.ChildQuantityIssued, quantityIssued: '',
+            quantityRequired: l.ChildQuantityRequired, alreadyIssued: l.ChildQuantityIssued,
+            quantityIssued: defaultFactor > 0 ? Number(l.ChildQuantityRequired || 0) * defaultFactor : '',
             balance: match ? Number(match.ItemBalance || 0) : null
           };
         }));
@@ -188,7 +204,20 @@ export default function ShopOrderProductionDrawer({ user, row, onClose, onSaveSu
       }, 'shop_order');
 
       if (res.State === 0) {
-        setSuccess('Production issue saved successfully!');
+        // Link this release back to the specific shift-plan slot this
+        // Production form was opened from (Show Plan's right-click
+        // "▶ Produce"), so the calendar's per-slot Issued Qty reflects it
+        // too -- tracking-only, so a failure here doesn't block the real
+        // issue that already succeeded, just gets appended to the message.
+        let trackingNote = '';
+        if (linkedShiftPlanID) {
+          const trackRes = await apiCall('Update Shift Plan Issued Qty', null, {
+            User: user?.Username,
+            LineMember: JSON.stringify([{ ShiftPlanID: linkedShiftPlanID, Delta: Number(issuedQty) }])
+          }, 'planning');
+          if (trackRes.State !== 0) trackingNote = ` (slot tracking failed: ${trackRes.Message || 'unknown error'})`;
+        }
+        setSuccess(`Production issue saved successfully!${trackingNote}`);
         setTimeout(() => { onSaveSuccess(); onClose(); }, 700);
       } else {
         setError(res.Message || 'Failed to save.');

@@ -45,6 +45,7 @@ export default function ProductionBulkModal({ user, onClose, onProduced }) {
   const newLineKeyRef = useRef(0);
 
   const [producing, setProducing] = useState(false);
+  const [producingOne, setProducingOne] = useState(false);
   const [produceResults, setProduceResults] = useState([]);
 
   useEffect(() => {
@@ -71,7 +72,7 @@ export default function ProductionBulkModal({ user, onClose, onProduced }) {
     }
   };
 
-  const handleLoad = async () => {
+  const handleLoad = async (preferredSelection) => {
     if (!date) { setError('Please select a date.'); return; }
     if (!shiftNo) { setError('Please select a shift.'); return; }
     if (!machineType) { setError('Please select a machine type.'); return; }
@@ -94,7 +95,16 @@ export default function ProductionBulkModal({ user, onClose, onProduced }) {
         Number(r.ShiftNo) === Number(shiftNo) && Number(r.MachineType) === Number(machineType) && r.ShopOrderNo
       );
       const plannedByOrder = {};
-      filtered.forEach(r => { plannedByOrder[r.ShopOrderNo] = (plannedByOrder[r.ShopOrderNo] || 0) + Number(r.PlannedQty || 0); });
+      // The exact shift-plan slot(s) each order's issue in THIS shift
+      // corresponds to -- an order can span multiple shifts, but only the
+      // slot(s) matching this Date+Shift+MachineType selection get their
+      // QtyIssued updated when Produce runs (see handleProduce).
+      const slotsByOrder = {};
+      filtered.forEach(r => {
+        plannedByOrder[r.ShopOrderNo] = (plannedByOrder[r.ShopOrderNo] || 0) + Number(r.PlannedQty || 0);
+        if (!slotsByOrder[r.ShopOrderNo]) slotsByOrder[r.ShopOrderNo] = [];
+        slotsByOrder[r.ShopOrderNo].push({ shiftPlanID: r.ShiftPlanID, plannedQty: Number(r.PlannedQty || 0) });
+      });
 
       const headerByNumber = {};
       (hdrRes.List0 || []).forEach(h => { headerByNumber[h.ShopOrderNumber] = h; });
@@ -112,13 +122,17 @@ export default function ProductionBulkModal({ user, onClose, onProduced }) {
           machineCode: h?.MachineCode || '—', itemCode: h?.ParentItemCode || '—', itemDescription: h?.ItemDescription || '',
           warehouse: h?.ShopOrderWarehouse || '', required, oldIssued,
           newIssueQty: shiftPlannedQty, // editable
-          remaining, isClosed, missingHeader, stateDescription: h?.StateDescription
+          remaining, isClosed, missingHeader, stateDescription: h?.StateDescription,
+          slots: slotsByOrder[no] || []
         };
       }).sort((a, b) => String(a.machineCode).localeCompare(String(b.machineCode)));
 
       setOrders(orderRows);
       setLoaded(true);
-      const firstSelectable = orderRows.find(o => !o.isClosed && !o.missingHeader);
+      const preferred = preferredSelection != null && orderRows.some(o => String(o.shopOrderNumber) === String(preferredSelection) && !o.isClosed && !o.missingHeader)
+        ? orderRows.find(o => String(o.shopOrderNumber) === String(preferredSelection))
+        : null;
+      const firstSelectable = preferred || orderRows.find(o => !o.isClosed && !o.missingHeader);
       setSelectedOrderNumber(firstSelectable ? firstSelectable.shopOrderNumber : null);
 
       const withHeader = orderRows.filter(o => !o.isClosed && !o.missingHeader);
@@ -254,6 +268,51 @@ export default function ProductionBulkModal({ user, onClose, onProduced }) {
   const hasErrors = blockingOrderErrors.length > 0 || overBalanceLines.length > 0 || newLineMissingItem.length > 0;
   const toProduceCount = includedOrders.length;
 
+  // Same validity checks as the batch gate, scoped to just the selected
+  // order -- lets "Produce This Order" work even while a DIFFERENT order
+  // still has a problem.
+  const selectedOrderLines = selectedOrder ? (orderLines[selectedOrder.shopOrderNumber] || []) : [];
+  const selectedOrderHasErrors = !selectedOrder || selectedOrder.isClosed || selectedOrder.missingHeader || selectedOrder.overRemaining
+    || selectedOrderLines.some(l => (l.balance !== null && Number(l.issueNow || 0) > l.balance) || (l.isNew && !l.childItemID));
+
+  // Issues one order (Issue Shop Order + the per-slot QtyIssued tracking
+  // update) and returns the result -- shared by both "Produce All" and
+  // "Produce This Order".
+  const issueOneOrder = async (o) => {
+    const lines = orderLines[o.shopOrderNumber] || [];
+    const lineMember = lines.map(l => l.isNew ? {
+      Line: null,
+      ChildItemID: Number(l.childItemID),
+      ChildQuantityRequired: Number(l.quantityRequired || 0),
+      ChildIssued: Number(l.issueNow || 0)
+    } : {
+      Line: l.line,
+      ChildIssued: Number(l.issueNow || 0)
+    });
+    const res = await apiCall('Issue Shop Order', {
+      ShopOrderNo: o.shopOrderNumber, IssuedQty: o.newIssueQty
+    }, { User: user?.Username, LineMember: JSON.stringify(lineMember) }, 'shop_order');
+    if (res.State !== 0) return { ok: false, message: res.Message };
+
+    // Link this release back to the specific shift-plan slot(s) this
+    // shift's issue actually corresponds to (an order can span multiple
+    // shifts) -- a tracking-only step, so a failure here doesn't undo the
+    // real issue, just gets noted.
+    let trackingNote = '';
+    const totalSlotPlanned = o.slots.reduce((sum, s) => sum + s.plannedQty, 0);
+    if (o.slots.length > 0 && totalSlotPlanned > 0) {
+      const trackLineMember = o.slots.map(s => ({
+        ShiftPlanID: s.shiftPlanID, Delta: o.newIssueQty * (s.plannedQty / totalSlotPlanned)
+      }));
+      const trackRes = await apiCall('Update Shift Plan Issued Qty', null, {
+        User: user?.Username, LineMember: JSON.stringify(trackLineMember)
+      }, 'planning');
+      if (trackRes.State !== 0) trackingNote = ` (issued, but slot tracking failed: ${trackRes.Message || 'unknown error'})`;
+    }
+
+    return { ok: true, message: res.Message, trackingNote };
+  };
+
   const handleProduce = async () => {
     setError('');
     setSuccess('');
@@ -261,23 +320,11 @@ export default function ProductionBulkModal({ user, onClose, onProduced }) {
     const results = [];
     try {
       for (const o of includedOrders) {
-        const lines = orderLines[o.shopOrderNumber] || [];
-        const lineMember = lines.map(l => l.isNew ? {
-          Line: null,
-          ChildItemID: Number(l.childItemID),
-          ChildQuantityRequired: Number(l.quantityRequired || 0),
-          ChildIssued: Number(l.issueNow || 0)
-        } : {
-          Line: l.line,
-          ChildIssued: Number(l.issueNow || 0)
-        });
-        const res = await apiCall('Issue Shop Order', {
-          ShopOrderNo: o.shopOrderNumber, IssuedQty: o.newIssueQty
-        }, { User: user?.Username, LineMember: JSON.stringify(lineMember) }, 'shop_order');
-        results.push({ shopOrderNumber: o.shopOrderNumber, ok: res.State === 0, message: res.Message });
+        const result = await issueOneOrder(o);
+        results.push({ shopOrderNumber: o.shopOrderNumber, ...result });
         setProduceResults([...results]);
-        if (res.State !== 0) {
-          setError(`Stopped at Shop Order ${o.shopOrderNumber}: ${res.Message || 'Failed to issue.'} (${results.filter(r => r.ok).length} of ${includedOrders.length} succeeded before this)`);
+        if (!result.ok) {
+          setError(`Stopped at Shop Order ${o.shopOrderNumber}: ${result.message || 'Failed to issue.'} (${results.filter(r => r.ok).length} of ${includedOrders.length} succeeded before this)`);
           setProducing(false);
           return;
         }
@@ -288,6 +335,36 @@ export default function ProductionBulkModal({ user, onClose, onProduced }) {
       setError(e.message);
     } finally {
       setProducing(false);
+    }
+  };
+
+  // Issue just the currently-selected order, then reload the whole screen
+  // (orders, lines, balances) so the next order you look at reflects what
+  // just happened -- lets you go one Shop Order at a time instead of
+  // committing to the whole batch at once.
+  const handleProduceOne = async () => {
+    const o = selectedOrder;
+    if (!o || o.isClosed || o.missingHeader || o.overRemaining) return;
+    setError('');
+    setSuccess('');
+    setProducingOne(true);
+    try {
+      const result = await issueOneOrder(o);
+      if (!result.ok) {
+        setProduceResults(prev => [...prev, { shopOrderNumber: o.shopOrderNumber, ...result }]);
+        setError(`Shop Order ${o.shopOrderNumber}: ${result.message || 'Failed to issue.'}`);
+        return;
+      }
+      // handleLoad resets produceResults as part of a fresh load -- add
+      // this result back in afterward so it survives the refresh.
+      await handleLoad(o.shopOrderNumber);
+      setProduceResults([{ shopOrderNumber: o.shopOrderNumber, ...result }]);
+      setSuccess(`Produced Shop Order ${o.shopOrderNumber}${result.trackingNote || ''} -- refreshed.`);
+      onProduced?.();
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setProducingOne(false);
     }
   };
 
@@ -449,7 +526,7 @@ export default function ProductionBulkModal({ user, onClose, onProduced }) {
                         fontSize: 12, padding: '5px 10px', borderRadius: 'var(--radius-xs)', marginBottom: 4,
                         background: r.ok ? 'var(--green-soft)' : 'var(--red-soft)', color: r.ok ? 'var(--green)' : 'var(--red)'
                       }}>
-                        {r.ok ? '✓' : '✗'} Shop Order {r.shopOrderNumber}{!r.ok && r.message ? ` -- ${r.message}` : ''}
+                        {r.ok ? '✓' : '✗'} Shop Order {r.shopOrderNumber}{!r.ok && r.message ? ` -- ${r.message}` : ''}{r.trackingNote}
                       </div>
                     ))}
                   </div>
@@ -477,13 +554,28 @@ export default function ProductionBulkModal({ user, onClose, onProduced }) {
                           <div style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--text)' }}>
                             Shop Order <span style={{ fontFamily: 'var(--mono)', color: 'var(--orange2)' }}>{o.shopOrderNumber}</span> -- {o.itemCode}
                           </div>
-                          <button
-                            onClick={() => addLine(o.shopOrderNumber)}
-                            title="Issue a raw material not originally on this order's BOM"
-                            style={{ padding: '4px 10px', borderRadius: 'var(--radius-xs)', border: '1px solid var(--border2)', background: 'var(--surface)', color: 'var(--text)', fontWeight: 600, fontSize: 11.5, cursor: 'pointer' }}
-                          >
-                            + Add Line
-                          </button>
+                          <div style={{ display: 'flex', gap: 8 }}>
+                            <button
+                              onClick={() => addLine(o.shopOrderNumber)}
+                              title="Issue a raw material not originally on this order's BOM"
+                              style={{ padding: '4px 10px', borderRadius: 'var(--radius-xs)', border: '1px solid var(--border2)', background: 'var(--surface)', color: 'var(--text)', fontWeight: 600, fontSize: 11.5, cursor: 'pointer' }}
+                            >
+                              + Add Line
+                            </button>
+                            <button
+                              onClick={handleProduceOne}
+                              disabled={producingOne || producing || selectedOrderHasErrors}
+                              title={selectedOrderHasErrors ? 'Fix this order\'s Qty/lines first' : 'Issue just this order, then reload the screen'}
+                              style={{
+                                padding: '4px 12px', borderRadius: 'var(--radius-xs)', border: 'none',
+                                background: (producingOne || selectedOrderHasErrors) ? 'var(--hint)' : 'linear-gradient(135deg, var(--green), var(--green))',
+                                color: '#fff', fontWeight: 700, fontSize: 11.5,
+                                cursor: (producingOne || producing || selectedOrderHasErrors) ? 'not-allowed' : 'pointer'
+                              }}
+                            >
+                              {producingOne ? 'Producing...' : '▶ Produce This Order'}
+                            </button>
+                          </div>
                         </div>
                         {lines.length === 0 ? (
                           <div style={{ fontSize: 12, color: 'var(--hint)' }}>No lines.</div>
@@ -601,11 +693,11 @@ export default function ProductionBulkModal({ user, onClose, onProduced }) {
           {loaded && orders.length > 0 && !hasErrors && !linesLoading && includedOrders.length > 0 && (
             <button
               onClick={handleProduce}
-              disabled={producing}
+              disabled={producing || producingOne}
               style={{
                 padding: '8px 24px', borderRadius: 'var(--radius-xs)', border: 'none',
-                background: producing ? 'var(--hint)' : 'linear-gradient(135deg, var(--green), var(--green))',
-                color: '#fff', fontWeight: 700, fontSize: 13, cursor: producing ? 'not-allowed' : 'pointer'
+                background: (producing || producingOne) ? 'var(--hint)' : 'linear-gradient(135deg, var(--green), var(--green))',
+                color: '#fff', fontWeight: 700, fontSize: 13, cursor: (producing || producingOne) ? 'not-allowed' : 'pointer'
               }}
             >
               {producing ? 'Producing...' : `⚙️ Produce All (${toProduceCount})`}
@@ -614,7 +706,7 @@ export default function ProductionBulkModal({ user, onClose, onProduced }) {
         </div>
       </div>
 
-      <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 1150 }} onClick={() => !producing && onClose()} />
+      <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 1150 }} onClick={() => !producing && !producingOne && onClose()} />
     </>
   );
 }

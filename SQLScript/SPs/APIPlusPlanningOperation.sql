@@ -264,7 +264,8 @@ BEGIN
             sp.ProductionTime,
             sp.Warehouse,
             sp.StartTime,
-            sp.EndTime
+            sp.EndTime,
+            sp.QtyIssued
         FROM [PRO].[PrdItemPlanningShiftPlan] sp
         LEFT OUTER JOIN prd.MachineMaster mm ON sp.MachineID = mm.MachineID
         LEFT OUTER JOIN inv.ItemMaster im ON sp.ItemID = im.ItemID
@@ -306,12 +307,16 @@ BEGIN
     END
 
     -- =============================================
-    -- DELETE SHIFT PLAN SLOT (Show Plan right-click) -- blocked once a Shop
-    -- Order has been created from this slot.
+    -- DELETE SHIFT PLAN SLOT (Show Plan right-click) -- a slot linked to a
+    -- Shop Order can still be deleted as long as that order is still in
+    -- 'New' state (0); once Issued/Closed, deleting the slot would
+    -- misrepresent production that already happened, so it's blocked (same
+    -- New-state rule as Shift Machine Plan's move). The Shop Order itself
+    -- is left untouched either way -- only the slot goes.
     -- =============================================
     IF @Operation = 'Delete Shift Plan Slot'
     BEGIN
-        DECLARE @DSP_ShiftPlanID int, @DSP_ShopOrderNo int
+        DECLARE @DSP_ShiftPlanID int, @DSP_ShopOrderNo int, @DSP_OrderState int
 
         SELECT @DSP_ShiftPlanID = CAST(@LineData AS int)
 
@@ -322,12 +327,15 @@ BEGIN
             RETURN
         END
 
-        SELECT @DSP_ShopOrderNo = ShopOrderNo FROM [PRO].[PrdItemPlanningShiftPlan] WHERE ShiftPlanID = @DSP_ShiftPlanID
+        SELECT @DSP_ShopOrderNo = sp.ShopOrderNo, @DSP_OrderState = so.OrderState
+        FROM [PRO].[PrdItemPlanningShiftPlan] sp
+        LEFT OUTER JOIN [Pro].[ShopOrderHeader] so ON so.ShopOrderNumber = sp.ShopOrderNo
+        WHERE sp.ShiftPlanID = @DSP_ShiftPlanID
 
-        IF @DSP_ShopOrderNo IS NOT NULL
+        IF @DSP_ShopOrderNo IS NOT NULL AND ISNULL(@DSP_OrderState, -1) <> 0
         BEGIN
             SET @State = 1
-            SET @Message = 'Cannot delete -- Shop Order ' + CAST(@DSP_ShopOrderNo AS nvarchar(20)) + ' is already linked to this slot'
+            SET @Message = 'Cannot delete -- Shop Order ' + CAST(@DSP_ShopOrderNo AS nvarchar(20)) + ' is no longer New'
             RETURN
         END
 
@@ -563,6 +571,154 @@ BEGIN
             IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION
             SET @State = 1
             SET @Message = 'Failed to split slot: ' + ERROR_MESSAGE()
+            RETURN
+        END CATCH
+
+        RETURN
+    END
+
+    -- =============================================
+    -- UPDATE SHIFT PLAN ISSUED QTY (Show Plan "Production" button) -- adds
+    -- Delta to QtyIssued on one or more specific shift-plan slots, additive
+    -- per release same as the Shop Order header's own QuantiftyIssued.
+    -- Tracks issuance PER SLOT (not just per order) since one order can
+    -- span multiple shifts and Production issues one shift's worth at a
+    -- time -- called right after a successful Issue Shop Order.
+    -- =============================================
+    IF @Operation = 'Update Shift Plan Issued Qty'
+    BEGIN
+        DECLARE @USI_Rows TABLE (ShiftPlanID int, Delta decimal(18,5))
+        INSERT INTO @USI_Rows
+        SELECT ShiftPlanID, Delta
+        FROM OPENJSON(@LineMember) WITH (
+            ShiftPlanID int '$.ShiftPlanID',
+            Delta        decimal(18,5) '$.Delta'
+        )
+
+        IF NOT EXISTS (SELECT 1 FROM @USI_Rows)
+        BEGIN
+            SET @State = 1
+            SET @Message = 'No slots to update'
+            RETURN
+        END
+
+        IF EXISTS (
+            SELECT 1 FROM @USI_Rows r
+            LEFT OUTER JOIN [PRO].[PrdItemPlanningShiftPlan] sp ON sp.ShiftPlanID = r.ShiftPlanID
+            WHERE sp.ShiftPlanID IS NULL
+        )
+        BEGIN
+            SET @State = 1
+            SET @Message = 'One or more shift plan slots not found'
+            RETURN
+        END
+
+        BEGIN TRY
+            BEGIN TRANSACTION
+
+            UPDATE sp
+            SET sp.QtyIssued = sp.QtyIssued + r.Delta
+            FROM [PRO].[PrdItemPlanningShiftPlan] sp
+            INNER JOIN @USI_Rows r ON r.ShiftPlanID = sp.ShiftPlanID
+
+            COMMIT TRANSACTION
+        END TRY
+        BEGIN CATCH
+            IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION
+            SET @State = 1
+            SET @Message = 'Failed to update issued qty: ' + ERROR_MESSAGE()
+            RETURN
+        END CATCH
+
+        RETURN
+    END
+
+    -- =============================================
+    -- EXTEND SHOP ORDER (Show Plan right-click on an EMPTY slot) -- creates
+    -- a brand-new shift-plan slot on an existing Shop Order's own machine,
+    -- linked to that same order, AND grows the order's QuantityRequired by
+    -- this slot's PlannedQty (the order's planned production now covers
+    -- more, so what's required of it grows to match). Item/Formula/
+    -- Warehouse/Machine are all taken from the order itself, not the
+    -- caller, so the new slot can only ever match the order it's
+    -- extending. Only allowed while the order is still New (0) -- an
+    -- Issued/Closed order's Qty bookkeeping is already locked in.
+    -- =============================================
+    IF @Operation = 'Extend Shop Order'
+    BEGIN
+        DECLARE @EXT_ShopOrderNo int, @EXT_ShiftDate date, @EXT_ShiftNo int, @EXT_StartTime datetime, @EXT_EndTime datetime,
+                @EXT_PlannedQty decimal(18,5), @EXT_ProductionTime int, @EXT_FormulaBatch decimal(18,5)
+
+        SELECT @EXT_ShopOrderNo = ShopOrderNo, @EXT_ShiftDate = ShiftDate, @EXT_ShiftNo = ShiftNo,
+               @EXT_StartTime = StartTime, @EXT_EndTime = EndTime, @EXT_PlannedQty = PlannedQty,
+               @EXT_ProductionTime = ProductionTime, @EXT_FormulaBatch = FormulaBatch
+        FROM OPENJSON(@LineData) WITH (
+            ShopOrderNo    int           '$.ShopOrderNo',
+            ShiftDate      date          '$.ShiftDate',
+            ShiftNo        int           '$.ShiftNo',
+            StartTime      datetime      '$.StartTime',
+            EndTime        datetime      '$.EndTime',
+            PlannedQty     decimal(18,5) '$.PlannedQty',
+            ProductionTime int           '$.ProductionTime',
+            FormulaBatch   decimal(18,5) '$.FormulaBatch'
+        )
+
+        IF @EXT_ShopOrderNo IS NULL OR @EXT_PlannedQty IS NULL OR @EXT_PlannedQty <= 0
+        BEGIN
+            SET @State = 1
+            SET @Message = 'ShopOrderNo and a positive PlannedQty are required'
+            RETURN
+        END
+
+        DECLARE @EXT_ItemID int, @EXT_ItemCode nvarchar(50), @EXT_FormulaID int, @EXT_MachineID int, @EXT_Warehouse nvarchar(50), @EXT_OrderState int
+        SELECT @EXT_ItemID = ParentItemID, @EXT_ItemCode = ParentItemCode, @EXT_FormulaID = FlormulaID,
+               @EXT_MachineID = MachineID, @EXT_Warehouse = ShopOrderWarehouse, @EXT_OrderState = OrderState
+        FROM [Pro].[ShopOrderHeader] WHERE ShopOrderNumber = @EXT_ShopOrderNo
+
+        IF @EXT_ItemID IS NULL
+        BEGIN
+            SET @State = 1
+            SET @Message = 'Shop Order not found'
+            RETURN
+        END
+
+        IF @EXT_OrderState <> 0
+        BEGIN
+            SET @State = 1
+            SET @Message = 'Cannot extend -- Shop Order is no longer New'
+            RETURN
+        END
+
+        IF EXISTS (
+            SELECT 1 FROM [PRO].[PrdItemPlanningShiftPlan] sp
+            WHERE sp.MachineID = @EXT_MachineID AND sp.ShiftDate = @EXT_ShiftDate AND sp.ShiftNo = @EXT_ShiftNo
+              AND sp.StartTime < @EXT_EndTime AND @EXT_StartTime < sp.EndTime
+        )
+        BEGIN
+            SET @State = 1
+            SET @Message = 'Target time window overlaps an item already scheduled on this machine.'
+            RETURN
+        END
+
+        BEGIN TRY
+            BEGIN TRANSACTION
+
+            INSERT INTO [PRO].[PrdItemPlanningShiftPlan]
+                (ItemID, ItemCode, MachineID, FormulaID, FormulaBatch, ProductionTime, Warehouse, ShiftIndex, ShiftDate, ShiftNo, StartTime, EndTime, PlannedQty, CumulativeQty, ShopOrderNo, CreatedBy, CreatedDate)
+            VALUES
+                (@EXT_ItemID, @EXT_ItemCode, @EXT_MachineID, @EXT_FormulaID, ISNULL(@EXT_FormulaBatch, 0), ISNULL(@EXT_ProductionTime, 0), @EXT_Warehouse,
+                 1, @EXT_ShiftDate, @EXT_ShiftNo, @EXT_StartTime, @EXT_EndTime, @EXT_PlannedQty, @EXT_PlannedQty, @EXT_ShopOrderNo, @User, GETDATE())
+
+            UPDATE [Pro].[ShopOrderHeader]
+            SET QuantityRequired = QuantityRequired + @EXT_PlannedQty
+            WHERE ShopOrderNumber = @EXT_ShopOrderNo
+
+            COMMIT TRANSACTION
+        END TRY
+        BEGIN CATCH
+            IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION
+            SET @State = 1
+            SET @Message = 'Failed to extend Shop Order: ' + ERROR_MESSAGE()
             RETURN
         END CATCH
 

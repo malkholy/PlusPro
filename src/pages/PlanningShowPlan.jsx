@@ -197,6 +197,20 @@ export default function PlanningShowPlan({ user, onClose }) {
   const [shopOrderNotice, setShopOrderNotice] = useState(null);
   const [editSlotModal, setEditSlotModal] = useState(null);
   const [productionRow, setProductionRow] = useState(null);
+  const [productionSlotQty, setProductionSlotQty] = useState(null);
+  const [productionShiftPlanID, setProductionShiftPlanID] = useState(null);
+
+  // "Extend Shop Order" -- right-click an EMPTY slot to add it to an
+  // existing (New-state) Shop Order on that same machine, growing the
+  // order's QuantityRequired to match.
+  const [extendModal, setExtendModal] = useState(null); // { machine, date, shiftNo }
+  const [extendOrders, setExtendOrders] = useState([]);
+  const [extendLoadingOrders, setExtendLoadingOrders] = useState(false);
+  const [extendShopOrderNo, setExtendShopOrderNo] = useState('');
+  const [extendQty, setExtendQty] = useState('');
+  const [extendProductionTime, setExtendProductionTime] = useState('');
+  const [extendSaving, setExtendSaving] = useState(false);
+  const [extendError, setExtendError] = useState('');
   const [openingProduction, setOpeningProduction] = useState(false);
   // Custom in-app confirm dialog -- native window.confirm() can silently
   // no-op inside some embedded/webview hosts (returns immediately without
@@ -315,7 +329,7 @@ export default function PlanningShowPlan({ user, onClose }) {
           formulaBatch: Number(r.FormulaBatch || 0), productionTime: Number(r.ProductionTime || 0),
           warehouse: r.Warehouse || '', machineID: r.MachineID, shiftDate: dateStr, shiftNo: r.ShiftNo,
           shiftPlanID: r.ShiftPlanID, shopOrderNo: r.ShopOrderNo || null,
-          startTime: r.StartTime || null, endTime: r.EndTime || null
+          startTime: r.StartTime || null, endTime: r.EndTime || null, qtyIssued: Number(r.QtyIssued || 0)
         });
       });
 
@@ -541,13 +555,17 @@ export default function PlanningShowPlan({ user, onClose }) {
   // Live per-line capacity math, same formula as the single-item modal --
   // expressed as raw time need (seconds), not a whole-shift count, since
   // items now pack back-to-back within and across shifts.
+  // "Qty" here is a BATCH COUNT, not the final production quantity --
+  // Planned Qty = Qty x the Formula's Batch Qty, so it's always an exact
+  // multiple of Batch Qty by construction (no rounding needed).
   const bulkLineComputed = bulkLines.map(l => {
     const formula = l.formulaID ? formulaOptions.find(f => String(f.value) === String(l.formulaID)) : null;
     const batchQuantity = Number(formula?.batchQuantity || 0);
     const qty = Number(l.qty || 0);
     const prodTime = Number(l.productionTime || 0);
-    const neededSeconds = batchQuantity > 0 && prodTime > 0 && qty > 0 ? (qty * prodTime) / batchQuantity : 0;
-    return { ...l, batchQuantity, qty, prodTime, neededSeconds };
+    const plannedQty = batchQuantity > 0 && qty > 0 ? qty * batchQuantity : 0;
+    const neededSeconds = batchQuantity > 0 && prodTime > 0 && qty > 0 ? qty * prodTime : 0;
+    return { ...l, batchQuantity, qty, prodTime, plannedQty, neededSeconds };
   });
   const bulkTotalNeededSeconds = bulkLineComputed.reduce((sum, l) => sum + (l.neededSeconds || 0), 0);
   const bulkTotalAvailableSeconds = bulkShiftTimeline
@@ -618,7 +636,7 @@ export default function PlanningShowPlan({ user, onClose }) {
     if (bulkLines.length === 0) { setBulkError('Add at least one item line.'); return; }
     if (bulkLines.some(l => !l.itemID)) { setBulkError('Every line needs an item selected.'); return; }
     if (bulkLines.some(l => !l.formulaID)) { setBulkError('Every line needs a formula selected.'); return; }
-    if (bulkLines.some(l => !l.qty || Number(l.qty) <= 0)) { setBulkError('Every line needs a Qty greater than 0.'); return; }
+    if (bulkLines.some(l => !l.qty || Number(l.qty) <= 0)) { setBulkError('Every line needs a Qty (batch count) greater than 0.'); return; }
     if (bulkLines.some(l => !l.productionTime || Number(l.productionTime) <= 0)) { setBulkError('Every line needs a Production Time greater than 0.'); return; }
 
     const resolvedLines = [];
@@ -626,10 +644,13 @@ export default function PlanningShowPlan({ user, onClose }) {
       const formula = formulaOptions.find(f => String(f.value) === String(l.formulaID));
       const formulaBatch = Number(formula?.batchQuantity || 0);
       if (formulaBatch <= 0) { setBulkError(`"${l.itemCode}"'s selected formula has no Batch Quantity set.`); return; }
+      // Qty is a batch count -- Planned Qty = Qty x Batch Qty, always an
+      // exact multiple of Batch Qty by construction.
       const qty = Number(l.qty);
       const prodTime = Number(l.productionTime);
-      const neededSeconds = (qty * prodTime) / formulaBatch;
-      resolvedLines.push({ ...l, formulaID: l.formulaID, formulaBatch, qty, prodTime, neededSeconds });
+      const plannedQty = qty * formulaBatch;
+      const neededSeconds = qty * prodTime;
+      resolvedLines.push({ ...l, formulaID: l.formulaID, formulaBatch, qty, prodTime, plannedQty, neededSeconds });
     }
 
     if (!bulkShiftTimeline) { setBulkError('Could not verify shift availability -- try again.'); return; }
@@ -659,7 +680,7 @@ export default function PlanningShowPlan({ user, onClose }) {
           const segStart = new Date(shiftBaseStart.getTime() + seg.offsetSeconds * 1000);
           const segEnd = new Date(segStart.getTime() + seg.seconds * 1000);
           const isLast = idx === l.segments.length - 1;
-          const segQty = isLast ? (l.qty - cumulative) : (seg.seconds * l.formulaBatch) / l.prodTime;
+          const segQty = isLast ? (l.plannedQty - cumulative) : (seg.seconds * l.formulaBatch) / l.prodTime;
           cumulative += segQty;
           return {
             ShiftIndex: idx + 1,
@@ -678,7 +699,7 @@ export default function PlanningShowPlan({ user, onClose }) {
           ItemCode: l.itemCode,
           StartDate: dates.reduce((a, b) => (a < b ? a : b)),
           EndDate: dates.reduce((a, b) => (a > b ? a : b)),
-          PlannedQty: l.qty,
+          PlannedQty: l.plannedQty,
           FormulaID: Number(l.formulaID),
           MachineID: Number(bulkMachineID),
           FormulaBatch: l.formulaBatch,
@@ -1206,13 +1227,15 @@ export default function PlanningShowPlan({ user, onClose }) {
   // Order's been created from this slot.
   const handleDeleteSlot = (item) => {
     setContextMenu(null);
-    if (item.shopOrderNo) {
-      setShopOrderNotice({ type: 'error', message: `Cannot delete -- Shop Order ${item.shopOrderNo} is already linked to this slot.` });
-      return;
-    }
+    // A slot linked to a Shop Order can still be deleted as long as that
+    // order is still New -- the backend is the authority on its current
+    // state, so just attempt it and surface whatever it says rather than
+    // preemptively blocking here without knowing the order's live state.
     setConfirmDialog({
       title: 'Delete Slot',
-      message: `Remove ${item.itemCode} from this time slot? This deletes the shift-plan row entirely.`,
+      message: item.shopOrderNo
+        ? `Remove ${item.itemCode} from this time slot? Linked to Shop Order ${item.shopOrderNo} -- only allowed while that order is still New.`
+        : `Remove ${item.itemCode} from this time slot? This deletes the shift-plan row entirely.`,
       confirmLabel: 'Delete',
       danger: true,
       onConfirm: async () => {
@@ -1289,10 +1312,76 @@ export default function PlanningShowPlan({ user, onClose }) {
         return;
       }
       setProductionRow(shopOrderRow);
+      // The order's QuantityRequired can be the sum across several slots
+      // (e.g. combined via "Create Shop Order for N Selected Slots") -- the
+      // form should default to THIS slot's own Planned Qty, not the order's
+      // full total.
+      setProductionSlotQty(item.qty);
+      setProductionShiftPlanID(item.shiftPlanID);
     } catch (e) {
       setShopOrderNotice({ type: 'error', message: e.message });
     } finally {
       setOpeningProduction(false);
+    }
+  };
+
+  // Right-click an EMPTY slot -> "Extend Shop Order": add this slot to an
+  // existing New-state Shop Order on the same machine, growing the order's
+  // QuantityRequired by whatever this slot plans.
+  const handleOpenExtendModal = async (emptySlot) => {
+    setContextMenu(null);
+    setExtendModal(emptySlot);
+    setExtendShopOrderNo('');
+    setExtendQty('');
+    setExtendProductionTime('');
+    setExtendError('');
+    setExtendLoadingOrders(true);
+    try {
+      const res = await apiCall('GetGridData', { PageGroupID: 'shop_orders' }, { User: user?.Username }, 'plus');
+      if (res.State !== 0) { setExtendError(res.Message || 'Failed to load Shop Orders.'); return; }
+      const eligible = (res.List0 || []).filter(r => Number(r.OrderState) === 0 && String(r.MachineID) === String(emptySlot.machine.MachineID));
+      setExtendOrders(eligible);
+    } catch (e) {
+      setExtendError(e.message);
+    } finally {
+      setExtendLoadingOrders(false);
+    }
+  };
+
+  const extendSelectedOrder = extendOrders.find(o => String(o.ShopOrderNumber) === String(extendShopOrderNo)) || null;
+  const extendFormulaOptionsForOrder = extendSelectedOrder
+    ? formulaOptions.filter(f => String(f.value) === String(extendSelectedOrder.FlormulaID))
+    : [];
+  const extendFormula = extendFormulaOptionsForOrder[0] || null;
+
+  const handleExtendSave = async () => {
+    setExtendError('');
+    if (!extendShopOrderNo) { setExtendError('Please select a Shop Order.'); return; }
+    if (!extendQty || Number(extendQty) <= 0) { setExtendError('Please enter a Qty greater than 0.'); return; }
+    if (!extendProductionTime || Number(extendProductionTime) <= 0) { setExtendError('Please enter a Production Time greater than 0.'); return; }
+    if (!extendFormula) { setExtendError("Could not resolve this order's Formula -- Formula Master may be missing it."); return; }
+
+    const { machine, date, shiftNo } = extendModal;
+    const start = new Date(date + 'T00:00:00');
+    start.setHours(shiftStartHour(shiftNo), 0, 0, 0);
+    const end = new Date(start.getTime() + SHIFT_SECONDS * 1000);
+
+    setExtendSaving(true);
+    try {
+      const res = await apiCall('Extend Shop Order', {
+        ShopOrderNo: Number(extendShopOrderNo), ShiftDate: date, ShiftNo: Number(shiftNo),
+        StartTime: toLocalDateTimeStr(start), EndTime: toLocalDateTimeStr(end),
+        PlannedQty: Number(extendQty), ProductionTime: Number(extendProductionTime),
+        FormulaBatch: Number(extendFormula.batchQuantity || 0)
+      }, { User: user?.Username }, 'planning');
+      if (res.State !== 0) throw new Error(res.Message || 'Failed to extend Shop Order.');
+      setShopOrderNotice({ type: 'success', message: `Extended Shop Order ${extendShopOrderNo} into ${date} Shift ${shiftNo}.` });
+      setExtendModal(null);
+      await handleGenerate();
+    } catch (e) {
+      setExtendError(e.message);
+    } finally {
+      setExtendSaving(false);
     }
   };
 
@@ -1316,6 +1405,7 @@ export default function PlanningShowPlan({ user, onClose }) {
       <td
         key={shiftNo}
         onClick={isEmpty ? () => toggleSlot(m, d, shiftNo) : undefined}
+        onContextMenu={isEmpty ? (e) => { e.preventDefault(); setContextMenu({ x: e.clientX, y: e.clientY, emptySlot: { machine: m, date: d, shiftNo } }); } : undefined}
         onMouseEnter={isEmpty ? (e) => { if (!isSelected) e.currentTarget.style.background = 'var(--soft)'; } : undefined}
         onMouseLeave={isEmpty ? (e) => { if (!isSelected) e.currentTarget.style.background = baseBg; } : undefined}
         onDragOver={isValidDropTarget ? (e) => e.preventDefault() : undefined}
@@ -1386,6 +1476,19 @@ export default function PlanningShowPlan({ user, onClose }) {
                 🏭 SO {c.shopOrderNo}
               </div>
             )}
+            {c.qtyIssued > 0 && (() => {
+              const pct = c.qty > 0 ? Math.min(100, (c.qtyIssued / c.qty) * 100) : 0;
+              return (
+                <div style={{ marginTop: 3 }} title={`Issued ${c.qtyIssued.toLocaleString(undefined, { maximumFractionDigits: 2 })} of ${c.qty.toLocaleString(undefined, { maximumFractionDigits: 2 })} for this slot`}>
+                  <div style={{ fontSize: 9.5, fontWeight: 700, color: pct >= 100 ? 'var(--green)' : 'var(--orange2)' }}>
+                    Issued: {c.qtyIssued.toLocaleString(undefined, { maximumFractionDigits: 2 })} ({pct.toFixed(0)}%)
+                  </div>
+                  <div style={{ height: 3, borderRadius: 999, background: 'var(--border)', overflow: 'hidden', marginTop: 2 }}>
+                    <div style={{ height: '100%', width: `${pct}%`, borderRadius: 999, background: pct >= 100 ? 'var(--green)' : 'var(--orange)' }} />
+                  </div>
+                </div>
+              );
+            })()}
           </div>
           );
         })}
@@ -1915,9 +2018,10 @@ export default function PlanningShowPlan({ user, onClose }) {
                     <thead>
                       <tr>
                         <th style={{ textAlign: 'left', padding: '8px 6px', fontSize: 11, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', borderBottom: '1px solid var(--border)' }}>Item</th>
-                        <th style={{ textAlign: 'right', padding: '8px 6px', fontSize: 11, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', borderBottom: '1px solid var(--border)' }}>Qty</th>
+                        <th style={{ textAlign: 'right', padding: '8px 6px', fontSize: 11, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', borderBottom: '1px solid var(--border)' }}>Qty (Batches)</th>
                         <th style={{ textAlign: 'right', padding: '8px 6px', fontSize: 11, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', borderBottom: '1px solid var(--border)' }}>Prod. Time (s/batch)</th>
                         <th style={{ textAlign: 'left', padding: '8px 6px', fontSize: 11, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', borderBottom: '1px solid var(--border)' }}>Formula</th>
+                        <th style={{ textAlign: 'right', padding: '8px 6px', fontSize: 11, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', borderBottom: '1px solid var(--border)' }}>Planned Qty</th>
                         <th style={{ textAlign: 'right', padding: '8px 6px', fontSize: 11, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', borderBottom: '1px solid var(--border)' }}>Time Needed</th>
                         <th style={{ borderBottom: '1px solid var(--border)' }}></th>
                       </tr>
@@ -1933,10 +2037,11 @@ export default function PlanningShowPlan({ user, onClose }) {
                               placeholder="Search item..."
                             />
                           </td>
-                          <td style={{ padding: '8px 6px', width: 110 }}>
+                          <td style={{ padding: '8px 6px', width: 100 }}>
                             <input
-                              type="number" step="0.00001" value={l.qty === 0 ? '' : l.qty || ''}
+                              type="number" step="1" value={l.qty === 0 ? '' : l.qty || ''}
                               onChange={e => updateBulkLineQty(idx, e.target.value)}
+                              title="Number of batches -- Planned Qty = this x the Formula's Batch Qty"
                               style={{ ...inputStyle, textAlign: 'right', width: '100%' }}
                             />
                           </td>
@@ -1956,8 +2061,11 @@ export default function PlanningShowPlan({ user, onClose }) {
                               disabled={!l.itemID}
                             />
                           </td>
+                          <td style={{ padding: '8px 6px', textAlign: 'right', fontFamily: 'var(--mono)', fontWeight: 700, color: l.plannedQty > 0 ? 'var(--text)' : 'var(--hint)' }}>
+                            {l.plannedQty > 0 ? l.plannedQty.toLocaleString(undefined, { maximumFractionDigits: 5 }) : '—'}
+                          </td>
                           <td style={{ padding: '8px 6px', textAlign: 'right', fontFamily: 'var(--mono)', fontWeight: 700, color: l.neededSeconds > 0 ? 'var(--text)' : 'var(--hint)' }}>
-                            {l.neededSeconds > 0 ? formatDuration(l.qty, l.batchQuantity, l.prodTime) : '—'}
+                            {l.neededSeconds > 0 ? formatDuration(l.plannedQty, l.batchQuantity, l.prodTime) : '—'}
                           </td>
                           <td style={{ padding: '8px 6px', width: 40 }}>
                             <button
@@ -2253,6 +2361,20 @@ export default function PlanningShowPlan({ user, onClose }) {
             background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-xs)',
             boxShadow: 'var(--shadow-lg)', minWidth: 170, overflow: 'hidden', fontFamily: 'var(--font)'
           }}>
+            {contextMenu.emptySlot ? (
+              <button
+                onClick={() => handleOpenExtendModal(contextMenu.emptySlot)}
+                style={{
+                  display: 'block', width: '100%', textAlign: 'left', padding: '10px 14px', border: 'none',
+                  background: 'none', fontSize: 12.5, fontWeight: 600, color: 'var(--text)', cursor: 'pointer'
+                }}
+                onMouseEnter={e => { e.currentTarget.style.background = 'var(--soft)'; e.currentTarget.style.color = 'var(--orange2)'; }}
+                onMouseLeave={e => { e.currentTarget.style.background = 'none'; e.currentTarget.style.color = 'var(--text)'; }}
+              >
+                🔗 Extend Shop Order
+              </button>
+            ) : (
+            <>
             <button
               onClick={() => handleShowFormula(contextMenu.item)}
               style={{
@@ -2309,7 +2431,7 @@ export default function PlanningShowPlan({ user, onClose }) {
               onMouseEnter={e => { if (!openingProduction) { e.currentTarget.style.background = 'var(--soft)'; e.currentTarget.style.color = 'var(--orange2)'; } }}
               onMouseLeave={e => { e.currentTarget.style.background = 'none'; e.currentTarget.style.color = 'var(--text)'; }}
             >
-              {openingProduction ? 'Opening...' : '📋 Producation'}
+              {openingProduction ? 'Opening...' : '▶ Produce'}
             </button>
             <button
               onClick={() => handleDeleteSlot(contextMenu.item)}
@@ -2323,6 +2445,8 @@ export default function PlanningShowPlan({ user, onClose }) {
             >
               🗑 Delete Slot
             </button>
+            </>
+            )}
           </div>
         </>
       )}
@@ -2484,12 +2608,103 @@ export default function PlanningShowPlan({ user, onClose }) {
         </>
       )}
 
+      {extendModal && (
+        <>
+          <div style={{
+            position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%, -50%)',
+            width: 480, maxWidth: '92vw', background: 'var(--surface)', borderRadius: 'var(--radius)',
+            boxShadow: 'var(--shadow-lg)', border: '1px solid var(--border)', zIndex: 1300, fontFamily: 'var(--font)'
+          }}>
+            <div style={{ padding: '18px 22px', borderBottom: '1px solid var(--border)' }}>
+              <h3 style={{ margin: 0, fontSize: 16, fontWeight: 800, color: 'var(--text)' }}>🔗 Extend Shop Order</h3>
+              <p style={{ margin: '6px 0 0 0', fontSize: 12, color: 'var(--hint)' }}>
+                {extendModal.date} Shift {extendModal.shiftNo} -- {extendModal.machine.MachineCode}
+              </p>
+            </div>
+            <div style={{ padding: 20 }}>
+              {extendError && (
+                <div style={{ padding: '8px 12px', background: 'var(--red-soft)', color: 'var(--red)', borderRadius: 'var(--radius-xs)', fontSize: 12, fontWeight: 600, marginBottom: 14 }}>{extendError}</div>
+              )}
+
+              <label style={labelStyle}>Shop Order (New, on this machine)</label>
+              <SearchableSelect
+                value={extendShopOrderNo}
+                onChange={setExtendShopOrderNo}
+                options={extendOrders.map(o => ({
+                  label: `${o.ShopOrderNumber} -- ${o.ParentItemCode} (Required ${Number(o.QuantityRequired).toLocaleString(undefined, { maximumFractionDigits: 2 })})`,
+                  value: o.ShopOrderNumber
+                }))}
+                placeholder={extendLoadingOrders ? 'Loading...' : 'Search Shop Order...'}
+                disabled={extendLoadingOrders}
+              />
+              {!extendLoadingOrders && extendOrders.length === 0 && (
+                <div style={{ fontSize: 12, color: 'var(--hint)', marginTop: 8 }}>No New Shop Orders found on this machine.</div>
+              )}
+
+              {extendSelectedOrder && (
+                <div style={{ marginTop: 16, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+                  <div>
+                    <label style={labelStyle}>Item</label>
+                    <div style={{ ...inputStyle, background: 'var(--soft)', color: 'var(--muted)' }}>{extendSelectedOrder.ParentItemCode}</div>
+                  </div>
+                  <div>
+                    <label style={labelStyle}>Formula</label>
+                    <div style={{ ...inputStyle, background: 'var(--soft)', color: 'var(--muted)' }}>
+                      {extendFormula ? extendFormula.label : 'Not found in Formula Master'}
+                    </div>
+                  </div>
+                  <div>
+                    <label style={labelStyle}>Qty</label>
+                    <input
+                      type="number" step="0.00001" value={extendQty}
+                      onChange={e => setExtendQty(e.target.value)}
+                      style={{ ...inputStyle, width: '100%' }}
+                    />
+                  </div>
+                  <div>
+                    <label style={labelStyle}>Production Time (s/batch)</label>
+                    <input
+                      type="number" value={extendProductionTime}
+                      onChange={e => setExtendProductionTime(e.target.value)}
+                      style={{ ...inputStyle, width: '100%' }}
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+            <div style={{ padding: '14px 22px', borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+              <button
+                onClick={() => setExtendModal(null)}
+                disabled={extendSaving}
+                style={{ padding: '8px 16px', borderRadius: 'var(--radius-xs)', border: '1px solid var(--border2)', background: 'var(--surface)', color: 'var(--text)', fontWeight: 600, fontSize: 13, cursor: 'pointer' }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleExtendSave}
+                disabled={extendSaving || !extendShopOrderNo}
+                style={{
+                  padding: '8px 20px', borderRadius: 'var(--radius-xs)', border: 'none',
+                  background: (extendSaving || !extendShopOrderNo) ? 'var(--hint)' : 'linear-gradient(135deg, var(--orange), var(--orange2))',
+                  color: '#fff', fontWeight: 700, fontSize: 13, cursor: (extendSaving || !extendShopOrderNo) ? 'not-allowed' : 'pointer'
+                }}
+              >
+                {extendSaving ? 'Saving...' : 'Extend'}
+              </button>
+            </div>
+          </div>
+          <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 1290 }} onClick={() => !extendSaving && setExtendModal(null)} />
+        </>
+      )}
+
       {productionRow && (
         <ShopOrderProductionDrawer
           user={user}
           row={productionRow}
-          onClose={() => setProductionRow(null)}
-          onSaveSuccess={() => { setProductionRow(null); handleGenerate(); }}
+          initialIssuedQty={productionSlotQty}
+          linkedShiftPlanID={productionShiftPlanID}
+          onClose={() => { setProductionRow(null); setProductionSlotQty(null); setProductionShiftPlanID(null); }}
+          onSaveSuccess={() => { setProductionRow(null); setProductionSlotQty(null); setProductionShiftPlanID(null); handleGenerate(); }}
         />
       )}
 
