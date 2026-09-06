@@ -3,8 +3,8 @@ import { apiCall } from '../shared/api.js';
 import SearchableSelect from '../shared/SearchableSelect.jsx';
 
 // Local (not UTC) date/time helpers -- same convention as
-// PlanningShowPlan.jsx/ProductionBulkModal.jsx (toISOString() would shift
-// the calendar date backward for any timezone ahead of UTC).
+// PlanningShowPlan.jsx (toISOString() would shift the calendar date
+// backward for any timezone ahead of UTC).
 function toLocalDateStr(date) {
   const y = date.getFullYear();
   const m = String(date.getMonth() + 1).padStart(2, '0');

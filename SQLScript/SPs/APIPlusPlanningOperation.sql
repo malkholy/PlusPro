@@ -265,7 +265,8 @@ BEGIN
             sp.Warehouse,
             sp.StartTime,
             sp.EndTime,
-            sp.QtyIssued
+            sp.QtyIssued,
+            sp.SlotState
         FROM [PRO].[PrdItemPlanningShiftPlan] sp
         LEFT OUTER JOIN prd.MachineMaster mm ON sp.MachineID = mm.MachineID
         LEFT OUTER JOIN inv.ItemMaster im ON sp.ItemID = im.ItemID
@@ -316,7 +317,7 @@ BEGIN
     -- =============================================
     IF @Operation = 'Delete Shift Plan Slot'
     BEGIN
-        DECLARE @DSP_ShiftPlanID int, @DSP_ShopOrderNo int, @DSP_OrderState int
+        DECLARE @DSP_ShiftPlanID int, @DSP_ShopOrderNo int, @DSP_OrderState int, @DSP_SlotState int
 
         SELECT @DSP_ShiftPlanID = CAST(@LineData AS int)
 
@@ -327,10 +328,17 @@ BEGIN
             RETURN
         END
 
-        SELECT @DSP_ShopOrderNo = sp.ShopOrderNo, @DSP_OrderState = so.OrderState
+        SELECT @DSP_ShopOrderNo = sp.ShopOrderNo, @DSP_OrderState = so.OrderState, @DSP_SlotState = sp.SlotState
         FROM [PRO].[PrdItemPlanningShiftPlan] sp
         LEFT OUTER JOIN [Pro].[ShopOrderHeader] so ON so.ShopOrderNumber = sp.ShopOrderNo
         WHERE sp.ShiftPlanID = @DSP_ShiftPlanID
+
+        IF ISNULL(@DSP_SlotState, 0) = 20
+        BEGIN
+            SET @State = 1
+            SET @Message = 'Cannot delete -- this slot is Closed'
+            RETURN
+        END
 
         IF @DSP_ShopOrderNo IS NOT NULL AND ISNULL(@DSP_OrderState, -1) <> 0
         BEGIN
@@ -364,7 +372,15 @@ BEGIN
             RETURN
         END
 
-        SELECT @ESP_ShopOrderNo = ShopOrderNo FROM [PRO].[PrdItemPlanningShiftPlan] WHERE ShiftPlanID = @ESP_ShiftPlanID
+        DECLARE @ESP_SlotState int
+        SELECT @ESP_ShopOrderNo = ShopOrderNo, @ESP_SlotState = SlotState FROM [PRO].[PrdItemPlanningShiftPlan] WHERE ShiftPlanID = @ESP_ShiftPlanID
+
+        IF ISNULL(@ESP_SlotState, 0) = 20
+        BEGIN
+            SET @State = 1
+            SET @Message = 'Cannot edit -- this slot is Closed'
+            RETURN
+        END
 
         IF @ESP_ShopOrderNo IS NOT NULL
         BEGIN
@@ -428,11 +444,12 @@ BEGIN
             LEFT OUTER JOIN [Pro].[ShopOrderHeader] so ON so.ShopOrderNumber = sp.ShopOrderNo
             WHERE sp.ShiftPlanID IS NULL
                OR sp.MachineID <> @SMP_MachineID
+               OR ISNULL(sp.SlotState, 0) = 20
                OR (sp.ShopOrderNo IS NOT NULL AND ISNULL(so.OrderState, -1) <> 0)
         )
         BEGIN
             SET @State = 1
-            SET @Message = 'One or more slots cannot be shifted -- not found, not on this machine, or linked to a Shop Order that is no longer New.'
+            SET @Message = 'One or more slots cannot be shifted -- not found, not on this machine, Closed, or linked to a Shop Order that is no longer New.'
             RETURN
         END
 
@@ -495,16 +512,23 @@ BEGIN
         )
 
         DECLARE @SPL_ItemID int, @SPL_ItemCode nvarchar(50), @SPL_MachineID int, @SPL_FormulaID int,
-                @SPL_FormulaBatch decimal(18,5), @SPL_ProductionTime int, @SPL_Warehouse nvarchar(50), @SPL_ShopOrderNo int
+                @SPL_FormulaBatch decimal(18,5), @SPL_ProductionTime int, @SPL_Warehouse nvarchar(50), @SPL_ShopOrderNo int, @SPL_SlotState int
 
         SELECT @SPL_ItemID = ItemID, @SPL_ItemCode = ItemCode, @SPL_MachineID = MachineID, @SPL_FormulaID = FormulaID,
-               @SPL_FormulaBatch = FormulaBatch, @SPL_ProductionTime = ProductionTime, @SPL_Warehouse = Warehouse, @SPL_ShopOrderNo = ShopOrderNo
+               @SPL_FormulaBatch = FormulaBatch, @SPL_ProductionTime = ProductionTime, @SPL_Warehouse = Warehouse, @SPL_ShopOrderNo = ShopOrderNo, @SPL_SlotState = SlotState
         FROM [PRO].[PrdItemPlanningShiftPlan] WHERE ShiftPlanID = @SPL_ShiftPlanID
 
         IF @SPL_ItemID IS NULL
         BEGIN
             SET @State = 1
             SET @Message = 'Shift plan slot not found'
+            RETURN
+        END
+
+        IF ISNULL(@SPL_SlotState, 0) = 20
+        BEGIN
+            SET @State = 1
+            SET @Message = 'Cannot split -- this slot is Closed'
             RETURN
         END
 
@@ -641,8 +665,9 @@ BEGIN
     -- more, so what's required of it grows to match). Item/Formula/
     -- Warehouse/Machine are all taken from the order itself, not the
     -- caller, so the new slot can only ever match the order it's
-    -- extending. Only allowed while the order is still New (0) -- an
-    -- Issued/Closed order's Qty bookkeeping is already locked in.
+    -- extending. Allowed while the order is New or Issued (still active,
+    -- can still take on more planned work) -- only blocked once Closed
+    -- (20), since a Closed order's Qty bookkeeping is final.
     -- =============================================
     IF @Operation = 'Extend Shop Order'
     BEGIN
@@ -682,10 +707,10 @@ BEGIN
             RETURN
         END
 
-        IF @EXT_OrderState <> 0
+        IF @EXT_OrderState = 20
         BEGIN
             SET @State = 1
-            SET @Message = 'Cannot extend -- Shop Order is no longer New'
+            SET @Message = 'Cannot extend -- Shop Order is Closed'
             RETURN
         END
 
@@ -721,6 +746,34 @@ BEGIN
             SET @Message = 'Failed to extend Shop Order: ' + ERROR_MESSAGE()
             RETURN
         END CATCH
+
+        RETURN
+    END
+
+    -- =============================================
+    -- CLOSE SLOT (Show Plan right-click) -- marks a slot Closed (SlotState
+    -- = 20). Its link to a Shop Order (ShopOrderNo, PlannedQty, QtyIssued)
+    -- is untouched -- Closed is a separate, per-slot completion flag, not a
+    -- change to the order relationship. Once Closed, Delete/Edit Shift Plan
+    -- Slot, Shift Machine Plan, and Split Shift Plan Slot all refuse to
+    -- touch this slot, so a user can mark it done and safely move on to
+    -- the next one without risking an accidental edit/move/delete later.
+    -- =============================================
+    IF @Operation = 'Close Slot'
+    BEGIN
+        DECLARE @CLS_ShiftPlanID int
+        SELECT @CLS_ShiftPlanID = CAST(@LineData AS int)
+
+        IF @CLS_ShiftPlanID IS NULL OR NOT EXISTS (SELECT 1 FROM [PRO].[PrdItemPlanningShiftPlan] WHERE ShiftPlanID = @CLS_ShiftPlanID)
+        BEGIN
+            SET @State = 1
+            SET @Message = 'Shift plan slot not found'
+            RETURN
+        END
+
+        UPDATE [PRO].[PrdItemPlanningShiftPlan]
+        SET SlotState = 20
+        WHERE ShiftPlanID = @CLS_ShiftPlanID
 
         RETURN
     END

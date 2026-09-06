@@ -1,8 +1,7 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useLayoutEffect } from 'react';
 import { apiCall } from '../shared/api.js';
 import SearchableSelect from '../shared/SearchableSelect.jsx';
 import ShopOrderProductionDrawer from './ShopOrderProductionDrawer.jsx';
-import ProductionBulkModal from './ProductionBulkModal.jsx';
 import ShiftPlanModal from './ShiftPlanModal.jsx';
 
 // Local (not UTC) date/time helpers -- toISOString() would shift the
@@ -192,6 +191,25 @@ export default function PlanningShowPlan({ user, onClose }) {
 
   // Right-click on an assigned slot -> "Show Formula" / "Create Shop Order".
   const [contextMenu, setContextMenu] = useState(null);
+  // Clamps the context menu inside the viewport -- without this, a
+  // right-click near the bottom/right edge opens a menu that overflows off
+  // screen with no way to reach the cut-off items.
+  const [contextMenuPos, setContextMenuPos] = useState(null);
+  const contextMenuRef = useRef(null);
+  useLayoutEffect(() => {
+    if (!contextMenu || !contextMenuRef.current) { setContextMenuPos(null); return; }
+    const rect = contextMenuRef.current.getBoundingClientRect();
+    const margin = 8;
+    let top = contextMenu.y;
+    let left = contextMenu.x;
+    if (top + rect.height > window.innerHeight - margin) {
+      top = Math.max(margin, window.innerHeight - rect.height - margin);
+    }
+    if (left + rect.width > window.innerWidth - margin) {
+      left = Math.max(margin, window.innerWidth - rect.width - margin);
+    }
+    setContextMenuPos({ top, left });
+  }, [contextMenu]);
   const [formulaModal, setFormulaModal] = useState(null);
   const [creatingShopOrder, setCreatingShopOrder] = useState(false);
   const [shopOrderNotice, setShopOrderNotice] = useState(null);
@@ -236,13 +254,17 @@ export default function PlanningShowPlan({ user, onClose }) {
   const [calcRawGrandTotal, setCalcRawGrandTotal] = useState([]);
   const [calcRawMissingItems, setCalcRawMissingItems] = useState([]);
 
-  // "Production" button -- bulk-issue every Shop Order scheduled for a
-  // given Date+Shift+MachineType in one action (ProductionBulkModal.jsx).
-  const [productionModalOpen, setProductionModalOpen] = useState(false);
-
   // "Shift Plan" button -- move a whole machine's plan by 1 shift/day,
   // forward or backward (ShiftPlanModal.jsx).
   const [shiftPlanModalOpen, setShiftPlanModalOpen] = useState(false);
+
+  // "Shop Order List" button -- a per-order rollup: Required/Issued/Rest
+  // Qty plus how many days it spans and when it finishes, derived from its
+  // linked shift-plan slots.
+  const [shopOrderListOpen, setShopOrderListOpen] = useState(false);
+  const [shopOrderListRows, setShopOrderListRows] = useState([]);
+  const [shopOrderListLoading, setShopOrderListLoading] = useState(false);
+  const [shopOrderListError, setShopOrderListError] = useState('');
 
   useEffect(() => {
     // Loaded here (not just inside handleGenerate) so the "+ Assign"
@@ -329,7 +351,8 @@ export default function PlanningShowPlan({ user, onClose }) {
           formulaBatch: Number(r.FormulaBatch || 0), productionTime: Number(r.ProductionTime || 0),
           warehouse: r.Warehouse || '', machineID: r.MachineID, shiftDate: dateStr, shiftNo: r.ShiftNo,
           shiftPlanID: r.ShiftPlanID, shopOrderNo: r.ShopOrderNo || null,
-          startTime: r.StartTime || null, endTime: r.EndTime || null, qtyIssued: Number(r.QtyIssued || 0)
+          startTime: r.StartTime || null, endTime: r.EndTime || null, qtyIssued: Number(r.QtyIssued || 0),
+          slotState: Number(r.SlotState || 0)
         });
       });
 
@@ -936,6 +959,53 @@ export default function PlanningShowPlan({ user, onClose }) {
     }
   };
 
+  // "Shop Order List" -- per-order rollup of Required/Issued/Rest Qty plus
+  // how many days it spans and its latest (End Day, Shift), derived from
+  // every shift-plan slot linked to it (not date-scoped to the currently
+  // generated calendar range -- a full, standalone list).
+  const openShopOrderList = async () => {
+    setShopOrderListOpen(true);
+    setShopOrderListLoading(true);
+    setShopOrderListError('');
+    setShopOrderListRows([]);
+    try {
+      const [hdrRes, calRes] = await Promise.all([
+        apiCall('GetGridData', { PageGroupID: 'shop_orders' }, { User: user?.Username }, 'plus'),
+        apiCall('Get Planning Shift Calendar', {}, { User: user?.Username }, 'planning')
+      ]);
+      if (hdrRes.State !== 0) throw new Error(hdrRes.Message || 'Failed to load Shop Orders.');
+      if (calRes.State !== 0) throw new Error(calRes.Message || 'Failed to load the shift plan.');
+
+      const slotsByOrder = {};
+      (calRes.List0 || []).forEach(r => {
+        if (!r.ShopOrderNo) return;
+        const date = r.ShiftDate.split('T')[0];
+        if (!slotsByOrder[r.ShopOrderNo]) slotsByOrder[r.ShopOrderNo] = [];
+        slotsByOrder[r.ShopOrderNo].push({ date, shiftNo: Number(r.ShiftNo) });
+      });
+
+      const rows = (hdrRes.List0 || []).map(h => {
+        const slots = slotsByOrder[h.ShopOrderNumber] || [];
+        const totalDays = new Set(slots.map(s => s.date)).size;
+        const sorted = [...slots].sort((a, b) => (a.date !== b.date ? (a.date < b.date ? -1 : 1) : a.shiftNo - b.shiftNo));
+        const last = sorted[sorted.length - 1] || null;
+        const required = Number(h.QuantityRequired || 0);
+        const issued = Number(h.QuantiftyIssued || 0);
+        return {
+          shopOrderNumber: h.ShopOrderNumber, itemCode: h.ParentItemCode, stateDescription: h.StateDescription,
+          required, issued, rest: Math.max(0, required - issued),
+          totalDays, endDate: last?.date || null, endShiftNo: last?.shiftNo ?? null
+        };
+      }).sort((a, b) => b.shopOrderNumber - a.shopOrderNumber);
+
+      setShopOrderListRows(rows);
+    } catch (e) {
+      setShopOrderListError(e.message);
+    } finally {
+      setShopOrderListLoading(false);
+    }
+  };
+
   const assignItemFormulaOptions = formulaOptions.filter(f => String(f.parentItemID) === String(assignItemID));
   const selectedAssignFormula = formulaOptions.find(f => String(f.value) === String(assignFormulaID));
   const qtyPerSlot = selectedCount > 0 && Number(assignQty) > 0 ? Number(assignQty) / selectedCount : 0;
@@ -1255,6 +1325,36 @@ export default function PlanningShowPlan({ user, onClose }) {
     });
   };
 
+  // Right-click "Close Slot" -- marks the slot Closed (its Shop Order link,
+  // if any, is untouched) so every other slot operation (Delete, Edit,
+  // Shift Machine Plan, Split, drag-and-drop) refuses to touch it going
+  // forward -- a way to mark a slot done and safely move on to the next
+  // one without risking an accidental later edit.
+  const handleCloseSlot = (item) => {
+    setContextMenu(null);
+    if (item.slotState === 20) return;
+    setConfirmDialog({
+      title: 'Close Slot',
+      message: `Close ${item.itemCode} on this slot? Its link to ${item.shopOrderNo ? `Shop Order ${item.shopOrderNo}` : 'anything'} stays as-is -- this only stops any further edit, move, split, or delete on this specific slot.`,
+      confirmLabel: 'Close Slot',
+      danger: false,
+      onConfirm: async () => {
+        setConfirmDialog(null);
+        try {
+          const res = await apiCall('Close Slot', item.shiftPlanID, { User: user?.Username }, 'planning');
+          if (res.State === 0) {
+            setShopOrderNotice({ type: 'success', message: `Closed ${item.itemCode}'s slot -- it's now locked against further edits.` });
+            await handleGenerate();
+          } else {
+            setShopOrderNotice({ type: 'error', message: res.Message || 'Failed to close slot.' });
+          }
+        } catch (e) {
+          setShopOrderNotice({ type: 'error', message: e.message });
+        }
+      }
+    });
+  };
+
   // Right-click "Edit Shift Plan" -- blocked once a Shop Order's been
   // created from this slot, same as Delete.
   const handleOpenEditSlot = (item) => {
@@ -1335,12 +1435,20 @@ export default function PlanningShowPlan({ user, onClose }) {
     setExtendQty('');
     setExtendProductionTime('');
     setExtendError('');
+    // Clear immediately -- otherwise, until this fetch resolves (or if it
+    // errors out before ever setting a fresh list), the dropdown would
+    // still be showing whichever machine's orders were loaded last time.
+    setExtendOrders([]);
     setExtendLoadingOrders(true);
     try {
       const res = await apiCall('GetGridData', { PageGroupID: 'shop_orders' }, { User: user?.Username }, 'plus');
       if (res.State !== 0) { setExtendError(res.Message || 'Failed to load Shop Orders.'); return; }
-      const eligible = (res.List0 || []).filter(r => Number(r.OrderState) === 0 && String(r.MachineID) === String(emptySlot.machine.MachineID));
-      setExtendOrders(eligible);
+      // Show every order on this machine regardless of state (New, Issued,
+      // Closed) so the list isn't confusingly empty/incomplete -- only New
+      // ones can actually be extended (backend enforces this too), flagged
+      // clearly per-option and blocked at Save otherwise.
+      const onThisMachine = (res.List0 || []).filter(r => String(r.MachineID) === String(emptySlot.machine.MachineID));
+      setExtendOrders(onThisMachine);
     } catch (e) {
       setExtendError(e.message);
     } finally {
@@ -1357,6 +1465,10 @@ export default function PlanningShowPlan({ user, onClose }) {
   const handleExtendSave = async () => {
     setExtendError('');
     if (!extendShopOrderNo) { setExtendError('Please select a Shop Order.'); return; }
+    if (extendSelectedOrder && Number(extendSelectedOrder.OrderState) === 20) {
+      setExtendError('This order is Closed -- Closed orders can\'t be extended.');
+      return;
+    }
     if (!extendQty || Number(extendQty) <= 0) { setExtendError('Please enter a Qty greater than 0.'); return; }
     if (!extendProductionTime || Number(extendProductionTime) <= 0) { setExtendError('Please enter a Production Time greater than 0.'); return; }
     if (!extendFormula) { setExtendError("Could not resolve this order's Formula -- Formula Master may be missing it."); return; }
@@ -1427,8 +1539,8 @@ export default function PlanningShowPlan({ user, onClose }) {
           return (
           <div
             key={i}
-            draggable
-            onDragStart={(e) => {
+            draggable={c.slotState !== 20}
+            onDragStart={c.slotState === 20 ? undefined : (e) => {
               e.stopPropagation();
               setDraggedSlot({
                 shiftPlanID: c.shiftPlanID, machineID: c.machineID, itemID: c.itemID, itemCode: c.itemCode,
@@ -1441,15 +1553,19 @@ export default function PlanningShowPlan({ user, onClose }) {
             onDragEnd={() => { setDraggedSlot(null); setDragOverKey(null); }}
             onClick={() => toggleAssignedSlot(c)}
             onContextMenu={(e) => { e.preventDefault(); setContextMenu({ x: e.clientX, y: e.clientY, item: c }); }}
-            title={c.shopOrderNo ? 'Drag to move this slot within the same machine row' : 'Click to select -- combine multiple selected slots into one Shop Order via right-click. Drag to move within the same machine row.'}
+            title={c.slotState === 20 ? 'Closed -- locked against edit/move/delete' : c.shopOrderNo ? 'Drag to move this slot within the same machine row' : 'Click to select -- combine multiple selected slots into one Shop Order via right-click. Drag to move within the same machine row.'}
             style={{
               marginBottom: 4, padding: '4px 6px 4px 8px', borderRadius: 'var(--radius-xs)',
               borderLeft: `3px solid ${accent.bar}`, background: accent.soft,
-              cursor: 'grab',
+              cursor: c.slotState === 20 ? 'default' : 'grab',
+              opacity: c.slotState === 20 ? 0.6 : 1,
               boxShadow: isAssignedSelected ? 'inset 0 0 0 2px var(--orange)' : 'none'
             }}
           >
-            <div style={{ fontWeight: 700, color: 'var(--text)' }}>{c.itemCode}</div>
+            <div style={{ fontWeight: 700, color: 'var(--text)', display: 'flex', alignItems: 'center', gap: 4 }}>
+              {c.slotState === 20 && <span title="Closed">🔒</span>}
+              {c.itemCode}
+            </div>
             {c.itemDescription && (
               <div style={{
                 color: 'var(--hint)', fontSize: 10.5, whiteSpace: 'nowrap',
@@ -1577,6 +1693,17 @@ export default function PlanningShowPlan({ user, onClose }) {
             🏭 Shop Order
           </button>
           <button
+            onClick={openShopOrderList}
+            style={{
+              padding: '9px 20px', borderRadius: 'var(--radius-xs)', border: '1px solid var(--border2)',
+              background: 'var(--surface)', color: 'var(--text)', fontWeight: 700, fontSize: 13, cursor: 'pointer'
+            }}
+            onMouseEnter={e => { e.currentTarget.style.background = 'var(--soft)'; e.currentTarget.style.borderColor = 'var(--blue)'; e.currentTarget.style.color = 'var(--blue)'; }}
+            onMouseLeave={e => { e.currentTarget.style.background = 'var(--surface)'; e.currentTarget.style.borderColor = 'var(--border2)'; e.currentTarget.style.color = 'var(--text)'; }}
+          >
+            📋 Shop Order List
+          </button>
+          <button
             onClick={openCalculateRawModal}
             style={{
               padding: '9px 20px', borderRadius: 'var(--radius-xs)', border: '1px solid var(--border2)',
@@ -1586,17 +1713,6 @@ export default function PlanningShowPlan({ user, onClose }) {
             onMouseLeave={e => { e.currentTarget.style.background = 'var(--surface)'; e.currentTarget.style.borderColor = 'var(--border2)'; e.currentTarget.style.color = 'var(--text)'; }}
           >
             🧮 Calculate Raw
-          </button>
-          <button
-            onClick={() => setProductionModalOpen(true)}
-            style={{
-              padding: '9px 20px', borderRadius: 'var(--radius-xs)', border: '1px solid var(--border2)',
-              background: 'var(--surface)', color: 'var(--text)', fontWeight: 700, fontSize: 13, cursor: 'pointer'
-            }}
-            onMouseEnter={e => { e.currentTarget.style.background = 'var(--soft)'; e.currentTarget.style.borderColor = 'var(--teal)'; e.currentTarget.style.color = 'var(--teal)'; }}
-            onMouseLeave={e => { e.currentTarget.style.background = 'var(--surface)'; e.currentTarget.style.borderColor = 'var(--border2)'; e.currentTarget.style.color = 'var(--text)'; }}
-          >
-            ⚙️ Production
           </button>
           <button
             onClick={() => setShiftPlanModalOpen(true)}
@@ -2349,6 +2465,96 @@ export default function PlanningShowPlan({ user, onClose }) {
         </>
       )}
 
+      {shopOrderListOpen && (
+        <>
+          <div style={{
+            position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%, -50%)',
+            background: 'var(--surface)', borderRadius: 'var(--radius)', boxShadow: 'var(--shadow-lg)',
+            border: '1px solid var(--border)', fontFamily: 'var(--font)', maxHeight: '85vh', overflow: 'hidden',
+            display: 'flex', flexDirection: 'column', width: '90%', maxWidth: 900, zIndex: 1200
+          }}>
+            <div style={{ padding: '20px 24px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div>
+                <h3 style={{ margin: 0, fontSize: 18, fontWeight: 800, color: 'var(--text)' }}>📋 Shop Order List</h3>
+                <p style={{ margin: '6px 0 0 0', fontSize: 12, color: 'var(--hint)' }}>Every Shop Order, rolled up from its linked shift-plan slots</p>
+              </div>
+              <button
+                onClick={() => setShopOrderListOpen(false)}
+                style={{
+                  background: 'none', border: 'none', fontSize: 22, lineHeight: 1, cursor: 'pointer',
+                  color: 'var(--muted)', width: 32, height: 32, borderRadius: '999px', display: 'flex',
+                  alignItems: 'center', justifyContent: 'center'
+                }}
+                onMouseEnter={e => { e.currentTarget.style.background = 'var(--soft)'; e.currentTarget.style.color = 'var(--red)'; }}
+                onMouseLeave={e => { e.currentTarget.style.background = 'none'; e.currentTarget.style.color = 'var(--muted)'; }}
+              >×</button>
+            </div>
+
+            <div style={{ flex: 1, overflow: 'auto', padding: '20px 24px' }}>
+              {shopOrderListLoading ? (
+                <div style={{ fontSize: 13, color: 'var(--hint)' }}>Loading...</div>
+              ) : shopOrderListError ? (
+                <div style={{ padding: 12, background: 'var(--red-soft)', color: 'var(--red)', borderRadius: 'var(--radius-xs)', fontSize: 12.5, fontWeight: 600 }}>{shopOrderListError}</div>
+              ) : shopOrderListRows.length === 0 ? (
+                <div style={{ fontSize: 13, color: 'var(--hint)' }}>No Shop Orders found.</div>
+              ) : (
+                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                  <thead>
+                    <tr>
+                      <th style={{ textAlign: 'left', padding: '8px 6px', fontSize: 11, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', borderBottom: '1px solid var(--border)' }}>Shop Order</th>
+                      <th style={{ textAlign: 'left', padding: '8px 6px', fontSize: 11, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', borderBottom: '1px solid var(--border)' }}>Item</th>
+                      <th style={{ textAlign: 'left', padding: '8px 6px', fontSize: 11, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', borderBottom: '1px solid var(--border)' }}>State</th>
+                      <th style={{ textAlign: 'right', padding: '8px 6px', fontSize: 11, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', borderBottom: '1px solid var(--border)' }}>Required Qty</th>
+                      <th style={{ textAlign: 'right', padding: '8px 6px', fontSize: 11, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', borderBottom: '1px solid var(--border)' }}>Issued Qty</th>
+                      <th style={{ textAlign: 'right', padding: '8px 6px', fontSize: 11, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', borderBottom: '1px solid var(--border)' }}>Rest Qty</th>
+                      <th style={{ textAlign: 'right', padding: '8px 6px', fontSize: 11, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', borderBottom: '1px solid var(--border)' }}>Total Days</th>
+                      <th style={{ textAlign: 'left', padding: '8px 6px', fontSize: 11, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', borderBottom: '1px solid var(--border)' }}>End Day / Shift</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {shopOrderListRows.map((r, idx) => (
+                      <tr key={r.shopOrderNumber} style={{ background: idx % 2 === 1 ? 'var(--soft)' : 'transparent' }}>
+                        <td style={{ padding: '7px 6px', fontFamily: 'var(--mono)', fontWeight: 700, fontSize: 12.5 }}>{r.shopOrderNumber}</td>
+                        <td style={{ padding: '7px 6px', fontSize: 12.5 }}>{r.itemCode || '—'}</td>
+                        <td style={{ padding: '7px 6px', fontSize: 12 }}>{r.stateDescription || '—'}</td>
+                        <td style={{ padding: '7px 6px', textAlign: 'right', fontFamily: 'var(--mono)', fontSize: 12.5 }}>
+                          {r.required.toLocaleString(undefined, { maximumFractionDigits: 3 })}
+                        </td>
+                        <td style={{ padding: '7px 6px', textAlign: 'right', fontFamily: 'var(--mono)', fontSize: 12.5, color: 'var(--muted)' }}>
+                          {r.issued.toLocaleString(undefined, { maximumFractionDigits: 3 })}
+                        </td>
+                        <td style={{ padding: '7px 6px', textAlign: 'right', fontFamily: 'var(--mono)', fontSize: 12.5, fontWeight: 700, color: r.rest > 0 ? 'var(--orange2)' : 'var(--green)' }}>
+                          {r.rest.toLocaleString(undefined, { maximumFractionDigits: 3 })}
+                        </td>
+                        <td style={{ padding: '7px 6px', textAlign: 'right', fontFamily: 'var(--mono)', fontSize: 12.5 }}>
+                          {r.totalDays > 0 ? r.totalDays : '—'}
+                        </td>
+                        <td style={{ padding: '7px 6px', fontSize: 12.5 }}>
+                          {r.endDate ? `${r.endDate} Shift ${r.endShiftNo}` : '—'}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+
+            <div style={{ padding: '14px 20px', borderTop: '1px solid var(--border)', background: 'var(--soft)', display: 'flex', justifyContent: 'flex-end' }}>
+              <button
+                onClick={() => setShopOrderListOpen(false)}
+                style={{
+                  padding: '8px 16px', borderRadius: 'var(--radius-xs)', border: '1px solid var(--border2)',
+                  background: 'var(--surface)', color: 'var(--text)', fontWeight: 600, fontSize: 13, cursor: 'pointer'
+                }}
+              >
+                Close
+              </button>
+            </div>
+          </div>
+          <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 1150 }} onClick={() => setShopOrderListOpen(false)} />
+        </>
+      )}
+
       {contextMenu && (
         <>
           <div
@@ -2356,11 +2562,15 @@ export default function PlanningShowPlan({ user, onClose }) {
             onClick={() => setContextMenu(null)}
             onContextMenu={(e) => { e.preventDefault(); setContextMenu(null); }}
           />
-          <div style={{
-            position: 'fixed', top: contextMenu.y, left: contextMenu.x, zIndex: 1260,
-            background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-xs)',
-            boxShadow: 'var(--shadow-lg)', minWidth: 170, overflow: 'hidden', fontFamily: 'var(--font)'
-          }}>
+          <div
+            ref={contextMenuRef}
+            style={{
+              position: 'fixed', top: contextMenuPos?.top ?? contextMenu.y, left: contextMenuPos?.left ?? contextMenu.x, zIndex: 1260,
+              background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-xs)',
+              boxShadow: 'var(--shadow-lg)', minWidth: 170, maxHeight: 'calc(100vh - 16px)', overflowY: 'auto',
+              visibility: contextMenuPos ? 'visible' : 'hidden', fontFamily: 'var(--font)'
+            }}
+          >
             {contextMenu.emptySlot ? (
               <button
                 onClick={() => handleOpenExtendModal(contextMenu.emptySlot)}
@@ -2388,12 +2598,14 @@ export default function PlanningShowPlan({ user, onClose }) {
             </button>
             <button
               onClick={() => handleOpenEditSlot(contextMenu.item)}
+              disabled={contextMenu.item.slotState === 20}
               style={{
                 display: 'block', width: '100%', textAlign: 'left', padding: '10px 14px', border: 'none',
                 borderTop: '1px solid var(--border)', background: 'none', fontSize: 12.5, fontWeight: 600,
-                color: 'var(--text)', cursor: 'pointer'
+                color: contextMenu.item.slotState === 20 ? 'var(--hint)' : 'var(--text)',
+                cursor: contextMenu.item.slotState === 20 ? 'not-allowed' : 'pointer'
               }}
-              onMouseEnter={e => { e.currentTarget.style.background = 'var(--soft)'; e.currentTarget.style.color = 'var(--orange2)'; }}
+              onMouseEnter={e => { if (contextMenu.item.slotState !== 20) { e.currentTarget.style.background = 'var(--soft)'; e.currentTarget.style.color = 'var(--orange2)'; } }}
               onMouseLeave={e => { e.currentTarget.style.background = 'none'; e.currentTarget.style.color = 'var(--text)'; }}
             >
               ✏ Edit Shift Plan
@@ -2433,14 +2645,34 @@ export default function PlanningShowPlan({ user, onClose }) {
             >
               {openingProduction ? 'Opening...' : '▶ Produce'}
             </button>
+            {contextMenu.item.slotState === 20 ? (
+              <div style={{ padding: '10px 14px', borderTop: '1px solid var(--border)', fontSize: 11.5, fontWeight: 700, color: 'var(--muted)' }}>
+                🔒 Closed -- locked
+              </div>
+            ) : (
+              <button
+                onClick={() => handleCloseSlot(contextMenu.item)}
+                style={{
+                  display: 'block', width: '100%', textAlign: 'left', padding: '10px 14px', border: 'none',
+                  borderTop: '1px solid var(--border)', background: 'none', fontSize: 12.5, fontWeight: 600,
+                  color: 'var(--text)', cursor: 'pointer'
+                }}
+                onMouseEnter={e => { e.currentTarget.style.background = 'var(--soft)'; e.currentTarget.style.color = 'var(--orange2)'; }}
+                onMouseLeave={e => { e.currentTarget.style.background = 'none'; e.currentTarget.style.color = 'var(--text)'; }}
+              >
+                🔓 Close Slot
+              </button>
+            )}
             <button
               onClick={() => handleDeleteSlot(contextMenu.item)}
+              disabled={contextMenu.item.slotState === 20}
               style={{
                 display: 'block', width: '100%', textAlign: 'left', padding: '10px 14px', border: 'none',
                 borderTop: '1px solid var(--border)', background: 'none', fontSize: 12.5, fontWeight: 600,
-                color: 'var(--red)', cursor: 'pointer'
+                color: contextMenu.item.slotState === 20 ? 'var(--hint)' : 'var(--red)',
+                cursor: contextMenu.item.slotState === 20 ? 'not-allowed' : 'pointer'
               }}
-              onMouseEnter={e => { e.currentTarget.style.background = 'var(--red-soft)'; }}
+              onMouseEnter={e => { if (contextMenu.item.slotState !== 20) e.currentTarget.style.background = 'var(--red-soft)'; }}
               onMouseLeave={e => { e.currentTarget.style.background = 'none'; }}
             >
               🗑 Delete Slot
@@ -2626,19 +2858,24 @@ export default function PlanningShowPlan({ user, onClose }) {
                 <div style={{ padding: '8px 12px', background: 'var(--red-soft)', color: 'var(--red)', borderRadius: 'var(--radius-xs)', fontSize: 12, fontWeight: 600, marginBottom: 14 }}>{extendError}</div>
               )}
 
-              <label style={labelStyle}>Shop Order (New, on this machine)</label>
+              <label style={labelStyle}>Shop Order (on this machine)</label>
               <SearchableSelect
                 value={extendShopOrderNo}
                 onChange={setExtendShopOrderNo}
                 options={extendOrders.map(o => ({
-                  label: `${o.ShopOrderNumber} -- ${o.ParentItemCode} (Required ${Number(o.QuantityRequired).toLocaleString(undefined, { maximumFractionDigits: 2 })})`,
+                  label: `${o.ShopOrderNumber} -- ${o.ParentItemCode} (${o.StateDescription || 'Unknown state'}, Required ${Number(o.QuantityRequired).toLocaleString(undefined, { maximumFractionDigits: 2 })})`,
                   value: o.ShopOrderNumber
                 }))}
                 placeholder={extendLoadingOrders ? 'Loading...' : 'Search Shop Order...'}
                 disabled={extendLoadingOrders}
               />
               {!extendLoadingOrders && extendOrders.length === 0 && (
-                <div style={{ fontSize: 12, color: 'var(--hint)', marginTop: 8 }}>No New Shop Orders found on this machine.</div>
+                <div style={{ fontSize: 12, color: 'var(--hint)', marginTop: 8 }}>No Shop Orders found on this machine.</div>
+              )}
+              {extendSelectedOrder && Number(extendSelectedOrder.OrderState) === 20 && (
+                <div style={{ padding: '8px 12px', background: 'var(--red-soft)', color: 'var(--red)', borderRadius: 'var(--radius-xs)', fontSize: 12, fontWeight: 600, marginTop: 8 }}>
+                  This order is Closed -- Closed orders can't be extended.
+                </div>
               )}
 
               {extendSelectedOrder && (
@@ -2682,11 +2919,12 @@ export default function PlanningShowPlan({ user, onClose }) {
               </button>
               <button
                 onClick={handleExtendSave}
-                disabled={extendSaving || !extendShopOrderNo}
+                disabled={extendSaving || !extendShopOrderNo || (extendSelectedOrder && Number(extendSelectedOrder.OrderState) === 20)}
                 style={{
                   padding: '8px 20px', borderRadius: 'var(--radius-xs)', border: 'none',
-                  background: (extendSaving || !extendShopOrderNo) ? 'var(--hint)' : 'linear-gradient(135deg, var(--orange), var(--orange2))',
-                  color: '#fff', fontWeight: 700, fontSize: 13, cursor: (extendSaving || !extendShopOrderNo) ? 'not-allowed' : 'pointer'
+                  background: (extendSaving || !extendShopOrderNo || (extendSelectedOrder && Number(extendSelectedOrder.OrderState) === 20)) ? 'var(--hint)' : 'linear-gradient(135deg, var(--orange), var(--orange2))',
+                  color: '#fff', fontWeight: 700, fontSize: 13,
+                  cursor: (extendSaving || !extendShopOrderNo || (extendSelectedOrder && Number(extendSelectedOrder.OrderState) === 20)) ? 'not-allowed' : 'pointer'
                 }}
               >
                 {extendSaving ? 'Saving...' : 'Extend'}
@@ -2778,14 +3016,6 @@ export default function PlanningShowPlan({ user, onClose }) {
             </div>
           </div>
         </div>
-      )}
-
-      {productionModalOpen && (
-        <ProductionBulkModal
-          user={user}
-          onClose={() => setProductionModalOpen(false)}
-          onProduced={handleGenerate}
-        />
       )}
 
       {shiftPlanModalOpen && (
