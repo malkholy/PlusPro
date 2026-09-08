@@ -131,6 +131,7 @@ export default function PlanningShowPlan({ user, onClose }) {
   const [startDate, setStartDate] = useState(() => todayStr);
   const [endDate, setEndDate] = useState(() => addDays(todayStr, 6));
   const [machines, setMachines] = useState([]);
+  const [machineTypeOptions, setMachineTypeOptions] = useState([]);
   const [cellMap, setCellMap] = useState({});
   const [days, setDays] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -265,6 +266,16 @@ export default function PlanningShowPlan({ user, onClose }) {
   const [shopOrderListRows, setShopOrderListRows] = useState([]);
   const [shopOrderListLoading, setShopOrderListLoading] = useState(false);
   const [shopOrderListError, setShopOrderListError] = useState('');
+  const [shopOrderListMachineType, setShopOrderListMachineType] = useState('');
+  const [shopOrderListGenerated, setShopOrderListGenerated] = useState(false);
+
+  // "Show Shop Order" -- read-only Header + Lines view, opened from a Shop
+  // Order List row (View button).
+  const [showOrderOpen, setShowOrderOpen] = useState(false);
+  const [showOrderHeader, setShowOrderHeader] = useState(null);
+  const [showOrderLines, setShowOrderLines] = useState([]);
+  const [showOrderLoading, setShowOrderLoading] = useState(false);
+  const [showOrderError, setShowOrderError] = useState('');
 
   useEffect(() => {
     // Loaded here (not just inside handleGenerate) so the "+ Assign"
@@ -273,13 +284,20 @@ export default function PlanningShowPlan({ user, onClose }) {
     apiCall('Machine Master All', null, { User: user?.Username }, 'lookup').then(d => {
       if (d.State === 0) setMachines(d.List0 || []);
     });
+    // Machine Type filter for the Shop Order List modal.
+    apiCall('Machine Type All', null, { User: user?.Username }, 'lookup').then(d => {
+      if (d.State === 0) {
+        setMachineTypeOptions((d.List0 || []).map(t => ({ label: t.TypeDescription, value: t.TypeID })));
+      }
+    });
     apiCall('Item Master All', null, { User: user?.Username }, 'lookup').then(d => {
       if (d.State === 0) {
         setItemOptions((d.List0 || []).map(i => ({
           label: `${i.ItemCode} - ${i.ItemName}`,
           value: i.ItemID,
           itemCode: i.ItemCode,
-          itemName: i.ItemName
+          itemName: i.ItemName,
+          stockUM: i.StockUM
         })));
       }
     });
@@ -959,12 +977,26 @@ export default function PlanningShowPlan({ user, onClose }) {
     }
   };
 
-  // "Shop Order List" -- per-order rollup of Required/Issued/Rest Qty plus
-  // how many days it spans and its latest (End Day, Shift), derived from
-  // every shift-plan slot linked to it (not date-scoped to the currently
-  // generated calendar range -- a full, standalone list).
-  const openShopOrderList = async () => {
+  // "Shop Order List" -- opens the modal in a "pick a Machine Type first"
+  // state; the actual rollup only loads once generateShopOrderList() runs.
+  const openShopOrderList = () => {
     setShopOrderListOpen(true);
+    setShopOrderListGenerated(false);
+    setShopOrderListMachineType('');
+    setShopOrderListRows([]);
+    setShopOrderListError('');
+  };
+
+  // Per-order rollup of Required/Issued/Rest Qty plus how many days it spans
+  // and its latest (End Day, Shift), derived from every shift-plan slot
+  // linked to it (not date-scoped to the currently generated calendar range
+  // -- a full, standalone list), restricted to the chosen Machine Type, plus
+  // the item's Net Weight from Planning Item Master and its Machine.
+  const generateShopOrderList = async () => {
+    if (!shopOrderListMachineType) {
+      setShopOrderListError('Please select a Machine Type first.');
+      return;
+    }
     setShopOrderListLoading(true);
     setShopOrderListError('');
     setShopOrderListRows([]);
@@ -976,33 +1008,82 @@ export default function PlanningShowPlan({ user, onClose }) {
       if (hdrRes.State !== 0) throw new Error(hdrRes.Message || 'Failed to load Shop Orders.');
       if (calRes.State !== 0) throw new Error(calRes.Message || 'Failed to load the shift plan.');
 
+      const machineTypeByID = new Map(machines.map(m => [String(m.MachineID), m.MachineType]));
+      const netWeightByItemCode = new Map(planningItemRows.map(r => [r.ItemCode, r.NetWeight]));
+      const stockUMByItemCode = new Map(itemOptions.map(o => [o.itemCode, o.stockUM]));
+
       const slotsByOrder = {};
       (calRes.List0 || []).forEach(r => {
         if (!r.ShopOrderNo) return;
         const date = r.ShiftDate.split('T')[0];
         if (!slotsByOrder[r.ShopOrderNo]) slotsByOrder[r.ShopOrderNo] = [];
-        slotsByOrder[r.ShopOrderNo].push({ date, shiftNo: Number(r.ShiftNo) });
+        slotsByOrder[r.ShopOrderNo].push({ date, shiftNo: Number(r.ShiftNo), qtyIssued: Number(r.QtyIssued || 0) });
       });
 
-      const rows = (hdrRes.List0 || []).map(h => {
-        const slots = slotsByOrder[h.ShopOrderNumber] || [];
-        const totalDays = new Set(slots.map(s => s.date)).size;
-        const sorted = [...slots].sort((a, b) => (a.date !== b.date ? (a.date < b.date ? -1 : 1) : a.shiftNo - b.shiftNo));
-        const last = sorted[sorted.length - 1] || null;
-        const required = Number(h.QuantityRequired || 0);
-        const issued = Number(h.QuantiftyIssued || 0);
-        return {
-          shopOrderNumber: h.ShopOrderNumber, itemCode: h.ParentItemCode, stateDescription: h.StateDescription,
-          required, issued, rest: Math.max(0, required - issued),
-          totalDays, endDate: last?.date || null, endShiftNo: last?.shiftNo ?? null
-        };
-      }).sort((a, b) => b.shopOrderNumber - a.shopOrderNumber);
+      const baseRows = (hdrRes.List0 || [])
+        .filter(h => String(machineTypeByID.get(String(h.MachineID))) === String(shopOrderListMachineType))
+        .map(h => {
+          const slots = slotsByOrder[h.ShopOrderNumber] || [];
+          const totalDays = new Set(slots.map(s => s.date)).size;
+          const sorted = [...slots].sort((a, b) => (a.date !== b.date ? (a.date < b.date ? -1 : 1) : a.shiftNo - b.shiftNo));
+          const last = sorted[sorted.length - 1] || null;
+          const required = Number(h.QuantityRequired || 0);
+          const issued = Number(h.QuantiftyIssued || 0);
+          return {
+            shopOrderNumber: h.ShopOrderNumber, itemCode: h.ParentItemCode, itemDescription: h.ItemDescription, stateDescription: h.StateDescription,
+            stockUM: stockUMByItemCode.get(h.ParentItemCode), machineCode: h.MachineCode, netWeight: netWeightByItemCode.get(h.ParentItemCode),
+            required, issued, rest: Math.max(0, required - issued),
+            totalDays, endDate: last?.date || null, endShiftNo: last?.shiftNo ?? null,
+            rawHeader: h
+          };
+        }).sort((a, b) => b.shopOrderNumber - a.shopOrderNumber);
+
+      // Header Issued Qty / Sum(ChildQuantityIssued) across a Shop Order's
+      // BOM lines (PRO.ShopOrderLine) -- a raw-material-level reconciliation
+      // ratio, only meaningful for finished goods stocked in Units ('UN').
+      const unRows = baseRows.filter(r => r.stockUM === 'UN');
+      const linesResults = await Promise.all(unRows.map(r => apiCall('Shop Order Lines', { param1: r.shopOrderNumber }, { User: user?.Username }, 'lookup')));
+      const linesIssuedByOrder = new Map();
+      unRows.forEach((r, i) => {
+        const res = linesResults[i];
+        if (res.State === 0) {
+          const sum = (res.List0 || []).reduce((s, l) => s + (Number(l.ChildQuantityIssued) || 0), 0);
+          linesIssuedByOrder.set(r.shopOrderNumber, sum);
+        }
+      });
+
+      const rows = baseRows.map(r => {
+        const linesIssuedQty = linesIssuedByOrder.get(r.shopOrderNumber);
+        const issuedRatio = r.stockUM === 'UN' && r.issued > 0 && linesIssuedQty !== undefined ? linesIssuedQty / r.issued : null;
+        return { ...r, linesIssuedQty: linesIssuedQty ?? null, issuedRatio };
+      });
 
       setShopOrderListRows(rows);
+      setShopOrderListGenerated(true);
     } catch (e) {
       setShopOrderListError(e.message);
     } finally {
       setShopOrderListLoading(false);
+    }
+  };
+
+  // "Show Shop Order" -- read-only Header + Lines, opened from a Shop Order
+  // List row. Header comes from the row already loaded in the list; Lines
+  // are fetched fresh (single call) so it always reflects the latest state.
+  const openShowShopOrder = async (row) => {
+    setShowOrderOpen(true);
+    setShowOrderHeader(row.rawHeader);
+    setShowOrderLines([]);
+    setShowOrderLoading(true);
+    setShowOrderError('');
+    try {
+      const res = await apiCall('Shop Order Lines', { param1: row.shopOrderNumber }, { User: user?.Username }, 'lookup');
+      if (res.State !== 0) throw new Error(res.Message || 'Failed to load Shop Order Lines.');
+      setShowOrderLines(res.List0 || []);
+    } catch (e) {
+      setShowOrderError(e.message);
+    } finally {
+      setShowOrderLoading(false);
     }
   };
 
@@ -2471,7 +2552,7 @@ export default function PlanningShowPlan({ user, onClose }) {
             position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%, -50%)',
             background: 'var(--surface)', borderRadius: 'var(--radius)', boxShadow: 'var(--shadow-lg)',
             border: '1px solid var(--border)', fontFamily: 'var(--font)', maxHeight: '85vh', overflow: 'hidden',
-            display: 'flex', flexDirection: 'column', width: '90%', maxWidth: 900, zIndex: 1200
+            display: 'flex', flexDirection: 'column', width: '95%', maxWidth: 1300, zIndex: 1200
           }}>
             <div style={{ padding: '20px 24px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <div>
@@ -2491,24 +2572,59 @@ export default function PlanningShowPlan({ user, onClose }) {
             </div>
 
             <div style={{ flex: 1, overflow: 'auto', padding: '20px 24px' }}>
-              {shopOrderListLoading ? (
-                <div style={{ fontSize: 13, color: 'var(--hint)' }}>Loading...</div>
-              ) : shopOrderListError ? (
+              <div style={{ display: 'flex', alignItems: 'flex-end', gap: 12, marginBottom: 18 }}>
+                <div style={{ minWidth: 220 }}>
+                  <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', marginBottom: 6 }}>Machine Type</label>
+                  <select
+                    value={shopOrderListMachineType}
+                    onChange={e => { setShopOrderListMachineType(e.target.value); setShopOrderListGenerated(false); setShopOrderListRows([]); setShopOrderListError(''); }}
+                    style={{ width: '100%', padding: '8px 12px', borderRadius: 'var(--radius-xs)', border: '1px solid var(--border2)', background: 'var(--surface)', color: 'var(--text)', fontSize: 13 }}
+                  >
+                    <option value="">Select Machine Type...</option>
+                    {machineTypeOptions.map(t => (
+                      <option key={t.value} value={t.value}>{t.label}</option>
+                    ))}
+                  </select>
+                </div>
+                <button
+                  onClick={generateShopOrderList}
+                  disabled={!shopOrderListMachineType || shopOrderListLoading}
+                  style={{
+                    padding: '9px 20px', borderRadius: 'var(--radius-xs)', border: 'none',
+                    background: !shopOrderListMachineType ? 'var(--soft)' : 'var(--blue)',
+                    color: !shopOrderListMachineType ? 'var(--muted)' : '#fff', fontWeight: 700, fontSize: 13,
+                    cursor: !shopOrderListMachineType || shopOrderListLoading ? 'not-allowed' : 'pointer'
+                  }}
+                >
+                  {shopOrderListLoading ? 'Loading...' : 'Generate'}
+                </button>
+              </div>
+
+              {shopOrderListError ? (
                 <div style={{ padding: 12, background: 'var(--red-soft)', color: 'var(--red)', borderRadius: 'var(--radius-xs)', fontSize: 12.5, fontWeight: 600 }}>{shopOrderListError}</div>
+              ) : !shopOrderListGenerated ? (
+                <div style={{ fontSize: 13, color: 'var(--hint)' }}>Select a Machine Type, then click Generate.</div>
+              ) : shopOrderListLoading ? (
+                <div style={{ fontSize: 13, color: 'var(--hint)' }}>Loading...</div>
               ) : shopOrderListRows.length === 0 ? (
-                <div style={{ fontSize: 13, color: 'var(--hint)' }}>No Shop Orders found.</div>
+                <div style={{ fontSize: 13, color: 'var(--hint)' }}>No Shop Orders found for this Machine Type.</div>
               ) : (
                 <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                   <thead>
                     <tr>
                       <th style={{ textAlign: 'left', padding: '8px 6px', fontSize: 11, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', borderBottom: '1px solid var(--border)' }}>Shop Order</th>
                       <th style={{ textAlign: 'left', padding: '8px 6px', fontSize: 11, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', borderBottom: '1px solid var(--border)' }}>Item</th>
+                      <th style={{ textAlign: 'left', padding: '8px 6px', fontSize: 11, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', borderBottom: '1px solid var(--border)' }}>Description</th>
+                      <th style={{ textAlign: 'left', padding: '8px 6px', fontSize: 11, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', borderBottom: '1px solid var(--border)' }}>Stock UM</th>
+                      <th style={{ textAlign: 'left', padding: '8px 6px', fontSize: 11, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', borderBottom: '1px solid var(--border)' }}>Machine</th>
                       <th style={{ textAlign: 'left', padding: '8px 6px', fontSize: 11, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', borderBottom: '1px solid var(--border)' }}>State</th>
+                      <th style={{ textAlign: 'right', padding: '8px 6px', fontSize: 11, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', borderBottom: '1px solid var(--border)' }}>Net Weight (Kg)</th>
                       <th style={{ textAlign: 'right', padding: '8px 6px', fontSize: 11, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', borderBottom: '1px solid var(--border)' }}>Required Qty</th>
                       <th style={{ textAlign: 'right', padding: '8px 6px', fontSize: 11, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', borderBottom: '1px solid var(--border)' }}>Issued Qty</th>
                       <th style={{ textAlign: 'right', padding: '8px 6px', fontSize: 11, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', borderBottom: '1px solid var(--border)' }}>Rest Qty</th>
                       <th style={{ textAlign: 'right', padding: '8px 6px', fontSize: 11, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', borderBottom: '1px solid var(--border)' }}>Total Days</th>
                       <th style={{ textAlign: 'left', padding: '8px 6px', fontSize: 11, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', borderBottom: '1px solid var(--border)' }}>End Day / Shift</th>
+                      <th style={{ textAlign: 'center', padding: '8px 6px', fontSize: 11, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', borderBottom: '1px solid var(--border)' }}></th>
                     </tr>
                   </thead>
                   <tbody>
@@ -2516,7 +2632,16 @@ export default function PlanningShowPlan({ user, onClose }) {
                       <tr key={r.shopOrderNumber} style={{ background: idx % 2 === 1 ? 'var(--soft)' : 'transparent' }}>
                         <td style={{ padding: '7px 6px', fontFamily: 'var(--mono)', fontWeight: 700, fontSize: 12.5 }}>{r.shopOrderNumber}</td>
                         <td style={{ padding: '7px 6px', fontSize: 12.5 }}>{r.itemCode || '—'}</td>
+                        <td style={{ padding: '7px 6px', fontSize: 12.5 }}>{r.itemDescription || '—'}</td>
+                        <td style={{ padding: '7px 6px', fontSize: 12.5 }}>{r.stockUM || '—'}</td>
+                        <td style={{ padding: '7px 6px', fontSize: 12.5 }}>{r.machineCode || '—'}</td>
                         <td style={{ padding: '7px 6px', fontSize: 12 }}>{r.stateDescription || '—'}</td>
+                        <td style={{ padding: '7px 6px', textAlign: 'right', fontFamily: 'var(--mono)', fontSize: 12.5 }}>
+                          {r.netWeight !== null && r.netWeight !== undefined ? Number(r.netWeight).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 5 }) : '—'}
+                          {r.issuedRatio !== null && r.issuedRatio !== undefined && (
+                            <span style={{ color: 'var(--muted)' }}> ({r.issuedRatio.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 3 })})</span>
+                          )}
+                        </td>
                         <td style={{ padding: '7px 6px', textAlign: 'right', fontFamily: 'var(--mono)', fontSize: 12.5 }}>
                           {r.required.toLocaleString(undefined, { maximumFractionDigits: 3 })}
                         </td>
@@ -2531,6 +2656,18 @@ export default function PlanningShowPlan({ user, onClose }) {
                         </td>
                         <td style={{ padding: '7px 6px', fontSize: 12.5 }}>
                           {r.endDate ? `${r.endDate} Shift ${r.endShiftNo}` : '—'}
+                        </td>
+                        <td style={{ padding: '7px 6px', textAlign: 'center' }}>
+                          <button
+                            onClick={() => openShowShopOrder(r)}
+                            title="Show Shop Order"
+                            style={{
+                              padding: '4px 10px', borderRadius: 'var(--radius-xs)', border: '1px solid var(--border2)',
+                              background: 'var(--surface)', color: 'var(--blue)', fontWeight: 600, fontSize: 11.5, cursor: 'pointer'
+                            }}
+                          >
+                            👁 View
+                          </button>
                         </td>
                       </tr>
                     ))}
@@ -2552,6 +2689,115 @@ export default function PlanningShowPlan({ user, onClose }) {
             </div>
           </div>
           <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 1150 }} onClick={() => setShopOrderListOpen(false)} />
+        </>
+      )}
+
+      {showOrderOpen && (
+        <>
+          <div style={{
+            position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%, -50%)',
+            background: 'var(--surface)', borderRadius: 'var(--radius)', boxShadow: 'var(--shadow-lg)',
+            border: '1px solid var(--border)', fontFamily: 'var(--font)', maxHeight: '85vh', overflow: 'hidden',
+            display: 'flex', flexDirection: 'column', width: '90%', maxWidth: 800, zIndex: 1300
+          }}>
+            <div style={{ padding: '20px 24px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div>
+                <h3 style={{ margin: 0, fontSize: 18, fontWeight: 800, color: 'var(--text)' }}>🧾 Shop Order {showOrderHeader?.ShopOrderNumber}</h3>
+                <p style={{ margin: '6px 0 0 0', fontSize: 12, color: 'var(--hint)' }}>Read-only -- Header and Lines</p>
+              </div>
+              <button
+                onClick={() => setShowOrderOpen(false)}
+                style={{
+                  background: 'none', border: 'none', fontSize: 22, lineHeight: 1, cursor: 'pointer',
+                  color: 'var(--muted)', width: 32, height: 32, borderRadius: '999px', display: 'flex',
+                  alignItems: 'center', justifyContent: 'center'
+                }}
+                onMouseEnter={e => { e.currentTarget.style.background = 'var(--soft)'; e.currentTarget.style.color = 'var(--red)'; }}
+                onMouseLeave={e => { e.currentTarget.style.background = 'none'; e.currentTarget.style.color = 'var(--muted)'; }}
+              >×</button>
+            </div>
+
+            <div style={{ flex: 1, overflow: 'auto', padding: '20px 24px' }}>
+              {showOrderError && (
+                <div style={{ padding: 12, background: 'var(--red-soft)', color: 'var(--red)', borderRadius: 'var(--radius-xs)', fontSize: 12.5, fontWeight: 600, marginBottom: 16 }}>{showOrderError}</div>
+              )}
+
+              {showOrderHeader && (
+                <div style={{ marginBottom: 24 }}>
+                  <h4 style={{ margin: '0 0 12px 0', fontSize: 13, fontWeight: 800, color: 'var(--muted)', textTransform: 'uppercase' }}>Header</h4>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px 20px', background: 'var(--soft)', borderRadius: 'var(--radius-xs)', padding: 16 }}>
+                    {[
+                      ['Item', `${showOrderHeader.ParentItemCode || ''} - ${showOrderHeader.ItemDescription || ''}`],
+                      ['State', showOrderHeader.StateDescription],
+                      ['Warehouse', showOrderHeader.WarehouseDescription || showOrderHeader.ShopOrderWarehouse],
+                      ['Machine', showOrderHeader.MachineCode],
+                      ['Formula', showOrderHeader.FormulaCode],
+                      ['Order Date', showOrderHeader.ShopOrderDate ? String(showOrderHeader.ShopOrderDate).split('T')[0] : '—'],
+                      ['Quantity Required', Number(showOrderHeader.QuantityRequired || 0).toLocaleString(undefined, { maximumFractionDigits: 3 })],
+                      ['Quantity Issued', Number(showOrderHeader.QuantiftyIssued || 0).toLocaleString(undefined, { maximumFractionDigits: 3 })],
+                      ['Number Of Releases', showOrderHeader.NumberOfReleases],
+                      ['Created By', showOrderHeader.OrderCreatedBy],
+                      ['Created Date', showOrderHeader.OrderCreatedDate ? String(showOrderHeader.OrderCreatedDate).split('T')[0] : '—']
+                    ].map(([label, value]) => (
+                      <div key={label}>
+                        <div style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', marginBottom: 2 }}>{label}</div>
+                        <div style={{ fontSize: 13, color: 'var(--text)' }}>{value || value === 0 ? value : '—'}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <div>
+                <h4 style={{ margin: '0 0 12px 0', fontSize: 13, fontWeight: 800, color: 'var(--muted)', textTransform: 'uppercase' }}>Lines</h4>
+                {showOrderLoading ? (
+                  <div style={{ fontSize: 13, color: 'var(--hint)' }}>Loading...</div>
+                ) : showOrderLines.length === 0 ? (
+                  <div style={{ fontSize: 13, color: 'var(--hint)' }}>No lines found.</div>
+                ) : (
+                  <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                    <thead>
+                      <tr>
+                        <th style={{ textAlign: 'left', padding: '8px 6px', fontSize: 11, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', borderBottom: '1px solid var(--border)' }}>#</th>
+                        <th style={{ textAlign: 'left', padding: '8px 6px', fontSize: 11, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', borderBottom: '1px solid var(--border)' }}>Item</th>
+                        <th style={{ textAlign: 'left', padding: '8px 6px', fontSize: 11, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', borderBottom: '1px solid var(--border)' }}>Warehouse</th>
+                        <th style={{ textAlign: 'right', padding: '8px 6px', fontSize: 11, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', borderBottom: '1px solid var(--border)' }}>Qty Required</th>
+                        <th style={{ textAlign: 'right', padding: '8px 6px', fontSize: 11, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', borderBottom: '1px solid var(--border)' }}>Qty Issued</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {showOrderLines.map((l, idx) => (
+                        <tr key={l.ID ?? idx} style={{ background: idx % 2 === 1 ? 'var(--soft)' : 'transparent' }}>
+                          <td style={{ padding: '7px 6px', fontFamily: 'var(--mono)', fontSize: 12.5 }}>{l.Line}</td>
+                          <td style={{ padding: '7px 6px', fontSize: 12.5 }}>{l.ChildItemCode} - {l.ItemDescription || ''}</td>
+                          <td style={{ padding: '7px 6px', fontSize: 12.5 }}>{l.LineWarehouse || '—'}</td>
+                          <td style={{ padding: '7px 6px', textAlign: 'right', fontFamily: 'var(--mono)', fontSize: 12.5 }}>
+                            {Number(l.ChildQuantityRequired || 0).toLocaleString(undefined, { maximumFractionDigits: 3 })}
+                          </td>
+                          <td style={{ padding: '7px 6px', textAlign: 'right', fontFamily: 'var(--mono)', fontSize: 12.5, color: 'var(--muted)' }}>
+                            {Number(l.ChildQuantityIssued || 0).toLocaleString(undefined, { maximumFractionDigits: 3 })}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+            </div>
+
+            <div style={{ padding: '14px 20px', borderTop: '1px solid var(--border)', background: 'var(--soft)', display: 'flex', justifyContent: 'flex-end' }}>
+              <button
+                onClick={() => setShowOrderOpen(false)}
+                style={{
+                  padding: '8px 16px', borderRadius: 'var(--radius-xs)', border: '1px solid var(--border2)',
+                  background: 'var(--surface)', color: 'var(--text)', fontWeight: 600, fontSize: 13, cursor: 'pointer'
+                }}
+              >
+                Close
+              </button>
+            </div>
+          </div>
+          <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 1250 }} onClick={() => setShowOrderOpen(false)} />
         </>
       )}
 
